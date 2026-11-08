@@ -272,8 +272,7 @@ export default function App() {
             />
           )}
 
-          <div className="tail">
-          {canSend && (
+          {canSend ? (
           <button
             className="go"
             aria-label="Run"
@@ -284,11 +283,11 @@ export default function App() {
               <path d="M4 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
+          ) : (
+            <kbd className="esc-hint" title="Esc closes the bar">
+              esc
+            </kbd>
           )}
-          <button className="close" aria-label="Close" title="Close (Esc)" onClick={closeBar}>
-            ×
-          </button>
-          </div>
         </div>
 
         {(state.phase === "confirm" || state.phase === "choice") && (
