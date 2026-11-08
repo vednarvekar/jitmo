@@ -1,16 +1,18 @@
 //! Core service: owns the [`Flow`] on its own thread and speaks the UI
 //! protocol ([`UiRequest`] in, [`CoreEvent`] out).
 //!
-//! This is the seam between the UI and the engine. Today the transport is an
-//! in-process channel; the named-pipe transport (LLD 07) will carry the same
-//! messages, so only the code that feeds `send` and `emit` changes.
+//! This is the seam between the UI and the engine. Two transports share one
+//! request loop: an in-process channel ([`CoreService`]) and any byte stream
+//! such as the per-user named pipe ([`serve_connection`]).
 //!
 //! A request that needs the user (confirm card, choice) pauses the flow thread
 //! until the matching answer arrives. Cancel while waiting counts as "no".
 
 use crate::flow::{Flow, Prompter};
-use jitmo_ipc::{Choice, CoreEvent, RequestId, UiRequest};
+use jitmo_ipc::{read_message, write_message, Choice, CoreEvent, FrameError, RequestId, UiRequest};
+use std::io::{BufRead, Write};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Mutex;
 use std::thread::JoinHandle;
 
 pub struct CoreService {
@@ -24,7 +26,10 @@ impl CoreService {
         let (tx, rx) = mpsc::channel::<UiRequest>();
         let thread = std::thread::Builder::new()
             .name("jitmo-core".into())
-            .spawn(move || run(flow, rx, emit))
+            .spawn(move || {
+                let mut flow = flow;
+                run(&mut flow, rx, emit)
+            })
             .expect("failed to start the core thread");
         CoreService {
             tx,
@@ -50,7 +55,43 @@ impl Drop for CoreService {
     }
 }
 
-fn run(mut flow: Flow, rx: Receiver<UiRequest>, emit: impl Fn(CoreEvent)) {
+/// Serve one client over a byte stream: newline-delimited [`UiRequest`]s in,
+/// [`CoreEvent`]s out. Returns when the client closes its end (or the stream
+/// breaks). A request still waiting for an answer at that point is never
+/// approved. A line that is not valid JSON is logged and skipped.
+pub fn serve_connection<R, W>(flow: &mut Flow, reader: R, writer: W)
+where
+    R: BufRead + Send,
+    W: Write,
+{
+    let (tx, rx) = mpsc::channel::<UiRequest>();
+    let writer = Mutex::new(writer);
+    std::thread::scope(|scope| {
+        scope.spawn(move || {
+            let mut reader = reader;
+            loop {
+                match read_message::<_, UiRequest>(&mut reader) {
+                    Ok(Some(req)) => {
+                        if tx.send(req).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(FrameError::Json(e)) => tracing::warn!("ignoring a bad message: {e}"),
+                    Err(FrameError::Io(_)) => break,
+                }
+            }
+            // `tx` drops here, and the request loop sees the disconnect.
+        });
+        run(flow, rx, |event| {
+            if let Ok(mut w) = writer.lock() {
+                let _ = write_message(&mut *w, &event);
+            }
+        });
+    });
+}
+
+fn run(flow: &mut Flow, rx: Receiver<UiRequest>, emit: impl Fn(CoreEvent)) {
     while let Ok(req) = rx.recv() {
         match req {
             UiRequest::Submit { id, text } => {
@@ -299,3 +340,7 @@ mod tests {
         assert_eq!(next(&rx), CoreEvent::Started { id: 8 });
     }
 }
+
+#[cfg(test)]
+#[path = "service_stream_tests.rs"]
+mod stream_tests;

@@ -18,7 +18,7 @@ use jitmo_connectors::{fake::FakeConnector, Connector};
 use jitmo_core::context::{FsContext, SelectionSnapshot};
 use jitmo_core::flow::Flow;
 use jitmo_core::router::Router;
-use jitmo_core::service::CoreService;
+use jitmo_core::service::serve_connection;
 use jitmo_ipc::UiRequest;
 use jitmo_model_worker::{WorkerClient, WorkerLauncher};
 use jitmo_skills::Skill;
@@ -33,6 +33,9 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
+mod core_client;
+use core_client::CoreClient;
+
 const BAR: &str = "bar";
 const BAR_WIDTH: f64 = 640.0;
 const BAR_START_HEIGHT: f64 = 72.0;
@@ -40,7 +43,7 @@ const DEFAULT_HOTKEY: &str = "ctrl+alt+j"; // Ctrl+Alt+Space was already taken o
 const DESTROY_AFTER_HIDDEN: Duration = Duration::from_secs(60);
 
 struct AppState {
-    core: CoreService,
+    core: CoreClient,
     /// What Explorer had selected when the bar was last opened.
     selection: SelectionSnapshot,
     /// Bumped on every show and hide, so a pending "destroy" timer can tell it is stale.
@@ -346,6 +349,17 @@ fn main() {
             submit, confirm, choose, cancel, undo, hide_bar, resize_bar
         ])
         .setup(|app| {
+            // Own the per-user Core pipe first. If another jitmo already does,
+            // this instance must not run a second Core (or its scheduler).
+            let mut pipe_server = match jitmo_adapter_windows::pipe::PipeServer::bind(
+                &jitmo_adapter_windows::pipe::default_pipe_name(),
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("jitmo is already running (pipe in use: {e}); exiting");
+                    std::process::exit(0);
+                }
+            };
             // Store: next to the user's other app data.
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -360,7 +374,24 @@ fn main() {
             let flow = Flow::new(router(), store, connectors(&db_path))
                 .with_context(FsContext::for_current_user(selection.clone()));
             let handle = app.handle().clone();
-            let core = CoreService::spawn(flow, move |event| {
+            std::thread::Builder::new()
+                .name("jitmo-core".into())
+                .spawn(move || {
+                    let mut flow = flow;
+                    loop {
+                        match pipe_server.accept() {
+                            Ok(stream) => {
+                                let (r, w) = stream.split();
+                                serve_connection(&mut flow, std::io::BufReader::new(r), w);
+                            }
+                            Err(e) => {
+                                eprintln!("core pipe accept failed: {e}");
+                                std::thread::sleep(Duration::from_secs(1));
+                            }
+                        }
+                    }
+                })?;
+            let core = CoreClient::start(move |event| {
                 let _ = handle.emit("core-event", &event);
             });
             app.manage(AppState {

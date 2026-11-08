@@ -1860,6 +1860,7 @@ dependencies = [
 name = "jitmo-core"
 version = "0.1.0"
 dependencies = [
+ "jitmo-adapter-windows",
  "jitmo-connectors",
  "jitmo-ipc",
  "jitmo-model-worker",
