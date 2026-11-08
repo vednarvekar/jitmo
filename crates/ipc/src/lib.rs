@@ -25,6 +25,14 @@ pub struct ContextNote {
     pub open_app: Option<String>,
     /// Display name of the selected item (file, text), if any.
     pub selected_item: Option<String>,
+    /// App names Core knows about (installed or running). The extractor uses them as a
+    /// closed list. Absent in older messages.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apps: Vec<String>,
+    /// Contact names Core knows about. The extractor uses them as a closed list.
+    /// Absent in older messages.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contacts: Vec<String>,
 }
 
 /// One entry the user can pick when Core needs a choice (ties, FR4).
@@ -96,6 +104,17 @@ pub enum WorkerRequest {
     },
     /// Liveness check; Core restarts the worker if it does not answer.
     Ping { id: RequestId },
+    /// Pull slot spans out of the text for a task the router already chose. Loads the
+    /// extractor model on first use; it stays loaded until the worker exits.
+    Extract {
+        id: RequestId,
+        text: String,
+        /// Task label the router chose (A1, M2, ...), if known.
+        #[serde(default)]
+        task: Option<String>,
+        #[serde(default)]
+        context: ContextNote,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -107,6 +126,10 @@ pub enum WorkerReply {
     },
     Pong {
         id: RequestId,
+    },
+    Extracted {
+        id: RequestId,
+        spans: Vec<Span>,
     },
     Error {
         id: RequestId,

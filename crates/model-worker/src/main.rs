@@ -4,6 +4,8 @@
 //! - `--idle-secs N`  exit after N seconds without a request (default 300, 0 = never)
 //! - `--models DIR`   folder with the router files (else `JITMO_MODELS`, else
 //!   `models/router` next to the program, else `./models/router`)
+//! - `--extractor DIR` folder with the extractor model (else `JITMO_EXTRACTOR_DIR`, else
+//!   `models/extractor` next to the program, else `./models/extractor`); loaded on first use
 //! - `--engine test`  the crash/hang test engine (for process tests)
 //!
 //! If the models cannot be loaded the process exits with code 2 and Core falls
@@ -29,17 +31,23 @@ fn models_dir(arg: Option<String>) -> Option<PathBuf> {
         .find(|d| d.join("model_int8.onnx").exists())
 }
 
-fn real_engine(models: Option<String>) -> Result<Box<dyn Engine + Send>, String> {
+fn real_engine(
+    models: Option<String>,
+    extractor: Option<String>,
+) -> Result<Box<dyn Engine + Send>, String> {
     #[cfg(feature = "models")]
     {
         let dir = models_dir(models).ok_or("no model folder found")?;
-        Ok(Box::new(jitmo_model_worker::router::RouterEngine::load(
-            &dir,
-        )?))
+        Ok(Box::new(
+            jitmo_model_worker::router::RouterEngine::load_with(
+                &dir,
+                extractor.map(PathBuf::from),
+            )?,
+        ))
     }
     #[cfg(not(feature = "models"))]
     {
-        let _ = (models, models_dir(None));
+        let _ = (models, extractor, models_dir(None));
         Err("built without models".to_string())
     }
 }
@@ -53,6 +61,15 @@ impl Engine for Boxed {
         context: &jitmo_ipc::ContextNote,
     ) -> Result<jitmo_ipc::Understanding, String> {
         self.0.understand(text, context)
+    }
+
+    fn extract(
+        &mut self,
+        text: &str,
+        task: Option<&str>,
+        context: &jitmo_ipc::ContextNote,
+    ) -> Result<Vec<jitmo_ipc::Span>, String> {
+        self.0.extract(text, task, context)
     }
 }
 
@@ -72,7 +89,7 @@ fn main() {
     let result = if value("--engine").as_deref() == Some("test") {
         serve(input, stdout(), &mut TestEngine, idle)
     } else {
-        match real_engine(value("--models")) {
+        match real_engine(value("--models"), value("--extractor")) {
             Ok(engine) => serve(input, stdout(), &mut Boxed(engine), idle),
             Err(e) => {
                 eprintln!("model worker cannot start: {e}");

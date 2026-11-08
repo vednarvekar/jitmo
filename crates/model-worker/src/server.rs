@@ -63,6 +63,18 @@ where
                 };
                 write_message(&mut output, &reply)?;
             }
+            Ok(Some(WorkerRequest::Extract {
+                id,
+                text,
+                task,
+                context,
+            })) => {
+                let reply = match engine.extract(&text, task.as_deref(), &context) {
+                    Ok(spans) => WorkerReply::Extracted { id, spans },
+                    Err(message) => WorkerReply::Error { id, message },
+                };
+                write_message(&mut output, &reply)?;
+            }
             // A garbled line is answered, not fatal: Core can retry.
             Err(FrameError::Json(e)) => write_message(
                 &mut output,

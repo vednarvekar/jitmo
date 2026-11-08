@@ -6,7 +6,9 @@
 //! (classes, coef, b exported from the SP1 head).
 
 use crate::engine::Engine;
-use jitmo_ipc::{ContextNote, TaskScore, Understanding};
+use crate::extractor::LazyExtractor;
+use crate::rules::{self, Gazetteer};
+use jitmo_ipc::{ContextNote, Span, TaskScore, Understanding};
 use ort::session::Session;
 use ort::value::Tensor;
 use regex::Regex;
@@ -26,15 +28,25 @@ struct Head {
 }
 
 pub struct RouterEngine {
-    _env: ort::environment::Environment,
+    env: ort::environment::Environment,
     session: Session,
     tokenizer: Tokenizer,
     head: Head,
     split: Regex,
+    extractor: LazyExtractor,
 }
 
 impl RouterEngine {
     pub fn load(dir: &Path) -> Result<Self, String> {
+        Self::load_with(dir, None)
+    }
+
+    /// `extractor_dir` overrides where the extractor model is looked for (it is
+    /// not loaded until a request needs it).
+    pub fn load_with(
+        dir: &Path,
+        extractor_dir: Option<std::path::PathBuf>,
+    ) -> Result<Self, String> {
         // No telemetry: the worker must not talk to the network.
         let env = ort::init()
             .with_telemetry(false)
@@ -67,11 +79,12 @@ impl RouterEngine {
         )
         .map_err(|e| e.to_string())?;
         Ok(Self {
-            _env: env,
+            env,
             session,
             tokenizer,
             head,
             split,
+            extractor: LazyExtractor::new(extractor_dir),
         })
     }
 
@@ -153,7 +166,25 @@ impl RouterEngine {
     }
 }
 
+impl RouterEngine {
+    /// True once the extractor model has been loaded into this process.
+    pub fn extractor_loaded(&self) -> bool {
+        self.extractor.is_loaded()
+    }
+}
+
 impl Engine for RouterEngine {
+    fn extract(
+        &mut self,
+        text: &str,
+        _task: Option<&str>,
+        context: &ContextNote,
+    ) -> Result<Vec<Span>, String> {
+        let gaz = Gazetteer::from_context(context);
+        let ents = self.extractor.extract(&self.env, text, &gaz);
+        Ok(ents.iter().map(rules::to_slot_span).collect())
+    }
+
     fn understand(&mut self, text: &str, _: &ContextNote) -> Result<Understanding, String> {
         let whole = self.probabilities(text)?;
         let parts: Vec<String> = self

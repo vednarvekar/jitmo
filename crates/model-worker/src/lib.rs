@@ -8,11 +8,16 @@
 
 pub mod client;
 pub mod engine;
+pub mod rules;
 pub mod server;
 
 pub use client::{WorkerClient, WorkerError, WorkerLauncher};
 pub use engine::{Engine, TestEngine, UnbuiltEngine};
 pub use server::{serve, Exit};
 
+#[cfg(feature = "models")]
+pub mod extractor;
+#[cfg(feature = "models")]
+pub mod gliner;
 #[cfg(feature = "models")]
 pub mod router;

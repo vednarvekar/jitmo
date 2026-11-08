@@ -2,7 +2,7 @@
 //! restarts it when it crashes or stops answering.
 
 use jitmo_ipc::{
-    read_message, write_message, ContextNote, Understanding, WorkerReply, WorkerRequest,
+    read_message, write_message, ContextNote, Span, Understanding, WorkerReply, WorkerRequest,
 };
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -99,6 +99,26 @@ impl WorkerClient {
         }
     }
 
+    /// Slot spans for a request whose task is already chosen. The first call loads the
+    /// extractor model inside the worker, so it can take a moment.
+    pub fn extract(
+        &mut self,
+        text: &str,
+        task: Option<&str>,
+        context: &ContextNote,
+    ) -> Result<Vec<Span>, WorkerError> {
+        let reply = self.call(|id| WorkerRequest::Extract {
+            id,
+            text: text.to_string(),
+            task: task.map(str::to_string),
+            context: context.clone(),
+        })?;
+        match reply {
+            WorkerReply::Extracted { spans, .. } => Ok(spans),
+            other => Err(WorkerError::Reported(format!("unexpected reply {other:?}"))),
+        }
+    }
+
     fn alive(&mut self) -> bool {
         match &mut self.running {
             Some(r) => matches!(r.child.try_wait(), Ok(None)),
@@ -140,6 +160,7 @@ impl WorkerClient {
         loop {
             match running.replies.recv_timeout(timeout) {
                 Ok(WorkerReply::Understood { id: got, .. }) if got != id => continue,
+                Ok(WorkerReply::Extracted { id: got, .. }) if got != id => continue,
                 Ok(WorkerReply::Pong { id: got }) if got != id => continue,
                 Ok(r) => return Some(r),
                 Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => return None,
