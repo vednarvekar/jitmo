@@ -12,7 +12,7 @@
 //!   reaches the 0.8 "run directly" line on a fuzzy match, which keeps it safe.
 
 use jitmo_ipc::{ContextNote, Span, TaskScore, Understanding};
-use jitmo_model_worker::WorkerClient;
+use jitmo_model_worker::{rules, WorkerClient};
 use jitmo_skills::{Skill, Slot};
 use std::collections::BTreeSet;
 use std::sync::Mutex;
@@ -75,7 +75,13 @@ pub fn decide(u: &Understanding) -> RouteDecision {
 pub struct Router {
     skills: Vec<Skill>,
     worker: Option<Mutex<WorkerClient>>,
+    /// Closed lists (app names, contact names) the extractor may use.
+    known: ContextNote,
 }
+
+/// Asks the extractor for slot spans: (text, task label, context). `None` means it
+/// could not answer (no worker, or the worker is down).
+type ExtractFn<'a> = dyn FnMut(&str, Option<&str>, &ContextNote) -> Option<Vec<Span>> + 'a;
 
 /// One example, split into words. A word like `{app}` is a placeholder.
 struct Example<'a> {
@@ -88,13 +94,22 @@ impl Router {
         Router {
             skills,
             worker: None,
+            known: ContextNote::default(),
         }
     }
 
-    /// Use the model worker for task scoring. Spans still come from the example
-    /// patterns until the resolver and extractor arrive.
+    /// Use the model worker for task scoring and, when the example patterns and the
+    /// rules cannot fill a slot, for the extractor.
     pub fn with_worker(mut self, worker: WorkerClient) -> Self {
         self.worker = Some(Mutex::new(worker));
+        self
+    }
+
+    /// Names of installed apps and known contacts, used by the extractor as closed
+    /// lists.
+    pub fn with_known(mut self, apps: Vec<String>, contacts: Vec<String>) -> Self {
+        self.known.apps = apps;
+        self.known.contacts = contacts;
         self
     }
 
@@ -108,16 +123,35 @@ impl Router {
 
     /// Route one request.
     pub fn route(&self, text: &str) -> Understanding {
+        self.route_with(text, &ContextNote::default())
+    }
+
+    /// Route one request, with what the user is looking at (`selected_item`, ...).
+    /// The router's own closed lists (apps, contacts) are added to `context`.
+    pub fn route_with(&self, text: &str, context: &ContextNote) -> Understanding {
         let stub = self.route_by_examples(text);
         let Some(worker) = &self.worker else {
             return stub;
         };
+        let mut ctx = context.clone();
+        ctx.apps.extend(self.known.apps.iter().cloned());
+        ctx.contacts.extend(self.known.contacts.iter().cloned());
         let reply = worker
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .understand(text, &ContextNote::default());
+            .understand(text, &ctx);
         match reply {
-            Ok(u) => self.map_worker_result(u, text),
+            Ok(u) => {
+                let mut extract = |t: &str, task: Option<&str>, c: &ContextNote| {
+                    let r = worker
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .extract(t, task, c);
+                    r.map_err(|e| tracing::warn!("extractor unavailable: {e}"))
+                        .ok()
+                };
+                self.map_worker_result_with(u, text, &ctx, &mut extract)
+            }
             Err(e) => {
                 tracing::warn!("model worker unavailable, using the rule-based router: {e}");
                 stub
@@ -126,7 +160,18 @@ impl Router {
     }
 
     /// Turn task labels (A1, M2, ...) into skill ids.
+    #[cfg(test)]
     fn map_worker_result(&self, u: Understanding, text: &str) -> Understanding {
+        self.map_worker_result_with(u, text, &ContextNote::default(), &mut |_, _, _| None)
+    }
+
+    fn map_worker_result_with(
+        &self,
+        u: Understanding,
+        text: &str,
+        ctx: &ContextNote,
+        extract: &mut ExtractFn,
+    ) -> Understanding {
         let stub = self.route_by_examples(text);
         // A skill with no task label (a dev or test skill) cannot be predicted by the
         // model, so an exact example match on one still wins.
@@ -163,11 +208,15 @@ impl Router {
                 })
             })
             .collect();
-        // Slot spans come from the chosen skill's own example patterns.
+        // Slot spans: the chosen skill's own example patterns first; what they leave
+        // unfilled comes from the rules, then from the extractor model.
         let spans = tasks
             .first()
             .and_then(|t| self.skill(&t.id))
-            .map(|s| best_for(s, &tokens(text)).1)
+            .map(|s| {
+                let pattern = best_for(s, &tokens(text)).1;
+                complete_spans(s, pattern, text, ctx, extract)
+            })
             .unwrap_or_default();
         Understanding {
             tasks,
@@ -203,6 +252,78 @@ impl Router {
             out_of_scope: (1.0 - best_score).clamp(0.0, 1.0),
             chained,
             spans,
+        }
+    }
+}
+
+/// Fill the slots the example patterns left empty. Order of trust:
+/// 1. the example pattern (a span it captured is never replaced or duplicated),
+/// 2. the rules (dates, closed lists, sentence frames; pure Rust, no model),
+/// 3. the extractor model in the worker, asked only if a slot is still empty, so
+///    requests the first two can handle never load it.
+fn complete_spans(
+    skill: &Skill,
+    pattern: Vec<Span>,
+    text: &str,
+    ctx: &ContextNote,
+    extract: &mut ExtractFn,
+) -> Vec<Span> {
+    let needed: Vec<&str> = skill
+        .slots
+        .values()
+        .filter_map(|s| match s {
+            Slot::Param(p) => Some(p.kind.as_str()),
+            Slot::Fixed(_) => None,
+        })
+        .collect();
+    if unfilled(&needed, &pattern) == 0 {
+        return pattern;
+    }
+    let mut spans = pattern;
+    let gaz = rules::Gazetteer::from_context(ctx);
+    let found: Vec<Span> = rules::extract_rules(text, &gaz)
+        .iter()
+        .map(rules::to_slot_span)
+        .collect();
+    add_spans(&mut spans, found, &needed);
+    if unfilled(&needed, &spans) > 0 {
+        if let Some(found) = extract(text, skill.task.as_deref(), ctx) {
+            add_spans(&mut spans, found, &needed);
+        }
+    }
+    spans
+}
+
+/// How many slot-kind needs are still without a span.
+fn unfilled(needed: &[&str], spans: &[Span]) -> usize {
+    let mut have: Vec<&Span> = spans.iter().collect();
+    let mut missing = 0;
+    for kind in needed {
+        match have.iter().position(|s| s.kind == *kind) {
+            Some(i) => {
+                have.remove(i);
+            }
+            None => missing += 1,
+        }
+    }
+    missing
+}
+
+/// Append `extra` after `spans`. A kind the existing spans already cover (as many as
+/// the skill needs, at least one) takes nothing more, so an example-pattern span is
+/// never overridden. A skill's free-text slot accepts the extractor's message or
+/// query span.
+fn add_spans(spans: &mut Vec<Span>, extra: Vec<Span>, needed: &[&str]) {
+    for mut s in extra {
+        let wants_text = needed.contains(&"text") && !needed.contains(&s.kind.as_str());
+        if wants_text && (s.kind == "message" || s.kind == "query") {
+            s.kind = "text".to_string();
+        }
+        let want = needed.iter().filter(|k| **k == s.kind).count().max(1);
+        let have = spans.iter().filter(|o| o.kind == s.kind).count();
+        let same_words = |o: &Span| o.text.to_lowercase() == s.text.to_lowercase();
+        if have < want && !spans.iter().any(|o| o.kind == s.kind && same_words(o)) {
+            spans.push(s);
         }
     }
 }
@@ -366,6 +487,142 @@ mod tests {
         assert_eq!(u.tasks[0].id, "apps.open");
         assert_eq!(u.tasks[0].score, 0.95);
         assert_eq!(u.spans[0].text.to_lowercase(), "spotify");
+    }
+
+    fn sp(kind: &str, text: &str) -> Span {
+        Span {
+            kind: kind.into(),
+            text: text.into(),
+        }
+    }
+
+    /// Runs the mapping with a fake extractor that answers `reply` and counts calls.
+    fn with_fake_worker(
+        text: &str,
+        reply: Option<Vec<Span>>,
+        calls: &mut Vec<Option<String>>,
+    ) -> Understanding {
+        let mut fake = |_: &str, task: Option<&str>, _: &ContextNote| {
+            calls.push(task.map(str::to_string));
+            reply.clone()
+        };
+        router().map_worker_result_with(
+            model(&[("M2", 0.95)], 0.01),
+            text,
+            &ContextNote::default(),
+            &mut fake,
+        )
+    }
+
+    #[test]
+    fn extractor_is_not_asked_when_the_patterns_fill_every_slot() {
+        let mut calls = Vec::new();
+        let reply = Some(vec![sp("contact", "Wrong Person")]);
+        let u = with_fake_worker("send report.pdf to ved on whatsapp", reply, &mut calls);
+        assert!(calls.is_empty(), "model must not be consulted: {calls:?}");
+        assert_eq!(
+            u.spans,
+            vec![sp("file_ref", "report.pdf"), sp("contact", "ved")]
+        );
+    }
+
+    #[test]
+    fn extractor_is_not_asked_when_the_rules_fill_every_slot() {
+        // No example matches; the rules find the file by its extension and the
+        // contact from the closed list Core supplies.
+        let mut calls = Vec::new();
+        let r = router();
+        let ctx = ContextNote {
+            contacts: vec!["Zainab".into()],
+            ..ContextNote::default()
+        };
+        let mut fake = |_: &str, _: Option<&str>, _: &ContextNote| {
+            calls.push(());
+            None
+        };
+        let u = r.map_worker_result_with(
+            model(&[("M2", 0.95)], 0.01),
+            "shoot zainab the budget.xlsx",
+            &ctx,
+            &mut fake,
+        );
+        assert!(calls.is_empty());
+        assert!(u.spans.contains(&sp("contact", "zainab")), "{:?}", u.spans);
+        assert!(
+            u.spans
+                .iter()
+                .any(|s| s.kind == "file_ref" && s.text.ends_with("budget.xlsx")),
+            "{:?}",
+            u.spans
+        );
+    }
+
+    #[test]
+    fn extractor_fills_only_what_is_missing() {
+        let mut calls = Vec::new();
+        let reply = Some(vec![
+            sp("contact", "Zainab"),
+            sp("file_ref", "the quarterly thing"),
+        ]);
+        let u = with_fake_worker(
+            "pass the quarterly thing along to Zainab via whatsapp",
+            reply,
+            &mut calls,
+        );
+        assert_eq!(calls, vec![Some("M2".to_string())]);
+        assert!(u.spans.contains(&sp("contact", "Zainab")), "{:?}", u.spans);
+        assert!(
+            u.spans.iter().any(|s| s.kind == "file_ref"),
+            "{:?}",
+            u.spans
+        );
+    }
+
+    #[test]
+    fn extractor_spans_never_override_a_pattern_span() {
+        let mut calls = Vec::new();
+        // The pattern captures the file; the contact is missing. The model also
+        // proposes a different file, which must be ignored.
+        let reply = Some(vec![sp("file_ref", "other.pdf"), sp("contact", "Ved")]);
+        let u = with_fake_worker(
+            "send report.pdf to ved on whatsapp now please",
+            reply,
+            &mut calls,
+        );
+        let files: Vec<&Span> = u.spans.iter().filter(|s| s.kind == "file_ref").collect();
+        assert!(files.iter().all(|s| s.text != "other.pdf"), "{:?}", u.spans);
+        // Whatever fills the contact, there is exactly one span per needed kind.
+        assert_eq!(u.spans.iter().filter(|s| s.kind == "contact").count(), 1);
+        assert_eq!(files.len(), 1);
+    }
+
+    #[test]
+    fn a_dead_extractor_leaves_the_pattern_and_rule_spans() {
+        let mut calls = Vec::new();
+        let u = with_fake_worker(
+            "sort of send the invoice thing to someone",
+            None,
+            &mut calls,
+        );
+        assert_eq!(u.tasks[0].id, "whatsapp.send_file");
+        assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn the_free_text_slot_takes_the_extractors_message() {
+        let skill = Skill::parse(include_str!("../../../skills/stub.send.yaml")).unwrap();
+        let needed: Vec<&str> = skill
+            .slots
+            .values()
+            .filter_map(|s| match s {
+                Slot::Param(p) => Some(p.kind.as_str()),
+                Slot::Fixed(_) => None,
+            })
+            .collect();
+        assert!(needed.contains(&"text"));
+        let mut spans = Vec::new();
+        add_spans(&mut spans, vec![sp("message", "running late")], &needed);
+        assert_eq!(spans, vec![sp("text", "running late")]);
     }
 
     #[test]
