@@ -36,3 +36,6 @@ Expected conclusion if nothing changes: Tier 0 fits; Tier 1 as specified does no
 
 ## Deliverable
 `spikes/sp8-pipeline/RESULT.md` with a table per scenario against PR1-PR8, verdict, and the decision-log updates (D4, D20).
+
+## Early footprint numbers (8 Nov, this PC, Python harness)
+Router int8: +33 MB on load (85 MB total), 0.1 s load, 1-2 ms per request. Extractor int8: +186 MB on load (about 240 MB total), 0.85 s load, peak about 365 MB during load. In-process unload freed nothing; process exit is the reliable way. CPU test (8 cores saturated): flat-out worker cost the competing job 7-19%, idle plus EcoQoS 7%, noise floor 7%. Still to do: Rust footprint, real extractor inference, the 8GB laptop.

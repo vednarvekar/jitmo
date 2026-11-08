@@ -172,3 +172,30 @@ Federated learning and a team admin console come in later versions.
 *Merged from: 00.A Addendum, items A1 (plugin host) and A6/A7 (Mac code timing, command bar memory).*
 
 **Next doc:** [07 Low-Level Design (LLD)](7%20-%20Low-Level%20Design.md). Detailed design per component: skill file format, connector interfaces, scheduler logic, database tables and error handling.
+
+## Resource and cloud rules (decided 8 Nov 2026, with evidence)
+
+Goal: never slow down a developer's machine with many windows open. Measured numbers are `[M]` (this PC, spikes/sp8-pipeline, `footprint.py` and `throttle.py`, not yet the 8GB laptop). Confirmed Microsoft or vendor facts are `[V]`. Everything else is a design choice.
+
+**Three processes, each started only when needed**
+
+| Process | Resident cost | Rule |
+|---|---|---|
+| Core (Rust: router call, policy, skills, store) | 14 MB working set, 2 MB private `[M]` | Always on. No polling. |
+| UI shell (Tauri bar) | about 160 MB private while open `[M]` | Destroy the web view when idle (about 60 s). Reopen cost about 1 s `[M]`. |
+| Model worker | router about 85 MB, extractor about 240 MB after load, peak about 365 MB during load `[M]` (Python harness; Rust will be lower) | Separate process, started on demand, exits after idle. Memory only returns reliably on process exit: unloading a session in-process freed nothing `[M]`. Load takes about 0.1 s (router) and 0.85 s (extractor) `[M]`. |
+
+**Worker is a polite background process.** Set on start: EcoQoS (`ProcessPowerThrottling`), idle or below-normal priority, memory priority very low, 1 thread, spin-wait off, and a Job Object commit cap so it cannot balloon `[V]` (all documented, no admin needed; the job cap limits committed memory, not RSS). Test: with all 8 cores saturated by a competing job, a worker running flat out cost it 7 to 19 percent at normal to idle priority, and 7 percent at idle plus EcoQoS, against a 7 percent noise floor between baseline runs `[M]`. A real user sends a request every few seconds, not flat out, so the practical cost is near zero. The earlier test is a worst case.
+
+**Local first, cloud only when necessary**
+1. Common tasks run fully on the device (rules, gazetteers, router, templates). No network.
+2. Cloud is used for (a) integrations that are cloud by nature (Microsoft 365, Google), and (b) optional "assist" when local confidence is low and policy allows: hard extraction, planning, summaries. It is off in local-only mode.
+3. Anything sent is scrubbed on the device first (no file contents, no attachments). Anthropic offers no server-side redaction, only region controls `[V]`, so scrubbing is our job.
+4. Data handling `[V]`: API inputs and outputs are deleted within 30 days (longer only for policy flags or legal need), are not used for training by default, and zero data retention is available by contract. A DPA with SCCs is part of the commercial terms.
+5. Cost `[C]`: about $0.10 (Haiku-class) to $2 (Sonnet-class) per user per month at 20 requests a day; assumptions in doc 13 section 5.4. Inference cost is not the constraint.
+
+**Web view memory.** Prefer destroy-when-idle. WebView2 also offers `MemoryUsageTargetLevel=Low` and `TrySuspend` `[V]`, reachable in Tauri only through the platform controller, not a first-class API.
+
+**Shipping.** Unsigned apps hit SmartScreen and Smart App Control on every new version `[V]`; an EV certificate no longer bypasses SmartScreen `[V]`. Azure Artifact Signing is not available to organisations in India `[V]`. Routes to price: an OV certificate from a commercial CA, a US entity, or Microsoft Store distribution.
+
+**What is still unproven (test before relying on it):** the numbers on the 8GB laptop; Rust (not Python) footprint; the extractor's accuracy gap (SP2) with cloud assist; buyer demand for the company layer (doc 13 experiment E1).
