@@ -90,7 +90,12 @@ fn go() -> Result<bool, String> {
             sent_without_confirm: false,
             crashed: false,
         };
-        if let (true, Some(spec)) = (selected, specs.get(&case.id)) {
+        if let (true, Some(spec)) = (
+            selected,
+            specs
+                .get(&case.id)
+                .filter(|s| worker.is_some() || !s.needs_model),
+        ) {
             row.request = spec.request.clone();
             let r = run::run_case_with(&skills, spec, live, worker.as_ref());
             row.elapsed_ms = Some(r.elapsed_ms);

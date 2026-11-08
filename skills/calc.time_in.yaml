@@ -1,0 +1,24 @@
+id: calc.time_in                  # task Q5
+task: Q5
+version: 1
+category: answers
+capabilities:
+  - calc.local
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 5
+risk: read_only
+examples:
+  - "what time is it in new york"
+  - "what is the time in tokyo"
+slots: {}
+steps:
+  - connector: local_calc
+    action: time_in
+    args: { text: "{request}" }
+check:
+  connector: local_calc
+  action: time_in
+  args: { text: "{request}" }
+undo: none

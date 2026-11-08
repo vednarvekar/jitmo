@@ -191,6 +191,9 @@ fn load_skills() -> Vec<Skill> {
     [
         include_str!("../../../skills/apps.open.yaml"),
         include_str!("../../../skills/music.pause.yaml"),
+        include_str!("../../../skills/calc.math.yaml"),
+        include_str!("../../../skills/calc.moon.yaml"),
+        include_str!("../../../skills/calc.time_in.yaml"),
         include_str!("../../../skills/stub.send.yaml"),
     ]
     .iter()
@@ -210,6 +213,10 @@ fn connectors() -> HashMap<String, Arc<dyn Connector>> {
             )
         })
         .collect();
+    map.insert(
+        "local_calc".into(),
+        Arc::new(jitmo_connectors::local_calc::LocalCalc::new()),
+    );
     #[cfg(windows)]
     map.insert(
         "windows_system".into(),

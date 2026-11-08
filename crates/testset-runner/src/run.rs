@@ -103,6 +103,11 @@ pub fn run_case_with(
     let mut map: HashMap<String, Arc<dyn Connector>> = HashMap::new();
     let mut fakes: Vec<(String, Arc<FakeConnector>)> = Vec::new();
     for id in ids {
+        // Pure and offline, so it is always the real one.
+        if id == "local_calc" {
+            map.insert(id, Arc::new(jitmo_connectors::local_calc::LocalCalc::new()));
+            continue;
+        }
         if live && spec.live.contains(&id) {
             if let Some(real) = live_connector(&id) {
                 map.insert(id, real);
@@ -205,6 +210,13 @@ pub fn run_case_with(
                     why.push(format!("wrong task: expected {want}, got {logged_skill:?}"));
                 }
                 _ => {}
+            }
+            if let Some(part) = &spec.message_contains {
+                if !message.to_lowercase().contains(&part.to_lowercase()) {
+                    why.push(format!(
+                        "the answer should mention `{part}`, but was: {message}"
+                    ));
+                }
             }
             check_calls(&spec.calls, &executes, &fakes, &mut why);
             let wants_check = logged_skill

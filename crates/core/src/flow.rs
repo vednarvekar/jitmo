@@ -244,7 +244,7 @@ impl Flow {
         };
 
         // 2. Fill slots.
-        let slots = match resolve_slots(
+        let mut slots = match resolve_slots(
             &skill,
             &understanding.spans,
             self.context.as_ref(),
@@ -255,6 +255,7 @@ impl Flow {
             Err(SlotError::Message(msg)) => return self.fail(id, text, Some(&skill.id), &msg),
             Err(SlotError::Cancelled) => return self.cancelled(id, text, Some(&skill.id)),
         };
+        slots.insert("request".to_string(), SlotValue::from_text(text));
 
         // 3. Policy. A broken log must not unblock anything, so if the block
         //    cannot be logged the decision still stands.
@@ -344,6 +345,11 @@ impl Flow {
 
         // 6. Log and report. The action already happened and was verified, so a
         //    log failure is a warning on a successful result, never an error.
+        // A read-only task answers with the text its last step returned.
+        let answer = executed
+            .iter()
+            .rev()
+            .find_map(|(_, _, out)| out.0.get("message").cloned());
         let undo_seconds = match outcome {
             Outcome::RunThenUndo { seconds } => Some(seconds),
             _ => None,
@@ -373,14 +379,15 @@ impl Flow {
             }),
             _ => None,
         };
+        let base = answer.unwrap_or_else(|| "Done.".to_string());
         let message = if log_id.is_some() {
-            "Done."
+            base
         } else {
-            "Done. (I couldn't save this to the activity log.)"
+            format!("{base} (I couldn't save this to the activity log.)")
         };
         CoreEvent::Done {
             id,
-            message: message.into(),
+            message,
             undoable: can_undo,
         }
     }

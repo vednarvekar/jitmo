@@ -1,0 +1,24 @@
+id: calc.moon                  # task Q1
+task: Q1
+version: 1
+category: answers
+capabilities:
+  - calc.local
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 5
+risk: read_only
+examples:
+  - "when is the next full moon"
+  - "next new moon"
+slots: {}
+steps:
+  - connector: local_calc
+    action: moon
+    args: { text: "{request}" }
+check:
+  connector: local_calc
+  action: moon
+  args: { text: "{request}" }
+undo: none

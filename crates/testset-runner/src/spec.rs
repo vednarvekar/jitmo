@@ -41,6 +41,12 @@ pub struct Spec {
     /// Answers to confirm cards, in order. `true` approves. Default: approve.
     #[serde(default)]
     pub confirm_answers: Vec<bool>,
+    /// Only meaningful with the model worker (the rule-based router cannot route
+    /// loose wording). Without `--worker` the test is left as not built.
+    #[serde(default)]
+    pub needs_model: bool,
+    /// For `ran`: a part of the answer shown to the user (case ignored).
+    pub message_contains: Option<String>,
     /// A part of the confirm text that must appear.
     pub confirm_contains: Option<String>,
     /// With `--live`, use the real connector for these ids (they act on the real PC).

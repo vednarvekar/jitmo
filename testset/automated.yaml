@@ -42,3 +42,11 @@ T87: { request: "Change my Windows password.", expect: declined }
 T88: { request: "Book me an Uber.", expect: declined }
 T89: { request: "Fill out this job application.", expect: declined }
 T90: { request: "Reply to this email in Hindi.", expect: declined }
+
+# Phase 2: answers worked out on the device (local_calc is always the real one).
+T18: { request: "When is the next full moon?", expect: ran, skill: calc.moon, message_contains: "full moon" }
+T21: { needs_model: true, request: "What's 18% of 2,450?", expect: ran, skill: calc.math, message_contains: "441" }
+T22: { request: "What time is it in New York?", expect: ran, skill: calc.time_in, message_contains: "New York" }
+T55: { needs_model: true, request: "full moon when", expect: ran, skill: calc.moon, message_contains: "full moon" }
+T64: { request: "whats 15 percent tip on 1200", expect: ran, skill: calc.math, message_contains: "180" }
+T98: { request: "When is the next full moon?", expect: ran, skill: calc.moon, message_contains: "full moon" }

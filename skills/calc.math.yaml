@@ -1,0 +1,25 @@
+id: calc.math                  # task Q4
+task: Q4
+version: 1
+category: answers
+capabilities:
+  - calc.local
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 5
+risk: read_only
+examples:
+  - "what is 18 percent of 2450"
+  - "15 percent tip on 1200"
+  - "convert 5 km to miles"
+slots: {}
+steps:
+  - connector: local_calc
+    action: math
+    args: { text: "{request}" }
+check:
+  connector: local_calc
+  action: math
+  args: { text: "{request}" }
+undo: none
