@@ -192,10 +192,9 @@ Goal: never slow down a developer's machine with many windows open. Measured num
 2. Cloud is used for (a) integrations that are cloud by nature (Microsoft 365, Google), and (b) optional "assist" when local confidence is low and policy allows: hard extraction, planning, summaries. It is off in local-only mode.
 3. Anything sent is scrubbed on the device first (no file contents, no attachments). Anthropic offers no server-side redaction, only region controls `[V]`, so scrubbing is our job.
 4. Data handling `[V]`: API inputs and outputs are deleted within 30 days (longer only for policy flags or legal need), are not used for training by default, and zero data retention is available by contract. A DPA with SCCs is part of the commercial terms.
-5. Cost `[C]`: about $0.10 (Haiku-class) to $2 (Sonnet-class) per user per month at 20 requests a day; assumptions in doc 13 section 5.4. Inference cost is not the constraint.
 
 **Web view memory.** Prefer destroy-when-idle. WebView2 also offers `MemoryUsageTargetLevel=Low` and `TrySuspend` `[V]`, reachable in Tauri only through the platform controller, not a first-class API.
 
 **Shipping.** Unsigned apps hit SmartScreen and Smart App Control on every new version `[V]`; an EV certificate no longer bypasses SmartScreen `[V]`. Azure Artifact Signing is not available to organisations in India `[V]`. Routes to price: an OV certificate from a commercial CA, a US entity, or Microsoft Store distribution.
 
-**What is still unproven (test before relying on it):** the numbers on the 8GB laptop; Rust (not Python) footprint; the extractor's accuracy gap (SP2) with cloud assist; buyer demand for the company layer (doc 13 experiment E1).
+**What is still unproven (test before relying on it):** the numbers on the 8GB laptop; Rust (not Python) footprint; the extractor's accuracy gap (SP2) with cloud assist.
