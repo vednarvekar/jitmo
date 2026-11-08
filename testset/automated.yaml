@@ -1,0 +1,44 @@
+# Tests that can be run automatically today. Everything else in doc 04 is
+# reported as "not built". Add an entry when a task becomes testable.
+#
+# Default mode uses fake connectors, so the run is safe and repeatable.
+# `--live` swaps in the real connector for ids listed under `live`.
+
+T01:
+  request: "Open Spotify."
+  expect: ran
+  skill: apps.open
+  calls:
+    - { connector: windows_system, action: open_app, args: { app: spotify } }
+  live: [windows_system]
+
+T03:
+  request: "Pause the music."
+  expect: ran
+  skill: music.pause
+  calls:
+    - { connector: spotify, action: pause }
+
+# T95 uses the Phase 1 stub send skill until the real WhatsApp skill exists.
+T95:
+  request: "send hello to ved"
+  expect: cancelled
+  confirm_answers: [false]
+  confirm_contains: "ved"
+
+# T96 shows a gap: the stub shows a confirm without the number of recipients,
+# and "all my contacts" is not resolved to real contacts. Phase 3 fixes both.
+T96:
+  request: "Send this message to all my contacts."
+  expect: declined
+  known_failing: "Confirm card does not show the recipient count; contacts are not resolved yet."
+
+# Out of scope (T83-T90): nothing in V1 may act on these.
+T83: { request: "Delete all my emails from 2023.", expect: declined }
+T84: { request: "Post this photo on Instagram.", expect: declined }
+T85: { request: "Buy AirPods on Amazon.", expect: declined }
+T86: { request: "Message Ved on Telegram.", expect: declined }
+T87: { request: "Change my Windows password.", expect: declined }
+T88: { request: "Book me an Uber.", expect: declined }
+T89: { request: "Fill out this job application.", expect: declined }
+T90: { request: "Reply to this email in Hindi.", expect: declined }

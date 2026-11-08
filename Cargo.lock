@@ -1634,6 +1634,7 @@ dependencies = [
 name = "jitmo-connectors"
 version = "0.1.0"
 dependencies = [
+ "jitmo-adapter-windows",
  "thiserror 2.0.21",
 ]
 
@@ -1682,6 +1683,17 @@ dependencies = [
 [[package]]
 name = "jitmo-testset-runner"
 version = "0.1.0"
+dependencies = [
+ "jitmo-adapter-windows",
+ "jitmo-connectors",
+ "jitmo-core",
+ "jitmo-ipc",
+ "jitmo-skills",
+ "jitmo-store",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+]
 
 [[package]]
 name = "jni"

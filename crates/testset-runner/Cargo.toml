@@ -1,7 +1,20 @@
 [package]
 name = "jitmo-testset-runner"
-description = "Runs the 100 tests from the test set."
+description = "Runs the 100 tests from doc 04 and records pass or fail, time and peak memory."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[dependencies]
+jitmo-connectors = { path = "../connectors" }
+jitmo-core = { path = "../core" }
+jitmo-ipc = { path = "../ipc" }
+jitmo-skills = { path = "../skills" }
+jitmo-store = { path = "../store" }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+jitmo-adapter-windows = { path = "../adapter-windows" }
