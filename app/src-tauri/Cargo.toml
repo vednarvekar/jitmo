@@ -1,0 +1,19 @@
+[package]
+name = "jitmo-app"
+description = "Command bar: Tauri shell that hosts Core and shows the UI."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+jitmo-connectors = { path = "../../crates/connectors" }
+jitmo-core = { path = "../../crates/core" }
+jitmo-ipc = { path = "../../crates/ipc" }
+jitmo-skills = { path = "../../crates/skills" }
+jitmo-store = { path = "../../crates/store" }
+tauri = { version = "2", features = [] }
+tauri-plugin-global-shortcut = "2"

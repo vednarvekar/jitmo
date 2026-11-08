@@ -1,0 +1,18 @@
+// The only file that talks to Tauri. Everything else is plain React and plain state.
+
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { CoreEvent } from "./state";
+
+export const submit = (id: number, text: string) => invoke<void>("submit", { id, text });
+export const confirm = (id: number, approved: boolean) => invoke<void>("confirm", { id, approved });
+export const choose = (id: number, choiceId: string) => invoke<void>("choose", { id, choiceId });
+export const cancel = (id: number) => invoke<void>("cancel", { id });
+export const undo = (id: number) => invoke<void>("undo", { id });
+export const hideBar = () => invoke<void>("hide_bar");
+export const resizeBar = (height: number) => invoke<void>("resize_bar", { height });
+
+export const onCoreEvent = (cb: (e: CoreEvent) => void): Promise<UnlistenFn> =>
+  listen<CoreEvent>("core-event", (e) => cb(e.payload));
+
+export const onBarShown = (cb: () => void): Promise<UnlistenFn> => listen("bar-shown", () => cb());

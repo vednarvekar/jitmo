@@ -9,9 +9,10 @@ members = [
     "crates/store",
     "crates/ipc",
     "crates/testset-runner",
+    "app/src-tauri",
 ]
 # Throwaway spike code keeps its own Cargo projects.
-exclude = ["spikes", "app", "server"]
+exclude = ["spikes", "server"]
 
 [workspace.package]
 version = "0.1.0"

@@ -5,4 +5,5 @@
 pub mod flow;
 pub mod policy;
 pub mod router;
+pub mod service;
 pub mod verifier;

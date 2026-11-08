@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "The command bar can listen to events. It reaches Core only through the commands in main.rs.",
+  "windows": ["bar"],
+  "permissions": ["core:event:default"]
+}
