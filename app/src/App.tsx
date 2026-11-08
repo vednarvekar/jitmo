@@ -270,6 +270,7 @@ export default function App() {
             />
           )}
 
+          <div className="tail">
           {canSend && (
           <button
             className="go"
@@ -285,6 +286,7 @@ export default function App() {
           <button className="close" aria-label="Close" title="Close (Esc)" onClick={closeBar}>
             ×
           </button>
+          </div>
         </div>
 
         {(state.phase === "confirm" || state.phase === "choice") && (
