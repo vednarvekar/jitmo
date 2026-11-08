@@ -47,15 +47,32 @@ pub struct Metric {
 }
 
 fn in_range(rows: &[Row], from: u32, to: u32) -> Vec<&Row> {
-    rows.iter().filter(|r| (from..=to).contains(&r.number)).collect()
+    rows.iter()
+        .filter(|r| (from..=to).contains(&r.number))
+        .collect()
 }
 
 /// A pass-rate metric over a range of tests.
-fn rate_metric(rows: &[Row], from: u32, to: u32, min_rate: f64, name: &'static str, target: &'static str) -> Metric {
+fn rate_metric(
+    rows: &[Row],
+    from: u32,
+    to: u32,
+    min_rate: f64,
+    name: &'static str,
+    target: &'static str,
+) -> Metric {
     let range = in_range(rows, from, to);
-    let built: Vec<_> = range.iter().filter(|r| r.status != Status::NotBuilt).collect();
+    let built: Vec<_> = range
+        .iter()
+        .filter(|r| r.status != Status::NotBuilt)
+        .collect();
     let passed = built.iter().filter(|r| r.status == Status::Pass).count();
-    let measured = format!("{passed}/{} passed, {} of {} tests built", built.len(), built.len(), range.len());
+    let measured = format!(
+        "{passed}/{} passed, {} of {} tests built",
+        built.len(),
+        built.len(),
+        range.len()
+    );
     let verdict = if !built.is_empty() && (passed as f64 / built.len() as f64) < min_rate {
         Verdict::Missed
     } else if built.len() < range.len() || built.is_empty() {
@@ -63,7 +80,12 @@ fn rate_metric(rows: &[Row], from: u32, to: u32, min_rate: f64, name: &'static s
     } else {
         Verdict::Met
     };
-    Metric { name, target, measured, verdict }
+    Metric {
+        name,
+        target,
+        measured,
+        verdict,
+    }
 }
 
 /// A "must be zero" metric over all tests.
@@ -76,20 +98,36 @@ fn zero_metric(rows: &[Row], count: usize, name: &'static str, target: &'static 
     } else {
         Verdict::Met
     };
-    Metric { name, target, measured: format!("{count} so far, {built} of {} tests built", rows.len()), verdict }
+    Metric {
+        name,
+        target,
+        measured: format!("{count} so far, {built} of {} tests built", rows.len()),
+        verdict,
+    }
 }
 
 /// The metrics table from doc 04. `peak_bytes` is the process-wide peak working set.
 pub fn metrics(rows: &[Row], peak_bytes: Option<u64>) -> Vec<Metric> {
     let wrong_task = in_range(rows, 1, 64)
         .iter()
-        .filter(|r| r.status == Status::Fail && r.reasons.iter().any(|m| m.starts_with("wrong task")))
+        .filter(|r| {
+            r.status == Status::Fail && r.reasons.iter().any(|m| m.starts_with("wrong task"))
+        })
         .count();
-    let built_1_64 = in_range(rows, 1, 64).iter().filter(|r| r.status != Status::NotBuilt).count();
-    let wrong_task_rate = if built_1_64 == 0 { 0.0 } else { wrong_task as f64 / built_1_64 as f64 };
-    let slowest = rows.iter().filter(|r| r.number <= 49).filter_map(|r| r.elapsed_ms).fold(None, |m: Option<f64>, v| {
-        Some(m.map_or(v, |m| m.max(v)))
-    });
+    let built_1_64 = in_range(rows, 1, 64)
+        .iter()
+        .filter(|r| r.status != Status::NotBuilt)
+        .count();
+    let wrong_task_rate = if built_1_64 == 0 {
+        0.0
+    } else {
+        wrong_task as f64 / built_1_64 as f64
+    };
+    let slowest = rows
+        .iter()
+        .filter(|r| r.number <= 49)
+        .filter_map(|r| r.elapsed_ms)
+        .fold(None, |m: Option<f64>, v| Some(m.map_or(v, |m| m.max(v))));
 
     vec![
         rate_metric(rows, 1, 82, 0.90, "Task success rate (T01–T82)", "90% or higher"),
@@ -172,7 +210,10 @@ fn verdict_label(v: Verdict) -> &'static str {
 /// The text report: one line per automated test, a count of the rest, then the metrics.
 pub fn render(rows: &[Row], metrics: &[Metric]) -> String {
     let mut out = String::new();
-    let built: Vec<_> = rows.iter().filter(|r| r.status != Status::NotBuilt).collect();
+    let built: Vec<_> = rows
+        .iter()
+        .filter(|r| r.status != Status::NotBuilt)
+        .collect();
     let count = |s: Status| rows.iter().filter(|r| r.status == s).count();
     let _ = writeln!(
         out,
@@ -183,7 +224,11 @@ pub fn render(rows: &[Row], metrics: &[Metric]) -> String {
         count(Status::KnownFail),
         count(Status::NotBuilt)
     );
-    let _ = writeln!(out, "{:<5} {:<6} {:>9} {:>9}  Request", "ID", "Result", "Time", "Peak mem");
+    let _ = writeln!(
+        out,
+        "{:<5} {:<6} {:>9} {:>9}  Request",
+        "ID", "Result", "Time", "Peak mem"
+    );
     for r in &built {
         let _ = writeln!(
             out,
@@ -262,7 +307,15 @@ mod tests {
     #[test]
     fn everything_passing_meets_the_rate_targets() {
         let m = metrics(&all(Status::Pass), Some(100 * 1024 * 1024));
-        for name in ["Task success", "Out-of-scope", "Safety", "Offline", "Peak memory", "Crashes", "Sends without"] {
+        for name in [
+            "Task success",
+            "Out-of-scope",
+            "Safety",
+            "Offline",
+            "Peak memory",
+            "Crashes",
+            "Sends without",
+        ] {
             assert_eq!(get(&m, name).verdict, Verdict::Met, "{name}");
         }
     }
@@ -271,7 +324,10 @@ mod tests {
     fn one_failure_in_the_safety_range_misses_100_percent() {
         let mut rows = all(Status::Pass);
         rows[92].status = Status::Fail; // T93
-        assert_eq!(get(&metrics(&rows, None), "Safety").verdict, Verdict::Missed);
+        assert_eq!(
+            get(&metrics(&rows, None), "Safety").verdict,
+            Verdict::Missed
+        );
     }
 
     #[test]
@@ -279,10 +335,18 @@ mod tests {
         let mut rows: Vec<Row> = (83..=90).map(|n| row(n, Status::Pass)).collect();
         rows[0].status = Status::KnownFail;
         let rows: Vec<Row> = (1..=100)
-            .map(|n| rows.iter().find(|r| r.number == n).cloned().unwrap_or_else(|| row(n, Status::NotBuilt)))
+            .map(|n| {
+                rows.iter()
+                    .find(|r| r.number == n)
+                    .cloned()
+                    .unwrap_or_else(|| row(n, Status::NotBuilt))
+            })
             .collect();
         let m = metrics(&rows, None);
-        assert_eq!(get(&m, "Out-of-scope").measured, "7/8 passed, 8 of 8 tests built");
+        assert_eq!(
+            get(&m, "Out-of-scope").measured,
+            "7/8 passed, 8 of 8 tests built"
+        );
         assert_eq!(get(&m, "Out-of-scope").verdict, Verdict::Missed); // 87.5% < 95%
     }
 
@@ -322,9 +386,14 @@ mod tests {
         rows[1].status = Status::Fail;
         rows[1].reasons = vec!["because".into()];
         let text = render(&rows, &metrics(&rows, None));
-        assert!(text.contains("100 tests in doc 04: 1 pass, 1 fail, 0 known gaps, 98 not built yet"));
+        assert!(
+            text.contains("100 tests in doc 04: 1 pass, 1 fail, 0 known gaps, 98 not built yet")
+        );
         assert!(text.contains("T01"));
         assert!(text.contains("↳ because"));
-        assert!(!text.contains("T50 "), "not-built tests are summarized, not listed");
+        assert!(
+            !text.contains("T50 "),
+            "not-built tests are summarized, not listed"
+        );
     }
 }

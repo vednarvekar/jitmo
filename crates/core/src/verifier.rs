@@ -32,7 +32,9 @@ pub fn verify(
             return Verdict::Verified;
         }
     }
-    Verdict::NotVerified { message: unverified_message.to_string() }
+    Verdict::NotVerified {
+        message: unverified_message.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -45,7 +47,10 @@ mod tests {
     #[test]
     fn passes_first_time_with_one_check() {
         let c = FakeConnector::new("wa");
-        assert_eq!(verify(&c, "last_message_is_file", &Args::new(), MSG), Verdict::Verified);
+        assert_eq!(
+            verify(&c, "last_message_is_file", &Args::new(), MSG),
+            Verdict::Verified
+        );
         assert_eq!(c.check_count(), 1);
     }
 
@@ -61,7 +66,9 @@ mod tests {
         let c = FakeConnector::new("wa").default_check(false);
         assert_eq!(
             verify(&c, "x", &Args::new(), MSG),
-            Verdict::NotVerified { message: MSG.into() }
+            Verdict::NotVerified {
+                message: MSG.into()
+            }
         );
         assert_eq!(c.check_count(), 2); // first try + one retry, no more
     }

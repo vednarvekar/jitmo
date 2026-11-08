@@ -46,8 +46,18 @@ pub struct Flow {
 }
 
 impl Flow {
-    pub fn new(router: StubRouter, store: Store, connectors: HashMap<String, Arc<dyn Connector>>) -> Self {
-        Flow { router, store, connectors, clock: Box::new(iso_now), last_undo: None }
+    pub fn new(
+        router: StubRouter,
+        store: Store,
+        connectors: HashMap<String, Arc<dyn Connector>>,
+    ) -> Self {
+        Flow {
+            router,
+            store,
+            connectors,
+            clock: Box::new(iso_now),
+            last_undo: None,
+        }
     }
 
     /// Replace the clock (tests).
@@ -64,7 +74,10 @@ impl Flow {
     pub fn handle(&mut self, id: RequestId, text: &str, prompter: &mut dyn Prompter) -> CoreEvent {
         match self.run(id, text, prompter) {
             Ok(event) => event,
-            Err(_) => CoreEvent::Failed { id, message: "Something went wrong.".into() },
+            Err(_) => CoreEvent::Failed {
+                id,
+                message: "Something went wrong.".into(),
+            },
         }
     }
 
@@ -94,27 +107,61 @@ impl Flow {
         result: &str,
         undo_token: Option<&str>,
     ) -> Result<i64, StoreError> {
-        self.store
-            .log_action(&(self.clock)(), request, skill_id, decision, Some(result), undo_token)
+        self.store.log_action(
+            &(self.clock)(),
+            request,
+            skill_id,
+            decision,
+            Some(result),
+            undo_token,
+        )
     }
 
-    fn fail(&self, id: RequestId, request: &str, skill_id: Option<&str>, message: &str) -> Result<CoreEvent, StoreError> {
+    fn fail(
+        &self,
+        id: RequestId,
+        request: &str,
+        skill_id: Option<&str>,
+        message: &str,
+    ) -> Result<CoreEvent, StoreError> {
         self.log(request, skill_id, Decision::Failed, message, None)?;
-        Ok(CoreEvent::Failed { id, message: message.into() })
+        Ok(CoreEvent::Failed {
+            id,
+            message: message.into(),
+        })
     }
 
-    fn cancelled(&self, id: RequestId, request: &str, skill_id: Option<&str>) -> Result<CoreEvent, StoreError> {
+    fn cancelled(
+        &self,
+        id: RequestId,
+        request: &str,
+        skill_id: Option<&str>,
+    ) -> Result<CoreEvent, StoreError> {
         self.log(request, skill_id, Decision::Cancelled, "Cancelled.", None)?;
-        Ok(CoreEvent::Done { id, message: "Cancelled.".into(), undoable: false })
+        Ok(CoreEvent::Done {
+            id,
+            message: "Cancelled.".into(),
+            undoable: false,
+        })
     }
 
-    fn run(&mut self, id: RequestId, text: &str, p: &mut dyn Prompter) -> Result<CoreEvent, StoreError> {
+    fn run(
+        &mut self,
+        id: RequestId,
+        text: &str,
+        p: &mut dyn Prompter,
+    ) -> Result<CoreEvent, StoreError> {
         // 1. Route.
         let understanding = self.router.route(text);
         let skill_id = match decide(&understanding) {
             RouteDecision::Decline => return self.fail(id, text, None, "I can't do that yet."),
             RouteDecision::Chained => {
-                return self.fail(id, text, None, "I can't plan that right now. Try a simpler request.")
+                return self.fail(
+                    id,
+                    text,
+                    None,
+                    "I can't plan that right now. Try a simpler request.",
+                )
             }
             RouteDecision::Run { skill_id } => skill_id,
             RouteDecision::ConfirmTask { skill_id } => {
@@ -126,7 +173,10 @@ impl Flow {
             RouteDecision::Ask { skill_ids } => {
                 let choices: Vec<Choice> = skill_ids
                     .iter()
-                    .map(|s| Choice { id: s.clone(), label: self.describe(s) })
+                    .map(|s| Choice {
+                        id: s.clone(),
+                        label: self.describe(s),
+                    })
                     .collect();
                 match p.choose("What would you like to do?", &choices) {
                     Some(chosen) if skill_ids.contains(&chosen) => chosen,
@@ -151,10 +201,16 @@ impl Flow {
         let mut confirmed = false;
         match outcome {
             Outcome::Block { reason, .. } => {
-                return Ok(CoreEvent::Failed { id, message: reason.message().into() });
+                return Ok(CoreEvent::Failed {
+                    id,
+                    message: reason.message().into(),
+                });
             }
             Outcome::Confirm => {
-                let template = skill.confirm.as_ref().map_or("Go ahead?", |c| c.text.as_str());
+                let template = skill
+                    .confirm
+                    .as_ref()
+                    .map_or("Go ahead?", |c| c.text.as_str());
                 let card = match fill(template, &slots) {
                     Ok(t) => t,
                     Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
@@ -171,7 +227,12 @@ impl Flow {
         let mut last_output: Option<(String, String, Output)> = None;
         for step in &skill.steps {
             let Some(conn) = self.connectors.get(&step.connector).cloned() else {
-                return self.fail(id, text, Some(&skill.id), &format!("{} isn't available.", step.connector));
+                return self.fail(
+                    id,
+                    text,
+                    Some(&skill.id),
+                    &format!("{} isn't available.", step.connector),
+                );
             };
             if let Some(err) = health_error(conn.as_ref(), &step.connector) {
                 return self.fail(id, text, Some(&skill.id), &err.to_string());
@@ -189,14 +250,24 @@ impl Flow {
         // 5. Verify.
         if let Some(check) = &skill.check {
             let Some(conn) = self.connectors.get(&check.connector).cloned() else {
-                return self.fail(id, text, Some(&skill.id), &format!("{} isn't available.", check.connector));
+                return self.fail(
+                    id,
+                    text,
+                    Some(&skill.id),
+                    &format!("{} isn't available.", check.connector),
+                );
             };
             let args = match fill_args(&check.args, &slots) {
                 Ok(a) => a,
                 Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
             };
-            let msg = format!("I couldn't confirm that it worked. Please check {}.", check.connector);
-            if let Verdict::NotVerified { message } = verify(conn.as_ref(), &check.action, &args, &msg) {
+            let msg = format!(
+                "I couldn't confirm that it worked. Please check {}.",
+                check.connector
+            );
+            if let Verdict::NotVerified { message } =
+                verify(conn.as_ref(), &check.action, &args, &msg)
+            {
                 return self.fail(id, text, Some(&skill.id), &message);
             }
         }
@@ -205,13 +276,32 @@ impl Flow {
         let can_undo = matches!(outcome, Outcome::RunThenUndo { .. })
             && matches!(skill.undo, Undo::Steps(_))
             && last_output.is_some();
-        let decision = if confirmed { Decision::Confirmed } else { Decision::Ran };
-        let log_id = self.log(text, Some(&skill.id), decision, "Done.", can_undo.then_some("available"))?;
+        let decision = if confirmed {
+            Decision::Confirmed
+        } else {
+            Decision::Ran
+        };
+        let log_id = self.log(
+            text,
+            Some(&skill.id),
+            decision,
+            "Done.",
+            can_undo.then_some("available"),
+        )?;
         self.last_undo = match (can_undo, last_output) {
-            (true, Some((connector, action, output))) => Some(UndoRecord { log_id, connector, action, output }),
+            (true, Some((connector, action, output))) => Some(UndoRecord {
+                log_id,
+                connector,
+                action,
+                output,
+            }),
             _ => None,
         };
-        Ok(CoreEvent::Done { id, message: "Done.".into(), undoable: can_undo })
+        Ok(CoreEvent::Done {
+            id,
+            message: "Done.".into(),
+            undoable: can_undo,
+        })
     }
 
     /// A short human label for a skill, used in questions.
@@ -274,8 +364,13 @@ fn fill(template: &str, slots: &BTreeMap<String, String>) -> Result<String, Stri
     Ok(out)
 }
 
-fn fill_args(args: &BTreeMap<String, String>, slots: &BTreeMap<String, String>) -> Result<Args, String> {
-    args.iter().map(|(k, v)| Ok((k.clone(), fill(v, slots)?))).collect()
+fn fill_args(
+    args: &BTreeMap<String, String>,
+    slots: &BTreeMap<String, String>,
+) -> Result<Args, String> {
+    args.iter()
+        .map(|(k, v)| Ok((k.clone(), fill(v, slots)?)))
+        .collect()
 }
 
 fn health_error(conn: &dyn Connector, name: &str) -> Option<ConnError> {
@@ -283,7 +378,9 @@ fn health_error(conn: &dyn Connector, name: &str) -> Option<ConnError> {
         Health::Ready => None,
         Health::NotInstalled => Some(ConnError::NotInstalled(name.into())),
         Health::NotSignedIn => Some(ConnError::NotSignedIn(name.into())),
-        Health::Unreachable => Some(ConnError::Failed(format!("I can't reach {name} right now."))),
+        Health::Unreachable => Some(ConnError::Failed(format!(
+            "I can't reach {name} right now."
+        ))),
     }
 }
 
@@ -309,7 +406,12 @@ pub fn iso_from_secs(secs: i64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, rem % 3600 / 60, rem % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
 }
 
 #[cfg(test)]
@@ -333,7 +435,11 @@ mod tests {
     impl Prompter for TestUser {
         fn confirm(&mut self, text: &str) -> bool {
             self.shown.push(text.to_string());
-            if self.confirm_answers.is_empty() { true } else { self.confirm_answers.remove(0) }
+            if self.confirm_answers.is_empty() {
+                true
+            } else {
+                self.confirm_answers.remove(0)
+            }
         }
         fn choose(&mut self, _q: &str, choices: &[Choice]) -> Option<String> {
             self.choices_seen = choices.iter().map(|c| c.id.clone()).collect();
@@ -342,7 +448,10 @@ mod tests {
     }
 
     fn user(answers: &[bool]) -> TestUser {
-        TestUser { confirm_answers: answers.to_vec(), ..TestUser::default() }
+        TestUser {
+            confirm_answers: answers.to_vec(),
+            ..TestUser::default()
+        }
     }
 
     fn flow_with(yamls: &[&str], conns: Vec<(&str, Arc<FakeConnector>)>) -> Flow {
@@ -351,17 +460,29 @@ mod tests {
             .into_iter()
             .map(|(k, v)| (k.to_string(), v as Arc<dyn Connector>))
             .collect();
-        Flow::new(StubRouter::new(skills), Store::open_in_memory().unwrap(), map)
-            .with_clock(|| "2026-11-08T12:00:00Z".into())
+        Flow::new(
+            StubRouter::new(skills),
+            Store::open_in_memory().unwrap(),
+            map,
+        )
+        .with_clock(|| "2026-11-08T12:00:00Z".into())
     }
 
     fn log_decisions(f: &Flow) -> Vec<String> {
-        f.store().recent_actions(20).unwrap().into_iter().rev().map(|r| r.decision).collect()
+        f.store()
+            .recent_actions(20)
+            .unwrap()
+            .into_iter()
+            .rev()
+            .map(|r| r.decision)
+            .collect()
     }
 
     fn done(ev: &CoreEvent) -> (&str, bool) {
         match ev {
-            CoreEvent::Done { message, undoable, .. } => (message, *undoable),
+            CoreEvent::Done {
+                message, undoable, ..
+            } => (message, *undoable),
             other => panic!("expected Done, got {other:?}"),
         }
     }
@@ -384,7 +505,10 @@ mod tests {
         let calls = sys.calls();
         assert_eq!(
             calls[0],
-            Call::Execute { action: "open_app".into(), args: Args::from([("app".into(), "spotify".into())]) }
+            Call::Execute {
+                action: "open_app".into(),
+                args: Args::from([("app".into(), "spotify".into())])
+            }
         );
         assert!(matches!(&calls[1], Call::Check { action, .. } if action == "app_is_running"));
         assert_eq!(log_decisions(&flow), vec!["ran"]);
@@ -455,10 +579,14 @@ mod tests {
     #[test]
     fn connector_error_becomes_a_one_line_message() {
         let sys = Arc::new(
-            FakeConnector::new("windows_system").fail_execute_with(ConnError::Failed("Couldn't open it.".into())),
+            FakeConnector::new("windows_system")
+                .fail_execute_with(ConnError::Failed("Couldn't open it.".into())),
         );
         let mut flow = flow_with(&[OPEN], vec![("windows_system", sys)]);
-        assert_eq!(failed(&flow.handle(7, "open spotify", &mut user(&[]))), "Couldn't open it.");
+        assert_eq!(
+            failed(&flow.handle(7, "open spotify", &mut user(&[]))),
+            "Couldn't open it."
+        );
     }
 
     #[test]
@@ -471,8 +599,14 @@ mod tests {
     fn out_of_scope_and_chained_requests_are_declined_with_a_message() {
         let sys = Arc::new(FakeConnector::new("windows_system"));
         let mut flow = flow_with(&[OPEN, PAUSE], vec![("windows_system", sys.clone())]);
-        assert_eq!(failed(&flow.handle(9, "what is the capital of france", &mut user(&[]))), "I can't do that yet.");
-        assert!(failed(&flow.handle(10, "open spotify and then pause the music", &mut user(&[]))).contains("simpler request"));
+        assert_eq!(
+            failed(&flow.handle(9, "what is the capital of france", &mut user(&[]))),
+            "I can't do that yet."
+        );
+        assert!(
+            failed(&flow.handle(10, "open spotify and then pause the music", &mut user(&[])))
+                .contains("simpler request")
+        );
         assert!(sys.calls().is_empty());
     }
 
@@ -483,11 +617,17 @@ mod tests {
         let sp = Arc::new(FakeConnector::new("spotify"));
         let mut flow = flow_with(&[PAUSE], vec![("spotify", sp.clone())]);
         let mut no = user(&[false]);
-        assert_eq!(done(&flow.handle(11, "the music pause", &mut no)).0, "Cancelled.");
+        assert_eq!(
+            done(&flow.handle(11, "the music pause", &mut no)).0,
+            "Cancelled."
+        );
         assert!(no.shown[0].starts_with("Did you mean:"));
         assert_eq!(sp.execute_count(), 0);
         let mut yes = user(&[true]);
-        assert_eq!(done(&flow.handle(12, "the music pause", &mut yes)).0, "Done.");
+        assert_eq!(
+            done(&flow.handle(12, "the music pause", &mut yes)).0,
+            "Done."
+        );
         assert_eq!(sp.execute_count(), 1);
     }
 
@@ -495,21 +635,29 @@ mod tests {
     fn low_confidence_asks_a_question_and_runs_the_choice() {
         let sp = Arc::new(FakeConnector::new("spotify"));
         let mut flow = flow_with(&[PAUSE], vec![("spotify", sp.clone())]);
-        let mut u = TestUser { choice: Some("music.pause".into()), ..TestUser::default() };
+        let mut u = TestUser {
+            choice: Some("music.pause".into()),
+            ..TestUser::default()
+        };
         assert_eq!(done(&flow.handle(13, "pause music", &mut u)).0, "Done.");
         assert_eq!(u.choices_seen, vec!["music.pause"]);
         assert_eq!(sp.execute_count(), 1);
         // Dismissing the question does nothing.
         let mut dismiss = TestUser::default();
-        assert_eq!(done(&flow.handle(14, "pause music", &mut dismiss)).0, "Cancelled.");
+        assert_eq!(
+            done(&flow.handle(14, "pause music", &mut dismiss)).0,
+            "Cancelled."
+        );
         assert_eq!(sp.execute_count(), 1);
     }
 
     // --- undo --------------------------------------------------------------------
 
     fn undoable_open() -> String {
-        OPEN.replace("risk: safe", "risk: changes_data")
-            .replace("undo: none", "undo:\n  - connector: windows_system\n    action: close_app\n")
+        OPEN.replace("risk: safe", "risk: changes_data").replace(
+            "undo: none",
+            "undo:\n  - connector: windows_system\n    action: close_app\n",
+        )
     }
 
     #[test]
@@ -518,7 +666,12 @@ mod tests {
         let mut flow = flow_with(&[&undoable_open()], vec![("windows_system", sys.clone())]);
         let ev = flow.handle(15, "open spotify", &mut user(&[]));
         assert_eq!(done(&ev), ("Done.", true));
-        assert_eq!(flow.store().recent_actions(1).unwrap()[0].undo_token.as_deref(), Some("available"));
+        assert_eq!(
+            flow.store().recent_actions(1).unwrap()[0]
+                .undo_token
+                .as_deref(),
+            Some("available")
+        );
         assert_eq!(flow.undo(), "Undone.");
         assert_eq!(flow.store().recent_actions(1).unwrap()[0].undo_token, None);
         assert_eq!(flow.undo(), "Nothing to undo.");

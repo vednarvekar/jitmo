@@ -26,7 +26,10 @@ impl CoreService {
             .name("jitmo-core".into())
             .spawn(move || run(flow, rx, emit))
             .expect("failed to start the core thread");
-        CoreService { tx, thread: Some(thread) }
+        CoreService {
+            tx,
+            thread: Some(thread),
+        }
     }
 
     /// Send a UI message to Core. Never blocks.
@@ -52,13 +55,21 @@ fn run(mut flow: Flow, rx: Receiver<UiRequest>, emit: impl Fn(CoreEvent)) {
         match req {
             UiRequest::Submit { id, text } => {
                 emit(CoreEvent::Started { id });
-                let mut prompter = ChannelPrompter { id, rx: &rx, emit: &emit };
+                let mut prompter = ChannelPrompter {
+                    id,
+                    rx: &rx,
+                    emit: &emit,
+                };
                 let done = flow.handle(id, &text, &mut prompter);
                 emit(done);
             }
             UiRequest::Undo { id } => {
                 let message = flow.undo();
-                emit(CoreEvent::Done { id, message, undoable: false });
+                emit(CoreEvent::Done {
+                    id,
+                    message,
+                    undoable: false,
+                });
             }
             // Answers or cancels with nothing waiting for them: ignore.
             UiRequest::Confirm { .. } | UiRequest::Choose { .. } | UiRequest::Cancel { .. } => {}
@@ -75,12 +86,15 @@ struct ChannelPrompter<'a, E: Fn(CoreEvent)> {
 
 impl<E: Fn(CoreEvent)> Prompter for ChannelPrompter<'_, E> {
     fn confirm(&mut self, text: &str) -> bool {
-        (self.emit)(CoreEvent::ConfirmNeeded { id: self.id, text: text.into() });
+        (self.emit)(CoreEvent::ConfirmNeeded {
+            id: self.id,
+            text: text.into(),
+        });
         loop {
             match self.rx.recv() {
                 Ok(UiRequest::Confirm { id, approved }) if id == self.id => return approved,
                 Ok(UiRequest::Cancel { id }) if id == self.id => return false,
-                Ok(_) => {}          // not for this request; drop it
+                Ok(_) => {}             // not for this request; drop it
                 Err(_) => return false, // UI gone: never approve
             }
         }
@@ -115,7 +129,12 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    fn service() -> (CoreService, Receiver<CoreEvent>, Arc<FakeConnector>, Arc<FakeConnector>) {
+    fn service() -> (
+        CoreService,
+        Receiver<CoreEvent>,
+        Arc<FakeConnector>,
+        Arc<FakeConnector>,
+    ) {
         let skills = [
             include_str!("../../../skills/apps.open.yaml"),
             include_str!("../../../skills/stub.send.yaml"),
@@ -128,7 +147,11 @@ mod tests {
         let mut conns: HashMap<String, Arc<dyn Connector>> = HashMap::new();
         conns.insert("windows_system".into(), sys.clone());
         conns.insert("stub_messenger".into(), msg.clone());
-        let flow = Flow::new(StubRouter::new(skills), Store::open_in_memory().unwrap(), conns);
+        let flow = Flow::new(
+            StubRouter::new(skills),
+            Store::open_in_memory().unwrap(),
+            conns,
+        );
         let (etx, erx) = mpsc::channel();
         let etx = std::sync::Mutex::new(etx);
         let svc = CoreService::spawn(flow, move |e| {
@@ -138,29 +161,53 @@ mod tests {
     }
 
     fn next(rx: &Receiver<CoreEvent>) -> CoreEvent {
-        rx.recv_timeout(Duration::from_secs(5)).expect("expected an event")
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("expected an event")
     }
 
     #[test]
     fn simple_request_emits_started_then_done() {
         let (svc, rx, sys, _) = service();
-        svc.send(UiRequest::Submit { id: 1, text: "open spotify".into() });
+        svc.send(UiRequest::Submit {
+            id: 1,
+            text: "open spotify".into(),
+        });
         assert_eq!(next(&rx), CoreEvent::Started { id: 1 });
-        assert_eq!(next(&rx), CoreEvent::Done { id: 1, message: "Done.".into(), undoable: false });
+        assert_eq!(
+            next(&rx),
+            CoreEvent::Done {
+                id: 1,
+                message: "Done.".into(),
+                undoable: false
+            }
+        );
         assert_eq!(sys.execute_count(), 1);
     }
 
     #[test]
     fn send_waits_for_confirm_and_runs_after_approval() {
         let (svc, rx, _, msg) = service();
-        svc.send(UiRequest::Submit { id: 2, text: "send hi to ved".into() });
+        svc.send(UiRequest::Submit {
+            id: 2,
+            text: "send hi to ved".into(),
+        });
         assert_eq!(next(&rx), CoreEvent::Started { id: 2 });
         assert_eq!(
             next(&rx),
-            CoreEvent::ConfirmNeeded { id: 2, text: "Send \"hi\" to ved?".into() }
+            CoreEvent::ConfirmNeeded {
+                id: 2,
+                text: "Send \"hi\" to ved?".into()
+            }
         );
-        assert_eq!(msg.execute_count(), 0, "nothing runs before the user answers");
-        svc.send(UiRequest::Confirm { id: 2, approved: true });
+        assert_eq!(
+            msg.execute_count(),
+            0,
+            "nothing runs before the user answers"
+        );
+        svc.send(UiRequest::Confirm {
+            id: 2,
+            approved: true,
+        });
         assert!(matches!(next(&rx), CoreEvent::Done { id: 2, .. }));
         assert_eq!(msg.execute_count(), 1);
     }
@@ -168,30 +215,59 @@ mod tests {
     #[test]
     fn cancel_while_waiting_means_no() {
         let (svc, rx, _, msg) = service();
-        svc.send(UiRequest::Submit { id: 3, text: "send hi to ved".into() });
+        svc.send(UiRequest::Submit {
+            id: 3,
+            text: "send hi to ved".into(),
+        });
         next(&rx); // Started
         next(&rx); // ConfirmNeeded
         svc.send(UiRequest::Cancel { id: 3 });
-        assert_eq!(next(&rx), CoreEvent::Done { id: 3, message: "Cancelled.".into(), undoable: false });
+        assert_eq!(
+            next(&rx),
+            CoreEvent::Done {
+                id: 3,
+                message: "Cancelled.".into(),
+                undoable: false
+            }
+        );
         assert_eq!(msg.execute_count(), 0);
     }
 
     #[test]
     fn an_answer_for_a_different_request_does_not_approve() {
         let (svc, rx, _, msg) = service();
-        svc.send(UiRequest::Submit { id: 4, text: "send hi to ved".into() });
+        svc.send(UiRequest::Submit {
+            id: 4,
+            text: "send hi to ved".into(),
+        });
         next(&rx);
         next(&rx);
-        svc.send(UiRequest::Confirm { id: 99, approved: true }); // wrong id
-        svc.send(UiRequest::Confirm { id: 4, approved: false });
-        assert_eq!(next(&rx), CoreEvent::Done { id: 4, message: "Cancelled.".into(), undoable: false });
+        svc.send(UiRequest::Confirm {
+            id: 99,
+            approved: true,
+        }); // wrong id
+        svc.send(UiRequest::Confirm {
+            id: 4,
+            approved: false,
+        });
+        assert_eq!(
+            next(&rx),
+            CoreEvent::Done {
+                id: 4,
+                message: "Cancelled.".into(),
+                undoable: false
+            }
+        );
         assert_eq!(msg.execute_count(), 0);
     }
 
     #[test]
     fn dropping_the_ui_while_waiting_never_approves() {
         let (svc, rx, _, msg) = service();
-        svc.send(UiRequest::Submit { id: 5, text: "send hi to ved".into() });
+        svc.send(UiRequest::Submit {
+            id: 5,
+            text: "send hi to ved".into(),
+        });
         next(&rx);
         next(&rx);
         drop(svc); // channel closes while the flow waits
@@ -203,14 +279,27 @@ mod tests {
     fn undo_with_nothing_to_undo_answers() {
         let (svc, rx, _, _) = service();
         svc.send(UiRequest::Undo { id: 6 });
-        assert_eq!(next(&rx), CoreEvent::Done { id: 6, message: "Nothing to undo.".into(), undoable: false });
+        assert_eq!(
+            next(&rx),
+            CoreEvent::Done {
+                id: 6,
+                message: "Nothing to undo.".into(),
+                undoable: false
+            }
+        );
     }
 
     #[test]
     fn stray_answers_with_nothing_waiting_are_ignored() {
         let (svc, rx, _, _) = service();
-        svc.send(UiRequest::Confirm { id: 7, approved: true });
-        svc.send(UiRequest::Submit { id: 8, text: "open spotify".into() });
+        svc.send(UiRequest::Confirm {
+            id: 7,
+            approved: true,
+        });
+        svc.send(UiRequest::Submit {
+            id: 8,
+            text: "open spotify".into(),
+        });
         assert_eq!(next(&rx), CoreEvent::Started { id: 8 });
     }
 }

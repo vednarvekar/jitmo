@@ -14,7 +14,9 @@ pub struct DocCase {
 
 /// Remove the curly or straight quotes around a request.
 fn unquote(s: &str) -> String {
-    s.trim().trim_matches(|c| matches!(c, '“' | '”' | '"')).to_string()
+    s.trim()
+        .trim_matches(|c| matches!(c, '“' | '”' | '"'))
+        .to_string()
 }
 
 /// Parse every `| Txx | ... |` table row, tracking the `##` heading above it.
@@ -31,10 +33,21 @@ pub fn parse(markdown: &str) -> Vec<DocCase> {
             continue;
         }
         let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
-        let Some(id) = cells.first().copied() else { continue };
-        let Some(number) = id.strip_prefix('T').and_then(|n| n.parse::<u32>().ok()) else { continue };
-        let Some(request) = cells.get(1) else { continue };
-        out.push(DocCase { id: id.to_string(), number, section: section.clone(), request: unquote(request) });
+        let Some(id) = cells.first().copied() else {
+            continue;
+        };
+        let Some(number) = id.strip_prefix('T').and_then(|n| n.parse::<u32>().ok()) else {
+            continue;
+        };
+        let Some(request) = cells.get(1) else {
+            continue;
+        };
+        out.push(DocCase {
+            id: id.to_string(),
+            number,
+            section: section.clone(),
+            request: unquote(request),
+        });
     }
     out
 }
@@ -50,7 +63,11 @@ mod tests {
         let cases = parse(DOC);
         assert_eq!(cases.len(), 100);
         for (i, c) in cases.iter().enumerate() {
-            assert_eq!(c.number as usize, i + 1, "tests must run T01..T100 with no gaps");
+            assert_eq!(
+                c.number as usize,
+                i + 1,
+                "tests must run T01..T100 with no gaps"
+            );
         }
     }
 
@@ -62,7 +79,12 @@ mod tests {
         let t83 = cases.iter().find(|c| c.id == "T83").unwrap();
         assert_eq!(t83.request, "Delete all my emails from 2023.");
         assert!(t83.section.starts_with("Out of scope"));
-        assert!(cases.iter().find(|c| c.id == "T100").unwrap().section.starts_with("Offline"));
+        assert!(cases
+            .iter()
+            .find(|c| c.id == "T100")
+            .unwrap()
+            .section
+            .starts_with("Offline"));
     }
 
     #[test]

@@ -13,7 +13,9 @@ const POLL_EVERY: Duration = Duration::from_millis(500);
 pub struct WindowsSystem;
 
 fn arg<'a>(args: &'a Args, name: &str) -> Result<&'a str, ConnError> {
-    args.get(name).map(String::as_str).ok_or_else(|| ConnError::MissingArg(name.into()))
+    args.get(name)
+        .map(String::as_str)
+        .ok_or_else(|| ConnError::MissingArg(name.into()))
 }
 
 impl Connector for WindowsSystem {
@@ -22,7 +24,10 @@ impl Connector for WindowsSystem {
     }
 
     fn actions(&self) -> Vec<ActionSpec> {
-        vec![ActionSpec { name: "open_app".into(), required_args: vec!["app".into()] }]
+        vec![ActionSpec {
+            name: "open_app".into(),
+            required_args: vec!["app".into()],
+        }]
     }
 
     fn health(&self) -> Health {
@@ -88,9 +93,18 @@ mod tests {
     #[test]
     fn missing_argument_and_unknown_action_are_errors() {
         let c = WindowsSystem;
-        assert_eq!(c.execute("open_app", &Args::new()), Err(ConnError::MissingArg("app".into())));
-        assert_eq!(c.execute("fly", &args("x")), Err(ConnError::UnknownAction("fly".into())));
-        assert_eq!(c.check("fly", &args("x")), Err(ConnError::UnknownAction("fly".into())));
+        assert_eq!(
+            c.execute("open_app", &Args::new()),
+            Err(ConnError::MissingArg("app".into()))
+        );
+        assert_eq!(
+            c.execute("fly", &args("x")),
+            Err(ConnError::UnknownAction("fly".into()))
+        );
+        assert_eq!(
+            c.check("fly", &args("x")),
+            Err(ConnError::UnknownAction("fly".into()))
+        );
         assert!(c.undo("open_app", &Output::default()).is_none());
     }
 
@@ -109,6 +123,9 @@ mod tests {
     #[test]
     fn an_app_that_does_not_exist_is_reported_as_not_installed() {
         let r = WindowsSystem.execute("open_app", &args("definitely-not-an-app-xyz"));
-        assert_eq!(r, Err(ConnError::NotInstalled("definitely-not-an-app-xyz".into())));
+        assert_eq!(
+            r,
+            Err(ConnError::NotInstalled("definitely-not-an-app-xyz".into()))
+        );
     }
 }

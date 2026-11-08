@@ -12,7 +12,8 @@ use std::process::ExitCode;
 fn find_root() -> Result<PathBuf, String> {
     let mut dir = std::env::current_dir().map_err(|e| e.to_string())?;
     loop {
-        if dir.join("testset").is_dir() && dir.join("docs").is_dir() && dir.join("skills").is_dir() {
+        if dir.join("testset").is_dir() && dir.join("docs").is_dir() && dir.join("skills").is_dir()
+        {
             return Ok(dir);
         }
         if !dir.pop() {
@@ -31,15 +32,26 @@ fn go() -> Result<bool, String> {
         match a.as_str() {
             "--live" => live = true,
             "--strict" => strict = true,
-            "--only" => only = Some(args.next().ok_or("--only needs a list")?.split(',').map(|s| s.trim().to_uppercase()).collect()),
+            "--only" => {
+                only = Some(
+                    args.next()
+                        .ok_or("--only needs a list")?
+                        .split(',')
+                        .map(|s| s.trim().to_uppercase())
+                        .collect(),
+                )
+            }
             "--json" => json = Some(args.next().ok_or("--json needs a path")?.into()),
             other => return Err(format!("unknown option {other}")),
         }
     }
 
     let root = find_root()?;
-    let read = |p: PathBuf| std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()));
-    let cases = doc::parse(&read(root.join("docs/01-v1-spec/4 - Success Metrics and Test Set.md"))?);
+    let read =
+        |p: PathBuf| std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()));
+    let cases = doc::parse(&read(
+        root.join("docs/01-v1-spec/4 - Success Metrics and Test Set.md"),
+    )?);
     let specs = spec::load(&read(root.join("testset/automated.yaml"))?)?;
     let skills = run::load_skills(&root.join("skills"))?;
     if cases.len() != 100 {
@@ -83,11 +95,15 @@ fn go() -> Result<bool, String> {
                 }
                 (Some(why), false) => {
                     row.status = Status::KnownFail;
-                    row.reasons = std::iter::once(format!("known gap: {why}")).chain(r.reasons).collect();
+                    row.reasons = std::iter::once(format!("known gap: {why}"))
+                        .chain(r.reasons)
+                        .collect();
                 }
                 (Some(_), true) => {
                     row.status = Status::Fail;
-                    row.reasons = vec!["this test now passes: remove `known_failing` from automated.yaml".into()];
+                    row.reasons = vec![
+                        "this test now passes: remove `known_failing` from automated.yaml".into(),
+                    ];
                 }
             }
         }
@@ -101,8 +117,11 @@ fn go() -> Result<bool, String> {
     }
     if let Some(path) = json {
         let body = serde_json::json!({ "live": live, "tests": rows, "metrics": metrics });
-        std::fs::write(&path, serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     }
 
     // Exit code: a failing test, a send without a confirm or a crash always fails

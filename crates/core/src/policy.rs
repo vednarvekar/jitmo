@@ -47,7 +47,10 @@ impl StepFacts {
         StepFacts {
             skill_id: skill.id.clone(),
             risk: skill.risk,
-            permanent_delete: skill.capabilities.iter().any(|c| c.ends_with("delete:permanent")),
+            permanent_delete: skill
+                .capabilities
+                .iter()
+                .any(|c| c.ends_with("delete:permanent")),
             triggered_by_content,
             recipients,
         }
@@ -95,21 +98,32 @@ pub enum Outcome {
 pub fn evaluate(f: &StepFacts) -> Outcome {
     // 1. Permanent delete.
     if f.permanent_delete {
-        return Outcome::Block { reason: BlockReason::PermanentDelete, flag: false };
+        return Outcome::Block {
+            reason: BlockReason::PermanentDelete,
+            flag: false,
+        };
     }
     // 2. Triggered by content, not by the user.
     if f.triggered_by_content {
-        return Outcome::Block { reason: BlockReason::TriggeredByContent, flag: true };
+        return Outcome::Block {
+            reason: BlockReason::TriggeredByContent,
+            flag: true,
+        };
     }
     // 3. Too many recipients.
     if f.recipients > MAX_RECIPIENTS {
-        return Outcome::Block { reason: BlockReason::TooManyRecipients, flag: false };
+        return Outcome::Block {
+            reason: BlockReason::TooManyRecipients,
+            flag: false,
+        };
     }
     match f.risk {
         // 4. Sends or shares.
         Risk::SendsOrShares => Outcome::Confirm,
         // 5. Changes data.
-        Risk::ChangesData => Outcome::RunThenUndo { seconds: UNDO_WINDOW_SECS },
+        Risk::ChangesData => Outcome::RunThenUndo {
+            seconds: UNDO_WINDOW_SECS,
+        },
         // 6. Safe or read only.
         Risk::Safe | Risk::ReadOnly => Outcome::Run,
     }
@@ -167,37 +181,55 @@ mod tests {
 
     #[test]
     fn rule1_permanent_delete_is_blocked() {
-        let f = StepFacts { permanent_delete: true, ..facts(Risk::ChangesData) };
+        let f = StepFacts {
+            permanent_delete: true,
+            ..facts(Risk::ChangesData)
+        };
         assert_eq!(evaluate(&f), block(BlockReason::PermanentDelete, false));
     }
 
     #[test]
     fn rule2_content_triggered_is_blocked_and_flagged() {
-        let f = StepFacts { triggered_by_content: true, ..facts(Risk::ReadOnly) };
+        let f = StepFacts {
+            triggered_by_content: true,
+            ..facts(Risk::ReadOnly)
+        };
         assert_eq!(evaluate(&f), block(BlockReason::TriggeredByContent, true));
     }
 
     #[test]
     fn rule3_more_than_ten_recipients_is_blocked() {
-        let f = StepFacts { recipients: 11, ..facts(Risk::SendsOrShares) };
+        let f = StepFacts {
+            recipients: 11,
+            ..facts(Risk::SendsOrShares)
+        };
         assert_eq!(evaluate(&f), block(BlockReason::TooManyRecipients, false));
     }
 
     #[test]
     fn rule3_exactly_ten_recipients_still_needs_confirm() {
-        let f = StepFacts { recipients: 10, ..facts(Risk::SendsOrShares) };
+        let f = StepFacts {
+            recipients: 10,
+            ..facts(Risk::SendsOrShares)
+        };
         assert_eq!(evaluate(&f), Outcome::Confirm);
     }
 
     #[test]
     fn rule4_send_or_share_needs_confirm() {
-        let f = StepFacts { recipients: 1, ..facts(Risk::SendsOrShares) };
+        let f = StepFacts {
+            recipients: 1,
+            ..facts(Risk::SendsOrShares)
+        };
         assert_eq!(evaluate(&f), Outcome::Confirm);
     }
 
     #[test]
     fn rule5_changes_data_runs_then_offers_undo_for_10_seconds() {
-        assert_eq!(evaluate(&facts(Risk::ChangesData)), Outcome::RunThenUndo { seconds: 10 });
+        assert_eq!(
+            evaluate(&facts(Risk::ChangesData)),
+            Outcome::RunThenUndo { seconds: 10 }
+        );
     }
 
     #[test]
@@ -240,8 +272,17 @@ mod tests {
 
     #[test]
     fn rule3_beats_rule4() {
-        let f = StepFacts { recipients: 11, ..facts(Risk::SendsOrShares) };
-        assert!(matches!(evaluate(&f), Outcome::Block { reason: BlockReason::TooManyRecipients, .. }));
+        let f = StepFacts {
+            recipients: 11,
+            ..facts(Risk::SendsOrShares)
+        };
+        assert!(matches!(
+            evaluate(&f),
+            Outcome::Block {
+                reason: BlockReason::TooManyRecipients,
+                ..
+            }
+        ));
     }
 
     // --- action log ----------------------------------------------------------
@@ -249,14 +290,21 @@ mod tests {
     #[test]
     fn blocks_are_written_to_the_action_log() {
         let store = Store::open_in_memory().unwrap();
-        let f = StepFacts { permanent_delete: true, ..facts(Risk::ChangesData) };
-        let out = evaluate_and_log(&store, "2026-11-08T12:00:00Z", "delete it forever", &f).unwrap();
+        let f = StepFacts {
+            permanent_delete: true,
+            ..facts(Risk::ChangesData)
+        };
+        let out =
+            evaluate_and_log(&store, "2026-11-08T12:00:00Z", "delete it forever", &f).unwrap();
         assert!(matches!(out, Outcome::Block { .. }));
         let rows = store.recent_actions(5).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].decision, "blocked");
         assert_eq!(rows[0].skill_id.as_deref(), Some("test.skill"));
-        assert_eq!(rows[0].result.as_deref(), Some(BlockReason::PermanentDelete.message()));
+        assert_eq!(
+            rows[0].result.as_deref(),
+            Some(BlockReason::PermanentDelete.message())
+        );
     }
 
     #[test]

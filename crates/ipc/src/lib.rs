@@ -101,9 +101,17 @@ pub enum WorkerRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WorkerReply {
-    Understood { id: RequestId, result: Understanding },
-    Pong { id: RequestId },
-    Error { id: RequestId, message: String },
+    Understood {
+        id: RequestId,
+        result: Understanding,
+    },
+    Pong {
+        id: RequestId,
+    },
+    Error {
+        id: RequestId,
+        message: String,
+    },
 }
 
 /// Output of the router and extractor. Matches the JSON shown in LLD 07.
@@ -170,7 +178,10 @@ mod tests {
 
     #[test]
     fn ui_request_round_trips() {
-        let msg = UiRequest::Submit { id: 1, text: "send this file to ved".into() };
+        let msg = UiRequest::Submit {
+            id: 1,
+            text: "send this file to ved".into(),
+        };
         let mut buf = Vec::new();
         write_message(&mut buf, &msg).unwrap();
         assert!(buf.ends_with(b"\n"));
@@ -180,7 +191,11 @@ mod tests {
 
     #[test]
     fn events_use_snake_case_tags() {
-        let json = serde_json::to_string(&CoreEvent::Failed { id: 2, message: "x".into() }).unwrap();
+        let json = serde_json::to_string(&CoreEvent::Failed {
+            id: 2,
+            message: "x".into(),
+        })
+        .unwrap();
         assert!(json.contains(r#""type":"failed""#));
     }
 
@@ -205,13 +220,17 @@ mod tests {
         let mut r = Cursor::new(buf);
         let a: WorkerRequest = read_message(&mut r).unwrap().unwrap();
         let b: WorkerRequest = read_message(&mut r).unwrap().unwrap();
-        assert_eq!((a, b), (WorkerRequest::Ping { id: 1 }, WorkerRequest::Ping { id: 2 }));
+        assert_eq!(
+            (a, b),
+            (WorkerRequest::Ping { id: 1 }, WorkerRequest::Ping { id: 2 })
+        );
         assert!(read_message::<_, WorkerRequest>(&mut r).unwrap().is_none());
     }
 
     #[test]
     fn garbage_is_an_error_not_a_panic() {
-        let r: Result<Option<UiRequest>, _> = read_message(&mut Cursor::new(b"not json\n".to_vec()));
+        let r: Result<Option<UiRequest>, _> =
+            read_message(&mut Cursor::new(b"not json\n".to_vec()));
         assert!(matches!(r, Err(FrameError::Json(_))));
     }
 }

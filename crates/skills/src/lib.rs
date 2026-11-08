@@ -112,7 +112,8 @@ fn is_send_capability(cap: &str) -> bool {
 impl Skill {
     /// Parse YAML without checking signatures. Use [`load_signed`] for real files.
     pub fn parse(yaml: &str) -> Result<Skill, SkillError> {
-        let skill: Skill = serde_yaml_ng::from_str(yaml).map_err(|e| SkillError::Parse(e.to_string()))?;
+        let skill: Skill =
+            serde_yaml_ng::from_str(yaml).map_err(|e| SkillError::Parse(e.to_string()))?;
         skill.validate()?;
         Ok(skill)
     }
@@ -161,15 +162,22 @@ impl Skill {
         }
 
         match &self.undo {
-            Undo::Keyword(k) if k != "none" => p.push(format!("undo must be `none` or a list of steps, not `{k}`")),
-            Undo::Steps(s) if s.is_empty() => p.push("undo steps are empty; write `undo: none` instead".into()),
+            Undo::Keyword(k) if k != "none" => {
+                p.push(format!("undo must be `none` or a list of steps, not `{k}`"))
+            }
+            Undo::Steps(s) if s.is_empty() => {
+                p.push("undo steps are empty; write `undo: none` instead".into())
+            }
             _ => {}
         }
 
         if p.is_empty() {
             Ok(())
         } else {
-            Err(SkillError::Invalid { id: self.id.clone(), problems: p })
+            Err(SkillError::Invalid {
+                id: self.id.clone(),
+                problems: p,
+            })
         }
     }
 }
@@ -178,9 +186,15 @@ impl Skill {
 ///
 /// `signature` is the 64 raw bytes of the `.sig` file. Anything that is not
 /// signed by `trusted` is refused.
-pub fn load_signed(yaml: &[u8], signature: &[u8], trusted: &PublicKey) -> Result<Skill, SkillError> {
+pub fn load_signed(
+    yaml: &[u8],
+    signature: &[u8],
+    trusted: &PublicKey,
+) -> Result<Skill, SkillError> {
     let sig = Signature::from_slice(signature).map_err(|_| SkillError::BadSignature)?;
-    trusted.verify(yaml, &sig).map_err(|_| SkillError::BadSignature)?;
+    trusted
+        .verify(yaml, &sig)
+        .map_err(|_| SkillError::BadSignature)?;
     let text = std::str::from_utf8(yaml).map_err(|e| SkillError::Parse(e.to_string()))?;
     Skill::parse(text)
 }
@@ -246,8 +260,13 @@ mod tests {
 
     #[test]
     fn send_without_confirm_is_rejected() {
-        let yaml = SAMPLE.replace("confirm:\n  text: \"Send {file.name} to {contact.name} on WhatsApp?\"\n", "");
-        assert!(problems(&yaml).iter().any(|m| m.contains("must have a confirm")));
+        let yaml = SAMPLE.replace(
+            "confirm:\n  text: \"Send {file.name} to {contact.name} on WhatsApp?\"\n",
+            "",
+        );
+        assert!(problems(&yaml)
+            .iter()
+            .any(|m| m.contains("must have a confirm")));
     }
 
     #[test]
@@ -262,13 +281,17 @@ mod tests {
     #[test]
     fn slot_without_resolve_order_is_rejected() {
         let yaml = SAMPLE.replace("resolve: [named_contact, usual_contact]", "resolve: []");
-        assert!(problems(&yaml).iter().any(|m| m.contains("slot `contact` must list its resolve order")));
+        assert!(problems(&yaml)
+            .iter()
+            .any(|m| m.contains("slot `contact` must list its resolve order")));
     }
 
     #[test]
     fn send_capability_needs_send_risk() {
         let yaml = SAMPLE.replace("risk: sends_or_shares", "risk: read_only");
-        assert!(problems(&yaml).iter().any(|m| m.contains("requires risk: sends_or_shares")));
+        assert!(problems(&yaml)
+            .iter()
+            .any(|m| m.contains("requires risk: sends_or_shares")));
     }
 
     #[test]

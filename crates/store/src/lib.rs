@@ -122,8 +122,10 @@ impl Store {
             // Raw-key form: x'<64 hex digits>'. Avoids key stretching on a random key.
             conn.pragma_update(None, "key", format!("x'{hex}'"))?;
             // Reading anything fails if the key is wrong.
-            conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
-                .map_err(|_| StoreError::BadKey)?;
+            conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .map_err(|_| StoreError::BadKey)?;
         }
         let store = Store { conn };
         store.migrate()?;
@@ -131,7 +133,9 @@ impl Store {
     }
 
     fn migrate(&self) -> Result<(), StoreError> {
-        let found: u32 = self.conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        let found: u32 = self
+            .conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))?;
         let known = MIGRATIONS.len() as u32;
         if found > known {
             return Err(StoreError::SchemaTooNew { found, known });
@@ -146,7 +150,9 @@ impl Store {
     }
 
     pub fn schema_version(&self) -> Result<u32, StoreError> {
-        Ok(self.conn.query_row("PRAGMA user_version", [], |r| r.get(0))?)
+        Ok(self
+            .conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))?)
     }
 
     // --- settings -------------------------------------------------------
@@ -163,7 +169,9 @@ impl Store {
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, StoreError> {
         Ok(self
             .conn
-            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0))
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+                r.get(0)
+            })
             .optional()?)
     }
 
@@ -209,8 +217,10 @@ impl Store {
 
     /// Clear the undo token once Undo is used or no longer possible.
     pub fn clear_undo_token(&self, id: i64) -> Result<(), StoreError> {
-        self.conn
-            .execute("UPDATE action_log SET undo_token = NULL WHERE id = ?1", [id])?;
+        self.conn.execute(
+            "UPDATE action_log SET undo_token = NULL WHERE id = ?1",
+            [id],
+        )?;
         Ok(())
     }
 }
@@ -266,16 +276,33 @@ mod tests {
         assert_eq!(s.get_setting("hotkey").unwrap(), None);
         s.set_setting("hotkey", "Ctrl+Alt+J").unwrap();
         s.set_setting("hotkey", "Ctrl+Shift+J").unwrap();
-        assert_eq!(s.get_setting("hotkey").unwrap().as_deref(), Some("Ctrl+Shift+J"));
+        assert_eq!(
+            s.get_setting("hotkey").unwrap().as_deref(),
+            Some("Ctrl+Shift+J")
+        );
     }
 
     #[test]
     fn action_log_newest_first_and_undo_token_clears() {
         let s = Store::open_in_memory().unwrap();
-        s.log_action("2026-11-08T10:00:00Z", "mute", Some("system.mute"), Decision::Ran, Some("Muted."), None)
-            .unwrap();
+        s.log_action(
+            "2026-11-08T10:00:00Z",
+            "mute",
+            Some("system.mute"),
+            Decision::Ran,
+            Some("Muted."),
+            None,
+        )
+        .unwrap();
         let id = s
-            .log_action("2026-11-08T10:01:00Z", "delete x", Some("files.delete"), Decision::Confirmed, None, Some("tok"))
+            .log_action(
+                "2026-11-08T10:01:00Z",
+                "delete x",
+                Some("files.delete"),
+                Decision::Confirmed,
+                None,
+                Some("tok"),
+            )
             .unwrap();
         let rows = s.recent_actions(10).unwrap();
         assert_eq!(rows[0].id, id);
@@ -304,7 +331,10 @@ mod tests {
         let s = Store::open(&path, Some(&key)).unwrap();
         assert_eq!(s.get_setting("secret").unwrap().as_deref(), Some("hunter2"));
         drop(s);
-        assert!(matches!(Store::open(&path, Some(&[1u8; 32])), Err(StoreError::BadKey)));
+        assert!(matches!(
+            Store::open(&path, Some(&[1u8; 32])),
+            Err(StoreError::BadKey)
+        ));
         assert!(Store::open(&path, None).is_err());
         std::fs::remove_dir_all(dir).ok();
     }

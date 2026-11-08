@@ -35,8 +35,12 @@ pub fn load_skills(dir: &Path) -> Result<Vec<Skill>, String> {
     let entries = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let mut paths: Vec<_> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
     paths.sort();
-    for path in paths.into_iter().filter(|p| p.extension().is_some_and(|e| e == "yaml")) {
-        let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    for path in paths
+        .into_iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "yaml"))
+    {
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         skills.push(Skill::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?);
     }
     Ok(skills)
@@ -62,7 +66,8 @@ impl Prompter for Recorder {
 
 #[cfg(windows)]
 fn live_connector(id: &str) -> Option<Arc<dyn Connector>> {
-    (id == "windows_system").then(|| Arc::new(jitmo_connectors::windows_system::WindowsSystem) as Arc<dyn Connector>)
+    (id == "windows_system")
+        .then(|| Arc::new(jitmo_connectors::windows_system::WindowsSystem) as Arc<dyn Connector>)
 }
 
 #[cfg(not(windows))]
@@ -106,7 +111,9 @@ pub fn run_case(skills: &[Skill], spec: &Spec, live: bool) -> RunResult {
         asked_question: false,
     };
 
-    let outcome = catch_unwind(AssertUnwindSafe(|| flow.handle(1, &spec.request, &mut user)));
+    let outcome = catch_unwind(AssertUnwindSafe(|| {
+        flow.handle(1, &spec.request, &mut user)
+    }));
     let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
 
     let Ok(event) = outcome else {
@@ -138,7 +145,11 @@ pub fn run_case(skills: &[Skill], spec: &Spec, live: bool) -> RunResult {
         .collect();
     let checked = fakes.iter().any(|(_, f)| f.check_count() > 0);
 
-    let logged = flow.store().recent_actions(1).ok().and_then(|mut v| v.pop());
+    let logged = flow
+        .store()
+        .recent_actions(1)
+        .ok()
+        .and_then(|mut v| v.pop());
     let logged_skill = logged.as_ref().and_then(|l| l.skill_id.clone());
     let skill_risk = logged_skill
         .as_deref()
@@ -156,8 +167,15 @@ pub fn run_case(skills: &[Skill], spec: &Spec, live: bool) -> RunResult {
     }
     if let Some(needle) = &spec.confirm_contains {
         let needle = needle.to_lowercase();
-        if !user.confirms.iter().any(|c| c.to_lowercase().contains(&needle)) {
-            why.push(format!("no confirm card mentioned `{needle}` (saw {:?})", user.confirms));
+        if !user
+            .confirms
+            .iter()
+            .any(|c| c.to_lowercase().contains(&needle))
+        {
+            why.push(format!(
+                "no confirm card mentioned `{needle}` (saw {:?})",
+                user.confirms
+            ));
         }
     }
 
@@ -244,17 +262,28 @@ fn check_calls(
         if !fakes.iter().any(|(id, _)| id == &w.connector) {
             continue; // real connector: not observable
         }
-        let seen: Vec<_> = executes.iter().filter(|(id, _, _)| id == &w.connector).collect();
+        let seen: Vec<_> = executes
+            .iter()
+            .filter(|(id, _, _)| id == &w.connector)
+            .collect();
         let at = cursor.entry(w.connector.as_str()).or_insert(0);
         match seen.get(*at) {
             None => why.push(format!("missing call {}.{}", w.connector, w.action)),
             Some((_, action, args)) => {
                 if action != &w.action {
-                    why.push(format!("expected {}.{}, got {}", w.connector, w.action, action));
+                    why.push(format!(
+                        "expected {}.{}, got {}",
+                        w.connector, w.action, action
+                    ));
                 }
                 for (k, v) in &w.args {
                     if args.get(k) != Some(v) {
-                        why.push(format!("{}.{}: expected {k}={v}, got {:?}", w.connector, w.action, args.get(k)));
+                        why.push(format!(
+                            "{}.{}: expected {k}={v}, got {:?}",
+                            w.connector,
+                            w.action,
+                            args.get(k)
+                        ));
                     }
                 }
             }
@@ -292,7 +321,10 @@ mod tests {
 
     #[test]
     fn all_out_of_scope_tests_pass() {
-        for (id, s) in specs().iter().filter(|(id, _)| ("T83"..="T90").contains(&id.as_str())) {
+        for (id, s) in specs()
+            .iter()
+            .filter(|(id, _)| ("T83"..="T90").contains(&id.as_str()))
+        {
             let r = run_case(&skills(), s, false);
             assert!(r.passed, "{id}: {:?}", r.reasons);
         }
@@ -301,7 +333,10 @@ mod tests {
     #[test]
     fn the_known_gap_in_t96_is_real() {
         let r = run_case(&skills(), &specs()["T96"], false);
-        assert!(!r.passed, "T96 now passes: remove known_failing from automated.yaml");
+        assert!(
+            !r.passed,
+            "T96 now passes: remove known_failing from automated.yaml"
+        );
     }
 
     #[test]
@@ -310,7 +345,11 @@ mod tests {
         s.skill = Some("music.pause".into());
         let r = run_case(&skills(), &s, false);
         assert!(!r.passed);
-        assert!(r.reasons.iter().any(|m| m.contains("wrong task")), "{:?}", r.reasons);
+        assert!(
+            r.reasons.iter().any(|m| m.contains("wrong task")),
+            "{:?}",
+            r.reasons
+        );
     }
 
     #[test]
@@ -319,7 +358,11 @@ mod tests {
         s.calls[0].args.insert("app".into(), "notepad".into());
         let r = run_case(&skills(), &s, false);
         assert!(!r.passed);
-        assert!(r.reasons.iter().any(|m| m.contains("expected app=notepad")), "{:?}", r.reasons);
+        assert!(
+            r.reasons.iter().any(|m| m.contains("expected app=notepad")),
+            "{:?}",
+            r.reasons
+        );
     }
 
     #[test]

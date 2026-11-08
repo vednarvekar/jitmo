@@ -26,7 +26,9 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder,
+};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 const BAR: &str = "bar";
@@ -76,7 +78,10 @@ fn hide_bar(app: AppHandle) {
 #[tauri::command]
 fn resize_bar(app: AppHandle, height: f64) {
     if let Some(w) = app.get_webview_window(BAR) {
-        let _ = w.set_size(LogicalSize::new(BAR_WIDTH, height.clamp(BAR_START_HEIGHT, 600.0)));
+        let _ = w.set_size(LogicalSize::new(
+            BAR_WIDTH,
+            height.clamp(BAR_START_HEIGHT, 600.0),
+        ));
     }
 }
 
@@ -104,7 +109,9 @@ fn toggle(app: &AppHandle) {
     match app.get_webview_window(BAR) {
         Some(w) if w.is_visible().unwrap_or(false) => hide(app),
         Some(w) => {
-            app.state::<AppState>().visibility.fetch_add(1, Ordering::SeqCst); // cancels the destroy timer
+            app.state::<AppState>()
+                .visibility
+                .fetch_add(1, Ordering::SeqCst); // cancels the destroy timer
             let _ = w.show();
             let _ = w.set_focus();
             let _ = app.emit("bar-shown", ());
@@ -114,9 +121,15 @@ fn toggle(app: &AppHandle) {
 }
 
 fn hide(app: &AppHandle) {
-    let Some(w) = app.get_webview_window(BAR) else { return };
+    let Some(w) = app.get_webview_window(BAR) else {
+        return;
+    };
     let _ = w.hide();
-    let mine = app.state::<AppState>().visibility.fetch_add(1, Ordering::SeqCst) + 1;
+    let mine = app
+        .state::<AppState>()
+        .visibility
+        .fetch_add(1, Ordering::SeqCst)
+        + 1;
     let app = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(DESTROY_AFTER_HIDDEN);
@@ -147,12 +160,23 @@ fn load_skills() -> Vec<Skill> {
 fn connectors() -> HashMap<String, Arc<dyn Connector>> {
     let mut map: HashMap<String, Arc<dyn Connector>> = ["spotify", "stub_messenger"]
         .iter()
-        .map(|id| (id.to_string(), Arc::new(FakeConnector::new(id)) as Arc<dyn Connector>))
+        .map(|id| {
+            (
+                id.to_string(),
+                Arc::new(FakeConnector::new(id)) as Arc<dyn Connector>,
+            )
+        })
         .collect();
     #[cfg(windows)]
-    map.insert("windows_system".into(), Arc::new(jitmo_connectors::windows_system::WindowsSystem));
+    map.insert(
+        "windows_system".into(),
+        Arc::new(jitmo_connectors::windows_system::WindowsSystem),
+    );
     #[cfg(not(windows))]
-    map.insert("windows_system".into(), Arc::new(FakeConnector::new("windows_system")));
+    map.insert(
+        "windows_system".into(),
+        Arc::new(FakeConnector::new("windows_system")),
+    );
     map
 }
 
@@ -176,7 +200,10 @@ fn main() {
             let core = CoreService::spawn(flow, move |event| {
                 let _ = handle.emit("core-event", &event);
             });
-            app.manage(AppState { core, visibility: AtomicU64::new(0) });
+            app.manage(AppState {
+                core,
+                visibility: AtomicU64::new(0),
+            });
 
             // Hotkey. If it cannot be registered (another app owns it), open the
             // bar right away so the user is never left with nothing on screen.

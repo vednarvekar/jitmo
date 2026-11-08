@@ -47,9 +47,13 @@ pub fn decide(u: &Understanding) -> RouteDecision {
         return RouteDecision::Chained;
     }
     if top.score >= RUN_DIRECTLY {
-        RouteDecision::Run { skill_id: top.id.clone() }
+        RouteDecision::Run {
+            skill_id: top.id.clone(),
+        }
     } else if top.score >= ASK_TO_CONFIRM {
-        RouteDecision::ConfirmTask { skill_id: top.id.clone() }
+        RouteDecision::ConfirmTask {
+            skill_id: top.id.clone(),
+        }
     } else {
         RouteDecision::Ask {
             skill_ids: u.tasks.iter().take(3).map(|t| t.id.clone()).collect(),
@@ -89,7 +93,10 @@ impl StubRouter {
         let mut scored: Vec<(f32, &Skill, Vec<Span>)> = Vec::new();
         for skill in &self.skills {
             let mut best = (0.0f32, Vec::new());
-            for ex in skill.examples.iter().map(|e| Example { words: words(e), skill }) {
+            for ex in skill.examples.iter().map(|e| Example {
+                words: words(e),
+                skill,
+            }) {
                 let (score, spans) = score_example(&ex, &request);
                 if score > best.0 {
                     best = (score, spans);
@@ -106,7 +113,10 @@ impl StubRouter {
                 .iter()
                 .filter(|s| s.0 > 0.0)
                 .take(5)
-                .map(|s| TaskScore { id: s.1.id.clone(), score: s.0 })
+                .map(|s| TaskScore {
+                    id: s.1.id.clone(),
+                    score: s.0,
+                })
                 .collect(),
             out_of_scope: (1.0 - best_score).clamp(0.0, 1.0),
             chained,
@@ -132,7 +142,8 @@ fn is_placeholder(w: &str) -> bool {
 }
 
 fn looks_chained(request: &[String]) -> bool {
-    request.windows(2).any(|p| p[0] == "and" && p[1] == "then") || request.iter().any(|w| w == "then")
+    request.windows(2).any(|p| p[0] == "and" && p[1] == "then")
+        || request.iter().any(|w| w == "then")
 }
 
 fn score_example(ex: &Example, request: &[String]) -> (f32, Vec<Span>) {
@@ -142,12 +153,20 @@ fn score_example(ex: &Example, request: &[String]) -> (f32, Vec<Span>) {
         let has_placeholder = ex.words.iter().any(|w| is_placeholder(w));
         let spans = captured
             .into_iter()
-            .map(|(name, text)| Span { kind: slot_type(ex.skill, &name), text })
+            .map(|(name, text)| Span {
+                kind: slot_type(ex.skill, &name),
+                text,
+            })
             .collect();
         return (if has_placeholder { 0.9 } else { 1.0 }, spans);
     }
     // Fuzzy: word overlap, capped at 0.7.
-    let a: BTreeSet<&str> = ex.words.iter().filter(|w| !is_placeholder(w)).map(String::as_str).collect();
+    let a: BTreeSet<&str> = ex
+        .words
+        .iter()
+        .filter(|w| !is_placeholder(w))
+        .map(String::as_str)
+        .collect();
     let b: BTreeSet<&str> = request.iter().map(String::as_str).collect();
     let both = a.intersection(&b).count() as f32;
     let either = a.union(&b).count() as f32;
@@ -210,8 +229,19 @@ mod tests {
         let u = router().route("Open Spotify.");
         assert_eq!(u.tasks[0].id, "apps.open");
         assert!(u.tasks[0].score >= RUN_DIRECTLY);
-        assert_eq!(u.spans, vec![Span { text: "spotify".into(), kind: "app".into() }]);
-        assert_eq!(decide(&u), RouteDecision::Run { skill_id: "apps.open".into() });
+        assert_eq!(
+            u.spans,
+            vec![Span {
+                text: "spotify".into(),
+                kind: "app".into()
+            }]
+        );
+        assert_eq!(
+            decide(&u),
+            RouteDecision::Run {
+                skill_id: "apps.open".into()
+            }
+        );
     }
 
     #[test]
@@ -253,19 +283,42 @@ mod tests {
     fn confidence_rules_by_score() {
         let mk = |score: f32, oos: f32| Understanding {
             tasks: vec![
-                TaskScore { id: "a".into(), score },
-                TaskScore { id: "b".into(), score: 0.1 },
+                TaskScore {
+                    id: "a".into(),
+                    score,
+                },
+                TaskScore {
+                    id: "b".into(),
+                    score: 0.1,
+                },
             ],
             out_of_scope: oos,
             chained: false,
             spans: vec![],
         };
-        assert_eq!(decide(&mk(0.80, 0.0)), RouteDecision::Run { skill_id: "a".into() });
-        assert_eq!(decide(&mk(0.79, 0.0)), RouteDecision::ConfirmTask { skill_id: "a".into() });
-        assert_eq!(decide(&mk(0.50, 0.0)), RouteDecision::ConfirmTask { skill_id: "a".into() });
+        assert_eq!(
+            decide(&mk(0.80, 0.0)),
+            RouteDecision::Run {
+                skill_id: "a".into()
+            }
+        );
+        assert_eq!(
+            decide(&mk(0.79, 0.0)),
+            RouteDecision::ConfirmTask {
+                skill_id: "a".into()
+            }
+        );
+        assert_eq!(
+            decide(&mk(0.50, 0.0)),
+            RouteDecision::ConfirmTask {
+                skill_id: "a".into()
+            }
+        );
         assert_eq!(
             decide(&mk(0.49, 0.0)),
-            RouteDecision::Ask { skill_ids: vec!["a".into(), "b".into()] }
+            RouteDecision::Ask {
+                skill_ids: vec!["a".into(), "b".into()]
+            }
         );
         assert_eq!(decide(&mk(0.95, 0.60)), RouteDecision::Decline);
     }

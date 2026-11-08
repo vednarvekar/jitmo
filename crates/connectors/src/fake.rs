@@ -34,8 +34,14 @@ pub struct FakeConnector {
 impl FakeConnector {
     /// A connector whose actions succeed, whose checks pass, and which cannot undo.
     pub fn new(id: &str) -> Self {
-        let state = State { default_check: true, ..State::default() };
-        FakeConnector { id: id.into(), state: Mutex::new(state) }
+        let state = State {
+            default_check: true,
+            ..State::default()
+        };
+        FakeConnector {
+            id: id.into(),
+            state: Mutex::new(state),
+        }
     }
 
     /// Make `execute` fail with this error.
@@ -73,11 +79,17 @@ impl FakeConnector {
     }
 
     pub fn execute_count(&self) -> usize {
-        self.calls().iter().filter(|c| matches!(c, Call::Execute { .. })).count()
+        self.calls()
+            .iter()
+            .filter(|c| matches!(c, Call::Execute { .. }))
+            .count()
     }
 
     pub fn check_count(&self) -> usize {
-        self.calls().iter().filter(|c| matches!(c, Call::Check { .. })).count()
+        self.calls()
+            .iter()
+            .filter(|c| matches!(c, Call::Check { .. }))
+            .count()
     }
 }
 
@@ -96,16 +108,25 @@ impl Connector for FakeConnector {
 
     fn execute(&self, action: &str, args: &Args) -> Result<Output, ConnError> {
         let mut s = self.state.lock().unwrap();
-        s.calls.push(Call::Execute { action: action.into(), args: args.clone() });
+        s.calls.push(Call::Execute {
+            action: action.into(),
+            args: args.clone(),
+        });
         match &s.execute_error {
             Some(e) => Err(e.clone()),
-            None => Ok(Output(BTreeMap::from([("action".to_string(), action.to_string())]))),
+            None => Ok(Output(BTreeMap::from([(
+                "action".to_string(),
+                action.to_string(),
+            )]))),
         }
     }
 
     fn check(&self, action: &str, args: &Args) -> Result<bool, ConnError> {
         let mut s = self.state.lock().unwrap();
-        s.calls.push(Call::Check { action: action.into(), args: args.clone() });
+        s.calls.push(Call::Check {
+            action: action.into(),
+            args: args.clone(),
+        });
         match s.check_script.pop_front() {
             Some(answer) => answer,
             None => Ok(s.default_check),
@@ -114,7 +135,9 @@ impl Connector for FakeConnector {
 
     fn undo(&self, action: &str, _output: &Output) -> Option<Result<(), ConnError>> {
         let mut s = self.state.lock().unwrap();
-        s.calls.push(Call::Undo { action: action.into() });
+        s.calls.push(Call::Undo {
+            action: action.into(),
+        });
         s.undoable.then_some(Ok(()))
     }
 }
@@ -136,7 +159,9 @@ mod tests {
 
     #[test]
     fn scripted_checks_then_default() {
-        let c = FakeConnector::new("fake").script_checks(vec![Ok(false)]).default_check(true);
+        let c = FakeConnector::new("fake")
+            .script_checks(vec![Ok(false)])
+            .default_check(true);
         let a = Args::new();
         assert_eq!(c.check("x", &a), Ok(false));
         assert_eq!(c.check("x", &a), Ok(true));
@@ -146,12 +171,17 @@ mod tests {
     fn undo_is_none_unless_enabled() {
         let out = Output::default();
         assert!(FakeConnector::new("a").undo("x", &out).is_none());
-        assert!(FakeConnector::new("a").undoable().undo("x", &out).unwrap().is_ok());
+        assert!(FakeConnector::new("a")
+            .undoable()
+            .undo("x", &out)
+            .unwrap()
+            .is_ok());
     }
 
     #[test]
     fn execute_can_be_made_to_fail() {
-        let c = FakeConnector::new("a").fail_execute_with(ConnError::NotInstalled("Spotify".into()));
+        let c =
+            FakeConnector::new("a").fail_execute_with(ConnError::NotInstalled("Spotify".into()));
         let err = c.execute("play", &Args::new()).unwrap_err();
         assert_eq!(err.to_string(), "Spotify isn't installed.");
     }

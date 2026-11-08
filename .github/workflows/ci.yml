@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One run per branch; a newer push cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    # Windows-only code (UI Automation, Credential Manager, the Tauri shell)
+    # cannot be built or tested anywhere else.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: app/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      # The UI must be built first: the Tauri crate embeds app/dist at compile time.
+      - name: UI install
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: UI tests (Vitest)
+        working-directory: app
+        run: pnpm test
+
+      - name: UI build (type check + bundle)
+        working-directory: app
+        run: pnpm build
+
+      - name: Rust format
+        run: cargo fmt --all --check
+
+      - name: Rust lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Rust build
+        run: cargo build --workspace
+
+      - name: Rust tests
+        run: cargo test --workspace
+
+      # SQLCipher needs OpenSSL built from source, which needs a full Perl.
+      # Git's own Perl is missing modules, so put Strawberry Perl first.
+      - name: Encrypted store tests (SQLCipher)
+        shell: pwsh
+        run: |
+          $env:PATH = "C:\Strawberry\perl\bin;C:\Strawberry\c\bin;$env:PATH"
+          cargo test -p jitmo-store --features sqlcipher
+
+      # Phase 1 done-when: the runner reports pass or fail, time and peak memory.
+      # Fake connectors only: CI must never open real apps.
+      - name: Test-set run
+        run: cargo run --release -p jitmo-testset-runner -- --json testset-results.json
+
+      - name: Upload test-set results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testset-results
+          path: testset-results.json
+          if-no-files-found: ignore

@@ -19,7 +19,11 @@ mod os {
     #[link(name = "kernel32")]
     extern "system" {
         fn GetCurrentProcess() -> isize;
-        fn K32GetProcessMemoryInfo(process: isize, counters: *mut ProcessMemoryCounters, cb: u32) -> i32;
+        fn K32GetProcessMemoryInfo(
+            process: isize,
+            counters: *mut ProcessMemoryCounters,
+            cb: u32,
+        ) -> i32;
     }
 
     fn counters() -> Option<ProcessMemoryCounters> {
@@ -86,7 +90,10 @@ mod tests {
             big[i] = 1; // touch each page so it is really resident
         }
         let after = peak_working_set_bytes().unwrap();
-        assert!(after >= before + 32 * 1024 * 1024, "peak should grow by roughly the 64 MB touched");
+        assert!(
+            after >= before + 32 * 1024 * 1024,
+            "peak should grow by roughly the 64 MB touched"
+        );
         drop(big);
     }
 }

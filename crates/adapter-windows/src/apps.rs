@@ -24,7 +24,10 @@ pub enum Lookup {
 /// Lowercase letters and digits only, so "Visual Studio Code" and
 /// "visual-studio-code" compare equal.
 pub fn normalize(s: &str) -> String {
-    s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 /// Pick the app the user meant: an exact name first, then a single app whose
@@ -34,13 +37,20 @@ pub fn find_app(entries: &[AppEntry], wanted: &str) -> Lookup {
     if w.is_empty() {
         return Lookup::NotFound;
     }
-    let usable = || entries.iter().filter(|e| !normalize(&e.name).contains("uninstall"));
+    let usable = || {
+        entries
+            .iter()
+            .filter(|e| !normalize(&e.name).contains("uninstall"))
+    };
     if let Some(e) = usable().find(|e| normalize(&e.name) == w) {
         return Lookup::Found(e.clone());
     }
     let mut hits: Vec<&AppEntry> = Vec::new();
     for e in usable().filter(|e| normalize(&e.name).contains(&w)) {
-        if !hits.iter().any(|h| normalize(&h.name) == normalize(&e.name)) {
+        if !hits
+            .iter()
+            .any(|h| normalize(&h.name) == normalize(&e.name))
+        {
             hits.push(e);
         }
     }
@@ -57,7 +67,10 @@ pub fn parse_app_list(text: &str) -> Vec<AppEntry> {
         .filter_map(|line| {
             let (name, id) = line.trim_end_matches('\r').split_once('\t')?;
             let (name, id) = (name.trim(), id.trim());
-            (!name.is_empty() && !id.is_empty()).then(|| AppEntry { name: name.into(), app_id: id.into() })
+            (!name.is_empty() && !id.is_empty()).then(|| AppEntry {
+                name: name.into(),
+                app_id: id.into(),
+            })
         })
         .collect()
 }
@@ -88,7 +101,11 @@ pub fn parse_tasklist(csv: &str) -> Vec<(String, String)> {
             let inner = line.strip_prefix('"')?.strip_suffix('"')?;
             let fields: Vec<&str> = inner.split("\",\"").collect();
             let image = fields.first()?.to_string();
-            let title = fields.get(8).map(|t| t.to_string()).filter(|t| t != "N/A").unwrap_or_default();
+            let title = fields
+                .get(8)
+                .map(|t| t.to_string())
+                .filter(|t| t != "N/A")
+                .unwrap_or_default();
             Some((image, title))
         })
         .collect()
@@ -123,7 +140,9 @@ mod os {
 
     /// Look an app up by name, refreshing the app list once if it is not found.
     pub fn lookup_app(wanted: &str) -> Result<Lookup, String> {
-        let mut cache = CACHE.lock().map_err(|_| "app list is unavailable".to_string())?;
+        let mut cache = CACHE
+            .lock()
+            .map_err(|_| "app list is unavailable".to_string())?;
         if let Some(entries) = cache.as_ref() {
             let found = find_app(entries, wanted);
             if found != Lookup::NotFound {
@@ -192,14 +211,24 @@ mod tests {
     fn parses_the_app_list_and_skips_bad_lines() {
         let e = entries();
         assert_eq!(e.len(), 7);
-        assert_eq!(e[0], AppEntry { name: "Spotify".into(), app_id: "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify".into() });
+        assert_eq!(
+            e[0],
+            AppEntry {
+                name: "Spotify".into(),
+                app_id: "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify".into()
+            }
+        );
     }
 
     #[test]
     fn exact_name_wins_regardless_of_case_and_punctuation() {
-        let Lookup::Found(e) = find_app(&entries(), "spotify") else { panic!() };
+        let Lookup::Found(e) = find_app(&entries(), "spotify") else {
+            panic!()
+        };
         assert_eq!(e.name, "Spotify");
-        assert!(matches!(find_app(&entries(), "visual-studio-code"), Lookup::Found(e) if e.name == "Visual Studio Code"));
+        assert!(
+            matches!(find_app(&entries(), "visual-studio-code"), Lookup::Found(e) if e.name == "Visual Studio Code")
+        );
     }
 
     #[test]
@@ -210,7 +239,9 @@ mod tests {
 
     #[test]
     fn one_partial_match_is_used() {
-        assert!(matches!(find_app(&entries(), "code"), Lookup::Found(e) if e.name == "Visual Studio Code"));
+        assert!(
+            matches!(find_app(&entries(), "code"), Lookup::Found(e) if e.name == "Visual Studio Code")
+        );
     }
 
     #[test]
@@ -243,7 +274,10 @@ mod tests {
         assert!(process_matches("Code.exe", "Visual Studio Code"));
         assert!(!process_matches("svchost.exe", "spotify"));
         assert!(!process_matches("exe", "spotify"));
-        assert!(!process_matches("cmd.exe", "Command Prompt Tools"), "short names must not match loosely");
+        assert!(
+            !process_matches("cmd.exe", "Command Prompt Tools"),
+            "short names must not match loosely"
+        );
     }
 
     #[test]
