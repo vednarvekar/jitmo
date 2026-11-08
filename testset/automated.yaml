@@ -78,3 +78,11 @@ T99:
   skill: reminders.timer
   calls:
     - { connector: reminders, action: set, args: { text: "Set a 10-minute timer." } }
+
+# System controls (fake connector here; parsing and scripts are covered by the connector's tests).
+T45: { request: "Turn the volume down.", expect: ran, skill: system.volume, calls: [{ connector: system_controls, action: adjust, args: { text: "Turn the volume down." } }] }
+T46: { request: "Lock my laptop.", expect: ran, skill: system.lock, calls: [{ connector: system_controls, action: lock }] }
+T47: { request: "Turn on Bluetooth.", expect: ran, skill: system.radio, calls: [{ connector: system_controls, action: radio, args: { text: "Turn on Bluetooth." } }] }
+T49: { request: "Take a screenshot.", expect: ran, skill: system.screenshot, calls: [{ connector: system_controls, action: screenshot }] }
+T57: { known_failing: "the router sends loose volume wording to media control (A3, 0.86) instead of S1; the SP1 near-neighbour confusion. Needs real-log retraining.", needs_model: true, request: "louder", expect: ran, skill: system.volume, calls: [{ connector: system_controls, action: adjust, args: { text: "louder" } }] }
+T62: { needs_model: true, request: "wifi off", expect: ran, skill: system.radio, calls: [{ connector: system_controls, action: radio, args: { text: "wifi off" } }] }

@@ -1,0 +1,24 @@
+id: system.lock                  # task S2
+task: S2
+version: 1
+category: system
+capabilities:
+  - system.lock
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 15
+risk: safe
+examples:
+  - "lock my laptop"
+  - "lock the screen"
+slots: {}
+steps:
+  - connector: system_controls
+    action: lock
+    args: {}
+check:
+  connector: system_controls
+  action: lock
+  args: {}
+undo: none

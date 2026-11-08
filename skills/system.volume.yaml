@@ -1,0 +1,26 @@
+id: system.volume                  # task S1
+task: S1
+version: 1
+category: system
+capabilities:
+  - system.audio_display
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 15
+risk: safe
+examples:
+  - "turn the volume down"
+  - "turn the volume up"
+  - "mute"
+  - "make the screen brighter"
+slots: {}
+steps:
+  - connector: system_controls
+    action: adjust
+    args: { text: "{request}" }
+check:
+  connector: system_controls
+  action: adjust
+  args: { text: "{request}" }
+undo: none

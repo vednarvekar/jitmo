@@ -1,0 +1,25 @@
+id: system.screenshot                  # task S5
+task: S5
+version: 1
+category: system
+capabilities:
+  - system.screenshot
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 15
+risk: changes_data
+examples:
+  - "take a screenshot"
+slots: {}
+steps:
+  - connector: system_controls
+    action: screenshot
+    args: {}
+check:
+  connector: system_controls
+  action: screenshot
+  args: {}
+undo: 
+  - connector: system_controls
+    action: screenshot

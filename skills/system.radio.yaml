@@ -1,0 +1,26 @@
+id: system.radio                  # task S3
+task: S3
+version: 1
+category: system
+capabilities:
+  - system.radios
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 15
+risk: changes_data
+examples:
+  - "turn on bluetooth"
+  - "turn off wifi"
+slots: {}
+steps:
+  - connector: system_controls
+    action: radio
+    args: { text: "{request}" }
+check:
+  connector: system_controls
+  action: radio
+  args: { text: "{request}" }
+undo: 
+  - connector: system_controls
+    action: radio

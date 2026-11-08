@@ -200,6 +200,10 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/files.move.yaml"),
         include_str!("../../../skills/reminders.remind.yaml"),
         include_str!("../../../skills/reminders.timer.yaml"),
+        include_str!("../../../skills/system.volume.yaml"),
+        include_str!("../../../skills/system.lock.yaml"),
+        include_str!("../../../skills/system.radio.yaml"),
+        include_str!("../../../skills/system.screenshot.yaml"),
         include_str!("../../../skills/stub.send.yaml"),
     ]
     .iter()
@@ -240,6 +244,15 @@ fn chrono_utc_now() -> String {
     jitmo_connectors::reminders::utc_text(chrono::Local::now())
 }
 
+/// The current user's Pictures folder.
+fn pictures_dir() -> std::path::PathBuf {
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default()
+        .join("Pictures")
+}
+
 /// The current user's Downloads folder.
 fn downloads_dir() -> std::path::PathBuf {
     std::env::var_os("USERPROFILE")
@@ -259,6 +272,14 @@ fn connectors(db: &std::path::Path) -> HashMap<String, Arc<dyn Connector>> {
             )
         })
         .collect();
+    #[cfg(windows)]
+    map.insert(
+        "system_controls".into(),
+        Arc::new(jitmo_connectors::system_controls::SystemControls::new(
+            Arc::new(jitmo_connectors::system_controls::PowerShell),
+            pictures_dir(),
+        )),
+    );
     map.insert(
         "reminders".into(),
         Arc::new(jitmo_connectors::reminders::Reminders::new(
