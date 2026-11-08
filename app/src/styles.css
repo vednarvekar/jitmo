@@ -1,4 +1,4 @@
-/* The window is transparent. `.shell` is its 20 px margin, which holds the
+/* The window is transparent. `.shell` is its 14 px margin, which holds the
    pill's shadow; `.bar` is the pill itself. */
 :root {
   color-scheme: dark light;
@@ -13,7 +13,7 @@
   --error: #ff7b7b;
   --chip: #34343f;
   --chip-hover: #42424f;
-  --shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
 @media (prefers-color-scheme: light) {
@@ -28,7 +28,7 @@
     --error: #c42b2b;
     --chip: #e3e5f0;
     --chip-hover: #d5d8e8;
-    --shadow: 0 10px 28px rgba(30, 30, 60, 0.28), 0 2px 6px rgba(30, 30, 60, 0.18);
+    --shadow: 0 6px 18px rgba(30, 30, 60, 0.28), 0 1px 4px rgba(30, 30, 60, 0.18);
   }
 }
 
@@ -37,59 +37,37 @@ body {
   margin: 0;
   background: transparent;
   color: var(--text);
-  font: 15px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 14px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   overflow: hidden;
   user-select: none;
 }
 
 .shell {
-  padding: 20px;
+  padding: 14px;
   box-sizing: border-box;
 }
 
 .bar {
   background: var(--bar);
-  border-radius: 28px;
+  border-radius: 24px;
   box-shadow: var(--shadow), inset 0 0 0 1px var(--bar-edge);
-  padding: 0 14px 12px;
+  padding: 6px 8px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
 }
 
-/* Drag handle: a thin strip across the top with a small pill in the middle. */
-.grip {
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: grab;
-}
-.grip:active {
-  cursor: grabbing;
-}
-.grip-dot {
-  width: 34px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--muted);
-  opacity: 0.4;
-  pointer-events: none;
-}
-.grip:hover .grip-dot {
-  opacity: 0.8;
-}
-
 .row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
+/* The mark is also a drag handle. */
 .mark {
-  width: 28px;
+  width: 26px;
   text-align: center;
-  font-size: 18px;
+  font-size: 16px;
   color: var(--accent);
   cursor: grab;
 }
@@ -98,19 +76,18 @@ body {
   flex: 1;
   min-width: 0;
   box-sizing: border-box;
-  padding: 11px 14px;
+  padding: 7px 12px;
   font: inherit;
-  font-size: 17px;
+  font-size: 15px;
   color: var(--text);
   background: var(--field);
   border: 0;
-  border-radius: 20px;
+  border-radius: 18px;
   outline: 2px solid transparent;
   user-select: text;
 }
 .input::placeholder {
   color: var(--muted);
-  font-size: 14px;
 }
 .input:focus {
   outline-color: var(--accent);
@@ -122,17 +99,17 @@ body {
 .go,
 .close {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
   padding: 0;
   border-radius: 50%;
   display: grid;
   place-items: center;
   text-align: center;
-  font-size: 18px;
   line-height: 1;
 }
 .go {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
   background: var(--accent);
   color: var(--accent-text);
 }
@@ -144,9 +121,9 @@ body {
   cursor: default;
 }
 .close {
-  width: 32px;
-  height: 32px;
-  font-size: 20px;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
   background: transparent;
   color: var(--muted);
 }
@@ -159,27 +136,27 @@ body {
   display: none;
 }
 .result {
-  margin-top: 10px;
-  padding: 0 4px;
+  margin-top: 6px;
+  padding: 0 6px 4px;
 }
 
 .line {
-  padding: 2px 2px;
+  padding: 1px 2px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   user-select: text;
 }
 .line .message {
   flex: 1;
 }
 .line .icon {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -198,8 +175,8 @@ body {
 }
 
 .spinner {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   border: 2px solid var(--chip-hover);
   border-top-color: var(--accent);
@@ -214,10 +191,10 @@ body {
 .card {
   background: var(--field);
   border-radius: 16px;
-  padding: 12px 14px;
+  padding: 8px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .buttons {
@@ -234,7 +211,7 @@ button {
   background: var(--chip);
   border: 0;
   border-radius: 14px;
-  padding: 7px 14px;
+  padding: 5px 12px;
   cursor: pointer;
   text-align: left;
 }
