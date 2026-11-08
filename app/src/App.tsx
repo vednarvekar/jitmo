@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as bridge from "./bridge";
-import Mark from "./Mark";
+import Orb from "./Orb";
 import {
   UNDO_WINDOW_MS,
   autoHideMs,
@@ -19,6 +19,8 @@ let nextId = Date.now();
 const HOVER_GRACE_MS = 2_500;
 /** How many past requests Up/Down can step through. */
 const HISTORY_SIZE = 30;
+/** One-tap ideas shown under an empty bar. */
+const SUGGESTIONS = ["Open Spotify", "Set a 10-minute timer", "What's 18% of 2,450?", "Pause the music"];
 
 export default function App() {
   const [state, dispatch] = useReducer(reduce, initialState);
@@ -185,7 +187,7 @@ export default function App() {
       >
         {/* Any empty part of the pill drags it; the input and buttons do not. */}
         <div className="row" data-tauri-drag-region>
-          <Mark />
+          <Orb working={state.phase === "working"} />
 
           {showStatus ? (
             <div
@@ -236,7 +238,7 @@ export default function App() {
               autoFocus
               spellCheck={false}
               aria-label="Ask jitmo"
-              placeholder="Ask jitmo…"
+              placeholder="Ask anything…"
               value={text}
               disabled={!typing}
               onChange={(e) => {
@@ -254,7 +256,9 @@ export default function App() {
             disabled={!canSend}
             onClick={() => send(text)}
           >
-            ↵
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
           <button className="close" aria-label="Close" title="Close (Esc)" onClick={() => bridge.hideBar()}>
             ×
@@ -292,6 +296,16 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {state.phase === "idle" && text === "" && (
+        <div className="chips" data-tauri-drag-region>
+          {SUGGESTIONS.map((s) => (
+            <button key={s} className="chip" onClick={() => send(s)}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
