@@ -1,0 +1,53 @@
+T75  OK  422.2s  Play lo-fi and turn on Do Not Disturb.
+T76  OK  154.6s  Find the budget sheet and send it to Rahul on WhatsApp.
+T77  OK  108.0s  Check my calendar and tell Ved on WhatsApp when I'm free tomorrow.
+T78  BAD 109.4s  Archive the newsletters and show what's urgent.
+     gold: ['email.organize', 'email.urgent']
+     pred: ['workflow.email_to_event', 'workflow.weekly_report']
+T79  BAD 119.1s  Open Chrome and search for flights to Goa.
+     gold: ['web.open', 'web.search']
+     pred: ['app.open', 'web.search']
+T80  BAD 156.1s  Take a screenshot and email it to Rahul.
+     gold: ['system.screenshot', 'email.send']
+     pred: ['files.find', 'email.send']
+T81  OK  107.4s  Mute notifications, dim the screen and play my focus playlist.
+T82  BAD 108.2s  Turn Rahul's email into a meeting and invite Priya.
+     gold: ['workflow.email_to_event', 'calendar.schedule']
+     pred: ['workflow.email_to_event', 'calendar.add', 'workflow.forward_attachment']
+{
+ "model": "qwen2.5-1.5b-instruct-q4_k_m",
+ "set": "test",
+ "n": 8,
+ "threads": 4,
+ "exact_match": 0.5,
+ "exact_match_count": 4,
+ "step_tp": 12,
+ "step_fp": 6,
+ "step_fn": 5,
+ "step_precision": 0.6666666666666666,
+ "step_recall": 0.7058823529411765,
+ "slot_acc_strict": 0.75,
+ "slot_acc_lenient": 0.75,
+ "extra_slots_total": 3,
+ "json_valid": 1.0,
+ "tok_per_sec_mean": 0.39834039612524885,
+ "sec_per_plan_mean": 160.63042495599984,
+ "sec_per_plan_median": 114.231740944997,
+ "sec_per_plan_max": 422.2464375070049,
+ "sec_per_plan_first_cold": 422.2464375070049,
+ "sec_per_plan_mean_excl_first": 123.25670887728484,
+ "prefill_sec_mean_excl_first": 23.079657212714665,
+ "plans_under_5s": 0,
+ "peak_rss_mb": 2063.81640625,
+ "rss_after_load_mb": 1879.1328125,
+ "timing_note": "measured while another job was running, re-measure later"
+}
+
+Confusion (gold -> predicted, errors only):
+  email.organize               -> workflow.email_to_event      x1
+  email.urgent                 -> workflow.weekly_report       x1
+  web.open                     -> app.open                     x1
+  system.screenshot            -> files.find                   x1
+  calendar.schedule            -> calendar.add                 x1
+  <none>                       -> workflow.forward_attachment  x1
+  (correct skill positions: 12)

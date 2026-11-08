@@ -1,0 +1,119 @@
+A1|Could you get Firefox up on the screen
+A1|I'm done with Word, close it
+A1|bring up the calculator
+A1|start notepad
+A2|I feel like listening to some Bollywood hits
+A2|play Blinding Lights by The Weeknd
+A2|put on Daft Punk
+A3|stop the song for a sec
+A3|skip ahead to the next track
+A3|lower the music a little
+A4|what's new on Linus Tech Tips
+A4|open Veritasium's most recent upload
+A5|look up how to tie a tie on youtube
+A5|search the web for cheap hotels in Goa
+A6|open reddit in the browser
+A6|head over to nytimes.com
+M1|tell Mohan on whatsapp I'm stuck in traffic
+M1|whatsapp my sister happy birthday
+M2|send the resume to Priya through whatsapp
+M2|whatsapp Rahul the photos from the trip
+M3|did Dad reply on whatsapp
+M3|read me my unread whatsapp chats
+M4|tell everyone on teams that standup is moved to 10
+M4|post to the engineering channel on teams: build is green
+E1|any urgent email from my boss
+E1|show me emails that look important
+E2|what is the email from HR about
+E2|summarise that long thread with finance
+E3|find the mail about the electricity bill
+E3|emails from Sunita sent last week
+E4|which mails haven't I responded to yet
+E4|show unreplied emails
+E5|draft a polite reply to Neha saying I'll review it tomorrow
+E5|write back to the recruiter, say I'm not interested
+E6|file all the newsletters away
+E6|mark the old promos as read
+E7|send an email to Amit about the delay
+E7|mail the signed form to the landlord
+Q1|what time is sunrise on Sunday
+Q1|is there a full moon this week
+Q2|will it be hot tomorrow
+Q2|weather in Mumbai
+Q3|who is the prime minister of Japan
+Q3|how many people live in Brazil
+Q4|what's 18 percent of 4500
+Q4|convert 3 gallons to litres
+Q5|what time is it in Singapore
+Q5|how many days until Christmas
+F1|where's the tax return pdf
+F1|find the spreadsheet I worked on yesterday
+F2|what have I downloaded today
+F2|list my recent documents
+F3|open the presentation from last week
+F3|pull up my lease agreement
+F4|move the screenshots into the Pictures folder
+F4|rename this file to budget final
+F5|email the report to Sandeep
+F5|send the slides to Kavita on teams
+F6|get a shareable link for the Projects folder
+F6|let Arjun view the budget file
+C1|what's my day like on Thursday
+C1|do I have anything this afternoon
+C2|when are Meera and I both free next week
+C2|find a gap that works for me and the CFO
+C3|what should I read before my 3pm
+C3|get me ready for the next meeting
+C4|add dentist on Friday at 5 to my calendar
+C4|create an event for the offsite on the 14th
+C5|block two hours tomorrow morning to write
+C5|hold an hour on Wednesday for focus time
+C6|schedule a call with Vikram on Monday at 11
+C6|invite Pooja to a 30 minute sync tomorrow
+C7|shift my 2pm to Thursday
+C7|cancel the Friday review
+C8|accept the invite from Dev
+C8|decline tomorrow's all hands
+R1|remind me to pay rent on the 1st
+R1|remind me to call the plumber at 6pm
+R2|set a 20 minute timer
+R2|wake me up at 6:30
+W1|run my morning briefing
+W1|what do I need to know today, including urgent mail
+W2|make a calendar event from this email
+W2|turn Anita's email into a meeting
+W3|save the attachments from this email into Receipts
+W3|download the files attached to Ravi's mail to the Taxes folder
+W4|send the attachment in this mail to Priya on whatsapp
+W4|forward the file from that email to the project group on teams
+W5|find the latest sales report and email it to my boss
+W5|mail this week's summary to Karan
+W6|focus mode for an hour
+W6|start deep work: music on and notifications off for 2 hours
+S1|make it brighter
+S1|turn the sound down
+S2|lock the computer
+S2|lock my laptop
+S3|switch bluetooth off
+S3|turn wifi on
+S4|don't disturb me for 30 minutes
+S4|silence all notifications
+S5|take a screenshot of this
+S5|capture the screen
+OUT|call my mom
+OUT|book an uber to the airport
+OUT|delete all my old emails permanently
+OUT|order a pizza
+OUT|post a story on instagram
+OUT|message Rahul on telegram
+OUT|write a short story about dragons
+OUT|pay the credit card bill
+OUT|tell me a joke
+OUT|turn on the living room lights
+A2+S4|play some jazz and turn on do not disturb
+F1+F5|find the invoice and email it to Rahul
+C1+M1|check my calendar for tomorrow and whatsapp Priya what's on
+E1+C4|check urgent mail then add the meeting to my calendar
+A1+A5|open chrome and search for python tutorials
+S5+E7|take a screenshot and email it to Sam
+R2+A2|set a timer for 10 minutes then play lo-fi

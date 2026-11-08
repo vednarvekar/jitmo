@@ -1,0 +1,78 @@
+v1   BAD 259.6s  Turn the volume up and then play some jazz.
+     gold: ['system.volume', 'music.play']
+     pred: ['system.volume']
+v2   OK  152.1s  Search YouTube for guitar tutorials, then open Arijit Singh's latest video.
+v3   OK  121.5s  Check the weather in Pune and remind me to carry an umbrella at 8am.
+v4   OK   50.6s  Find last week's invoice PDF and email it to Anita.
+v5   OK   27.0s  Take a screenshot, then lock my laptop.
+v6   OK   31.3s  What's on my calendar this week? Then block two hours tomorrow morning for focus.
+v7   OK   38.1s  Find Meera's latest email, summarize it and draft a reply saying I'll review it tonight.
+v8   OK   57.6s  Convert 5 miles to km and message Ved on WhatsApp with the answer.
+v9   OK   76.2s  Switch off the Wi-Fi and set a 25 minute timer.
+v10  OK   94.2s  Any new WhatsApp messages? Also, which emails are waiting for my reply?
+v11  BAD 128.1s  Rename the report to Final Report and move it to the Clients folder.
+     gold: ['files.rename', 'files.move']
+     pred: ['workflow.save_attachments']
+v12  OK   45.7s  Find the Q3 deck and open it, then share the Marketing folder with the team.
+v13  BAD  25.7s  Decline the Friday review and tell the team chat I can't make it.
+     gold: ['calendar.respond', 'teams.post']
+     pred: ['workflow.email_to_event', 'workflow.weekly_report']
+v14  OK   30.9s  Save the attachments from Rahul's last email to the Finance folder, then tell the ops channel on Teams it's done.
+v15  BAD  19.5s  When does the sun set today, and what time is it in London?
+     gold: ['info.astro', 'info.time']
+     pred: ['info.time', 'info.time']
+v16  OK   17.6s  Close Spotify and turn on Bluetooth.
+v17  OK   33.2s  When are Priya and I both free on Wednesday? Then set up a meeting with her then.
+v18  OK   23.3s  Give me my morning brief and play my wake-up playlist.
+v19  OK   20.5s  Skip this song and make the screen brighter.
+v20  BAD  29.1s  Show what I downloaded today and send the newest one to Rahul on Teams.
+     gold: ['files.recent', 'files.send']
+     pred: ['files.recent', 'files.send', 'files.find']
+v21  OK   33.8s  Cancel my 3pm and email Rahul that I'm sorry I missed it.
+v22  BAD  16.4s  Add dentist on Friday at 4pm to my calendar and remind me to call mom at 6pm.
+     gold: ['calendar.add', 'reminder.set']
+     pred: ['calendar.add']
+v23  OK   24.5s  Turn the volume down, take a screenshot, then lock the laptop.
+v24  BAD  22.7s  Find Rahul's emails about the budget and archive them.
+     gold: ['email.find', 'email.organize']
+     pred: ['email.find', 'workflow.focus_mode']
+{
+ "model": "qwen2.5-1.5b-instruct-q4_k_m",
+ "set": "val",
+ "n": 24,
+ "threads": 4,
+ "exact_match": 0.7083333333333334,
+ "exact_match_count": 17,
+ "step_tp": 43,
+ "step_fp": 6,
+ "step_fn": 8,
+ "step_precision": 0.8775510204081632,
+ "step_recall": 0.8431372549019608,
+ "slot_acc_strict": 0.5972222222222222,
+ "slot_acc_lenient": 0.6666666666666666,
+ "extra_slots_total": 10,
+ "json_valid": 1.0,
+ "tok_per_sec_mean": 1.195719920685527,
+ "sec_per_plan_mean": 57.472884041668294,
+ "sec_per_plan_median": 32.24982525000814,
+ "sec_per_plan_max": 259.56317360000685,
+ "sec_per_plan_first_cold": 259.56317360000685,
+ "sec_per_plan_mean_excl_first": 48.686349713044876,
+ "prefill_sec_mean_excl_first": 3.8129337347826273,
+ "plans_under_5s": 0,
+ "peak_rss_mb": 1852.55078125,
+ "rss_after_load_mb": 1404.62890625,
+ "timing_note": "measured while another job was running, re-measure later"
+}
+
+Confusion (gold -> predicted, errors only):
+  music.play                   -> <missing>                    x1
+  files.rename                 -> workflow.save_attachments    x1
+  files.move                   -> <missing>                    x1
+  calendar.respond             -> workflow.email_to_event      x1
+  teams.post                   -> workflow.weekly_report       x1
+  info.astro                   -> info.time                    x1
+  <none>                       -> files.find                   x1
+  reminder.set                 -> <missing>                    x1
+  email.organize               -> workflow.focus_mode          x1
+  (correct skill positions: 43)

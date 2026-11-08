@@ -1,0 +1,9 @@
+[torch] threads=4 load 10.9s; RSS after load+warmup 1334 MB; RSS peak-ish now 1142 MB
+[torch] model call only (n=164): mean 284 ms, median 310, p95 337, max 392
+[torch] model + rules  (n=164): mean 187 ms, median 180, p95 226, max 551
+[torch] system CPU% during timing (includes other processes): 91
+[torch] doc4.txt                   TP  88 FP   0 FN   0  precision 100% recall 100% F1 100%   every span right in 64/64 sentences
+[torch] val.txt                    TP 106 FP   0 FN   0  precision 100% recall 100% F1 100%   every span right in 60/60 sentences
+[torch] val2.txt                   TP  66 FP   0 FN   0  precision 100% recall 100% F1 100%   every span right in 40/40 sentences
+[torch] test.txt                   TP 154 FP   6 FN   6  precision 96% recall 96% F1 96%   every span right in 94/100 sentences
+[torch] fresh.txt                  TP 121 FP  25 FN  43  precision 83% recall 74% F1 78%   every span right in 62/100 sentences

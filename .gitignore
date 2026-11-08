@@ -1,0 +1,23 @@
+# environments, builds, models
+.venv/
+venv/
+target/
+node_modules/
+__pycache__/
+*.gguf
+*.onnx
+*.safetensors
+*.bin
+models/
+adapters/
+# local-only
+docs-backup-*/
+docs/_archive/
+.vscode/
+*Zone.Identifier
+spikes/**/results/
+# stale flat copies of docs (real ones live in docs/0x-*/)
+docs/*.md
+!docs/README.md
+hf_cache/
+.gitattributes.bak

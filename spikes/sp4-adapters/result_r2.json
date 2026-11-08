@@ -1,0 +1,63 @@
+{
+ "base": "../sp3-planner/models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+ "n_swaps": 500,
+ "load_avg_note": "other agents' ML job running; see cpu_percent",
+ "uss_after_load_mb": 707.0390625,
+ "rss_after_load_mb": 1654.05859375,
+ "adapter_load_ms": {
+  "a": 24.846899992553517,
+  "b": 25.22889999090694,
+  "c": 29.581100010545924
+ },
+ "uss_after_adapters_mb": 724.05859375,
+ "hot_swap_call_ms": {
+  "n": 500,
+  "mean": 0.07641099923057482,
+  "median": 0.04919999628327787,
+  "p95": 0.19150000298395753,
+  "max": 0.853799981996417
+ },
+ "hot_uss_mb": {
+  "first": 727.59765625,
+  "last": 808.15234375,
+  "min": 726.01953125,
+  "max": 834.94140625,
+  "drift": 80.5546875
+ },
+ "hot_rss_mb": {
+  "first": 1674.64453125,
+  "last": 1755.20703125,
+  "min": 1673.078125,
+  "max": 1782.0
+ },
+ "ms_per_token_no_adapter": {
+  "n": 8,
+  "mean": 162.4717640625022,
+  "median": 156.266131250959,
+  "p95": 194.8972499994852,
+  "max": 232.09393749857554
+ },
+ "ms_per_token_with_adapter": {
+  "n": 16,
+  "mean": 161.0712125000191,
+  "median": 155.4305250010657,
+  "p95": 199.57589999830816,
+  "max": 239.31547500251327
+ },
+ "lora_overhead_ratio_of_medians": 0.9946526720588522,
+ "cold_load_apply_ms": {
+  "n": 100,
+  "mean": 8.334239000687376,
+  "median": 7.662499992875382,
+  "p95": 12.497000017901883,
+  "max": 14.00989998364821
+ },
+ "cold_uss_mb": {
+  "first": 708.57421875,
+  "last": 731.79296875,
+  "min": 708.57421875,
+  "max": 789.65234375,
+  "drift": 23.21875
+ },
+ "cpu_percent_at_end": 94.3
+}

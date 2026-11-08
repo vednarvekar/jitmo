@@ -1,0 +1,26 @@
+APP_CTX = re.compile(r"\b(?:open|launch|start|close|quit|run|go to|visit|take me to|browse|load|switch to|pull up|fire up|on|in|via|using|use)\s+(?:up\s+)?(?:the\s+)?$", re.I)
+OPEN_LAST = re.compile(LEAD + r"(?:open|launch|start|close|quit|run|visit|go to|take me to|fire up)\s+(?:up\s+)?(?:the\s+)?([A-Za-z][\w.+-]*(?:\s[A-Z][\w.+-]*)?)\s*[.?!]*$", re.I)
+NOT_APP = {"it", "that", "this", "my", "the", "something", "anything", "everything", "downloads", "documents", "desktop", "pictures", "music",
+           "videos", "settings", "browser", "camera", "mail", "email", "emails", "inbox", "calendar", "notes", "up", "again", "now", "please", "pls",
+           "folder", "file", "files", "tab", "window", "screenshot", "photos", "recycle", "bin", "home", "news", "weather", "maps", "sleep", "work",
+           "focus", "timer", "alarm", "meeting", "call", "a", "an", "all", "everyone"}
+
+
+def unknown_apps(text, raw, rev, threshold, existing):
+    """Apps/sites that are not in the gazetteer. GLiNER's app/website guess is used only right after an
+    opening/switching verb or 'on/in/via'; a bare 'open <Word>' falls back to app."""
+    res = []
+    taken = lambda s, e: any(s < o[3] and o[2] < e for o in existing + res)
+    for e in raw:
+        k = rev.get(e["label"])
+        if k in ("app", "website") and e["score"] >= max(threshold, 0.6) and APP_CTX.search(text[:e["start"]]) \
+                and e["text"].lower() not in NOT_APP and not re.search(FILE_NOUN + r"$", e["text"], re.I) \
+                and not taken(e["start"], e["end"]) and not re.match(r"\s*(?:folder|file|tab|window)", text[e["end"]:], re.I):
+            res.append((k, e["text"], e["start"], e["end"]))
+    if not res and not any(o[0] in ("app", "website", "file", "folder", "media") for o in existing):
+        m = OPEN_LAST.match(text)
+        if m and m.group(1).lower() not in NOT_APP and not re.fullmatch(FILE_NOUN, m.group(1), re.I):
+            guess = next((rev[e["label"]] for e in raw if rev.get(e["label"]) in ("app", "website")
+                          and e["text"].lower() == m.group(1).lower()), "website" if "." in m.group(1) else "app")
+            res.append((guess, m.group(1), m.start(1), m.end(1)))
+    return res

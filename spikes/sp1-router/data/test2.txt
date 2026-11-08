@@ -1,0 +1,133 @@
+A1|hey, can you launch Slack for me
+A1|get rid of Spotify, I don't need it open
+A1|opening Excel now please
+A1|gotta use paint real quick
+A2|queue up something by Arctic Monkeys
+A2|I wanna hear Tum Hi Ho
+A2|any chance you can play Taylor Swift
+A3|ugh this song again, next
+A3|make the volume 20
+A3|pause
+A4|has Kurzgesagt put out anything new
+A4|get me the newest MrBeast vid
+A5|find tutorials for baking sourdough on youtube
+A5|what's the best budget phone, search that online
+A6|take me to the IRCTC site
+A6|open up Hacker News
+M1|let Nisha know on whatsapp that dinner is at 8
+M1|WhatsApp Ankit: reaching in 10
+M1|shoot a quick whatsapp to uncle saying happy diwali
+M2|forward the boarding pass to Dad on whatsapp
+M2|share that pdf with Tara over whatsapp
+M3|anyone messaged me on whatsapp since morning
+M3|what was the last whatsapp from Isha
+M4|drop a line in the teams general channel saying server is back
+M4|message the design team on teams: reviews at 4
+E1|is there any email I need to deal with right now
+E1|show me the critical stuff in my inbox
+E2|give me a quick rundown of the mail from the bank
+E2|what did Lakshmi write in her last email
+E3|pull up all emails about the visa application
+E3|show messages from Naveen from March
+E4|which emails am I still sitting on
+E4|who have I left hanging in my inbox
+E5|put together a reply to the vendor, saying we accept
+E5|compose a response for Deepa: sounds good
+E6|clear out the spam looking stuff
+E6|move all Amazon emails into the Shopping folder
+E7|email Gaurav the meeting notes
+E7|write a mail to HR asking about leave balance
+Q1|when does the sun come up tomorrow
+Q1|what's the moon looking like tonight
+Q2|do I need a coat today
+Q2|forecast for Delhi this weekend
+Q3|what's the tallest building in the world
+Q3|who discovered penicillin
+Q4|what is 15 times 23
+Q4|how much is 250 dollars in rupees
+Q5|current time in New York
+Q5|what's the date on the last Friday of this month
+F1|I can't find my passport scan
+F1|locate the folder with last year's receipts
+F1|look for a doc called project plan
+F2|show what I downloaded this week
+F2|what did I edit recently
+F3|open my cv
+F3|bring up the quarterly report
+F4|put the invoices in the Finance folder
+F4|copy the contract over to the Backup folder
+F5|attach the photos and email them to Mum
+F5|can you send the proposal to Rohit on teams
+F6|share the Taxes folder with my accountant
+F6|generate a link for the pitch deck
+C1|am I free on Saturday
+C1|show me what's coming up this week
+C1|calendar check for tomorrow morning
+C2|when could Sana and I meet for coffee this week
+C2|find overlap in free time between me and Ishaan
+C3|what's the context for my 11 o'clock
+C3|anything I should look at before the client call
+C4|put lunch with Jaya on the calendar for Tuesday at 1
+C4|new appointment: physio, Thursday 7am
+C5|reserve three hours on Friday to finish the report
+C5|keep tomorrow afternoon clear for me
+C6|set up a one on one with Sneha on Wednesday at 3 and send her the invite
+C6|get the team together on Monday morning
+C7|can we push the 4pm to tomorrow
+C7|call off today's standup
+C7|move the dentist appointment to next Tuesday
+C8|yes to Anil's invitation
+C8|I can't make Friday's workshop, decline it
+R1|remind me to submit the form at 5
+R1|set a reminder to water the plants tomorrow morning
+R1|don't let me forget mom's birthday on Sunday
+R2|timer for 5 minutes
+R2|alarm for 7 tomorrow
+W1|how's today shaping up
+W1|good morning, brief me
+W2|add the event in Rajesh's mail to my calendar
+W2|that email has a meeting time, put it on my schedule
+W3|stash the attachments from the latest mail in Documents
+W3|take the files from this email and save them in the Projects folder
+W4|take the attachment from Meena's email and send it to Kunal on whatsapp
+W4|post the file attached to this mail in the team channel
+W5|grab the most recent report and send it to Anjali
+W5|email the weekly numbers to the boss
+W6|I need to focus, put on lo-fi and mute notifications for 45 minutes
+W6|go into focus mode
+S1|turn the brightness all the way up
+S1|too loud, bring it down
+S1|bump the volume up
+S2|lock screen
+S2|lock this machine right now
+S3|can you turn the wifi off
+S3|bluetooth please
+S4|stop all notifications for an hour
+S4|enable do not disturb
+S5|screenshot
+S5|grab what's on screen
+OUT|call Priya
+OUT|buy a new charger on Amazon
+OUT|send a tweet saying hello
+OUT|book me a flight to Goa
+OUT|delete every file in my downloads folder forever
+OUT|what's the stock price of Tesla
+OUT|set up a zoom meeting with the team
+OUT|text my brother on SMS
+OUT|compose a song about the rain
+OUT|reply to this email in Hindi
+OUT|unlock my phone
+OUT|dim the lights
+A2+S4|put on some music and mute all notifications
+A1+A6|open chrome and go to github
+F1+F5|find last month's invoice and send it to the accountant
+C1+M1|see what's on tomorrow and whatsapp Rahul about it
+E1+R1|check for urgent mail then remind me to reply at 5
+S5+M2|take a screenshot and send it to Priya on whatsapp
+W5+C6|email the report to my manager and schedule a call with him
+Q2+M1|check tomorrow's weather and tell Sam on whatsapp
+R2+S4|start a 25 minute timer and don't disturb me
+F3+F5|open the proposal and email it to Karthik
+E2+E5|summarize the mail from Neha and draft a reply
+A3+S1|pause the music and turn the volume down
+C4+R1|add the meeting on Friday at 3 and remind me an hour before

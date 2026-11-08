@@ -1,0 +1,94 @@
+[transformers] The tokenizer you are loading from 'microsoft/deberta-v3-small' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.
+[transformers] The tokenizer you are loading from 'microsoft/deberta-v3-small' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.
+  F001 'hey could you get Obsidian running for me'
+      missed [('app', 'obsidian')]  extra []
+  F006 'play me Shape of You by Ed Sheeran'
+      missed [('media', 'ed sheeran'), ('media', 'shape of you')]  extra [('media', 'shape of you by ed sheeran')]
+  F007 'lookup vegan pizza dough recipe on YouTube'
+      missed [('query', 'vegan pizza dough recipe')]  extra []
+  F008 'google how many ounces in a cup'
+      missed [('query', 'how many ounces in a cup')]  extra [('website', 'google')]
+  F009 "what's the newest thing from Fireship"
+      missed [('media', 'fireship')]  extra [('file', 'newest thing')]
+  F010 'drop Tanya a text on WhatsApp, got the keys, heading up now'
+      missed [('message', 'got the keys, heading up now')]  extra []
+  F013 'whatsapp dad landed safely'
+      missed [('message', 'landed safely')]  extra [('app', 'whatsapp')]
+  F018 'any mail from accounts this week'
+      missed [('contact', 'accounts')]  extra []
+  F020 'dig out emails about the rental agreement from three months ago'
+      missed [('date_time', 'three months ago'), ('query', 'rental agreement')]  extra [('query', 'rental agreement from three months ago')]
+  F021 'reply to Sourav with ok, see you then'
+      missed [('message', 'ok, see you then')]  extra []
+  F024 'archive everything from LinkedIn'
+      missed [('contact', 'linkedin')]  extra [('website', 'linkedin')]
+  F025 'how many centimetres in 12 inches'
+      missed [('number', '12')]  extra []
+  F026 "what's the tip on 860 at 15%"
+      missed [('number', '15%')]  extra [('date_time', '15')]
+  F028 'when does the sun set in Hyderabad'
+      missed []  extra [('date_time', 'sun')]
+  F031 'where did I put the electricity bill'
+      missed [('file', 'electricity bill')]  extra [('event', 'electricity bill')]
+  F032 'find that photo of the sunset from last summer'
+      missed [('date_time', 'last summer'), ('file', 'photo of the sunset')]  extra [('file', 'photo')]
+  F035 'drag all my invoices into the Accounts folder'
+      missed [('file', 'all my invoices')]  extra [('file', 'invoices')]
+  F038 'give Ankita a link to the design mockup'
+      missed [('file', 'design mockup')]  extra []
+  F039 'share the Vacation Photos folder with my sister'
+      missed [('contact', 'sister'), ('folder', 'vacation photos')]  extra []
+  F044 'schedule coffee with Maya Thursday at 4'
+      missed [('date_time', 'thursday at 4'), ('event', 'coffee with maya')]  extra [('date_time', '4'), ('event', 'coffee with maya thursday')]
+  F046 'set up an hour with Chetan tomorrow at 10'
+      missed [('date_time', 'tomorrow at 10')]  extra [('date_time', '10'), ('date_time', 'tomorrow')]
+  F048 'cancel yoga today'
+      missed [('event', 'yoga')]  extra []
+  F049 'say no to the all hands on Friday'
+      missed [('date_time', 'friday'), ('event', 'all hands')]  extra [('message', 'no to the all hands on friday')]
+  F051 'ping me to renew the passport on the 20th'
+      missed [('message', 'renew the passport')]  extra []
+  F052 'remind me tonight to take out the trash'
+      missed [('message', 'take out the trash')]  extra []
+  F061 'silence notifications for the next hour'
+      missed [('duration', 'next hour')]  extra []
+  F063 'put the laptop on airplane mode'
+      missed []  extra [('event', 'laptop')]
+  F066 'get me to Goodreads'
+      missed [('website', 'goodreads')]  extra []
+  F068 'play Kishore Kumar hits'
+      missed [('media', 'kishore kumar')]  extra [('media', 'kishore kumar hits')]
+  F073 'message the family group on WhatsApp: dinner at 9 tomorrow'
+      missed [('app', 'whatsapp'), ('message', 'dinner at 9 tomorrow')]  extra [('message', 'whatsapp: dinner at 9 tomorrow')]
+  F075 'summarize the thread with Suresh about the contract renewal'
+      missed [('query', 'contract renewal')]  extra [('file', 'contract')]
+  F076 'find the salary slip for March'
+      missed [('date_time', 'march')]  extra []
+  F080 "show me today's meeting notes"
+      missed [('file', "today's meeting notes")]  extra [('date_time', 'today'), ('file', 'meeting notes')]
+  F082 'find videos on YouTube about bread baking'
+      missed [('query', 'bread baking')]  extra []
+  F083 'look up nearest petrol pump'
+      missed [('query', 'nearest petrol pump')]  extra [('place', 'petrol pump')]
+  F093 'launch YouTube'
+      missed [('website', 'youtube')]  extra [('app', 'youtube')]
+  F097 'put Arijit Singh on Spotify'
+      missed [('media', 'arijit singh')]  extra [('event', 'arijit singh')]
+  F099 'invite Karthik to the retro next Tuesday'
+      missed [('event', 'retro')]  extra []
+FRESH held-out (rules + GLiNER)    TP 121 FP  25 FN  43  precision 83% recall 74% F1 78%   every span right in 62/100 sentences
+  app        TP 15 FP  2 FN  2
+  contact    TP 27 FP  0 FN  3
+  date_time  TP 20 FP  6 FN  6
+  duration   TP  8 FP  0 FN  1
+  event      TP  4 FP  4 FN  4
+  file       TP 10 FP  5 FN  5
+  folder     TP  3 FP  0 FN  1
+  media      TP  3 FP  2 FN  5
+  message    TP  7 FP  2 FN  6
+  number     TP  8 FP  0 FN  2
+  place      TP  5 FP  1 FN  0
+  query      TP  1 FP  1 FN  6
+  setting    TP  7 FP  0 FN  0
+  website    TP  3 FP  2 FN  2
+FRESH held-out (GLiNER only)       TP  48 FP  20 FN 116  precision 71% recall 29% F1 41%   every span right in 21/100 sentences
