@@ -106,6 +106,111 @@ pub struct Reminder {
     pub text: String,
 }
 
+/// True if `path` reads as an ordinary (unencrypted) SQLite database.
+fn is_plain_database(path: &Path) -> bool {
+    Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .and_then(|c| {
+            c.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+                r.get::<_, i64>(0)
+            })
+        })
+        .is_ok()
+}
+
+const COUNTED_TABLES: [&str; 4] = ["defaults", "action_log", "reminders", "settings"];
+
+fn table_counts(conn: &Connection, schema: &str) -> Result<Vec<i64>, StoreError> {
+    COUNTED_TABLES
+        .iter()
+        .map(|t| {
+            conn.query_row(&format!("SELECT count(*) FROM {schema}.{t}"), [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .map_err(StoreError::from)
+        })
+        .collect()
+}
+
+fn side_path(path: &Path, suffix: &str) -> std::path::PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(suffix);
+    path.with_file_name(name)
+}
+
+/// Plain -> encrypted. The original is never removed: it is backed up first and
+/// only replaced after the encrypted copy has been opened and its counts match.
+fn encrypt_plain_in_place(path: &Path, key: &Key) -> Result<(), StoreError> {
+    let io =
+        |e: std::io::Error| StoreError::Db(rusqlite::Error::ToSqlConversionFailure(Box::new(e)));
+    let tmp = side_path(path, ".enc.tmp");
+    let _ = std::fs::remove_file(&tmp);
+    let _ = std::fs::remove_file(side_path(&tmp, "-journal"));
+
+    let plain = Connection::open(path)?;
+    plain.busy_timeout(std::time::Duration::from_secs(5))?;
+    // Fold any write-ahead log into the main file so the backup is complete.
+    let busy: i64 = plain.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))?;
+    if busy != 0 {
+        return Err(StoreError::Db(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some("database is in use; could not prepare it for encryption".into()),
+        )));
+    }
+
+    // Backup, never overwriting an earlier one.
+    let mut bak = side_path(path, ".plain.bak");
+    let mut n = 0;
+    while bak.exists() {
+        n += 1;
+        bak = side_path(path, &format!(".plain.bak.{n}"));
+    }
+    std::fs::copy(path, &bak).map_err(io)?;
+
+    // Export into a new encrypted file.
+    let version: u32 = plain.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    let hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
+    let exported = (|| -> Result<Vec<i64>, StoreError> {
+        plain.execute(
+            "ATTACH DATABASE ?1 AS encrypted KEY ?2",
+            params![tmp.to_string_lossy(), format!("x'{hex}'")],
+        )?;
+        plain.query_row("SELECT sqlcipher_export('encrypted')", [], |_| Ok(()))?;
+        plain.execute_batch(&format!("PRAGMA encrypted.user_version = {version}"))?;
+        let new_counts = table_counts(&plain, "encrypted")?;
+        let old_counts = table_counts(&plain, "main")?;
+        if new_counts != old_counts {
+            return Err(StoreError::BadKey);
+        }
+        plain.execute_batch("DETACH DATABASE encrypted")?;
+        Ok(old_counts)
+    })();
+    drop(plain);
+    let counts = match exported {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+    };
+
+    // Verify by opening the new file the way the app will.
+    let check = Store::open(&tmp, Some(key)).and_then(|s| table_counts(&s.conn, "main"));
+    match check {
+        Ok(c) if c == counts => {}
+        other => {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(other.err().unwrap_or(StoreError::BadKey));
+        }
+    }
+
+    // Swap. Leftover log files belong to the old plain file.
+    let _ = std::fs::remove_file(side_path(path, "-wal"));
+    let _ = std::fs::remove_file(side_path(path, "-shm"));
+    let _ = std::fs::remove_file(side_path(path, "-journal"));
+    std::fs::rename(&tmp, path).map_err(io)?;
+    Ok(())
+}
+
 pub struct Store {
     conn: Connection,
 }
@@ -118,6 +223,41 @@ impl Store {
         // their own connection to this file; wait briefly instead of failing.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         Self::init(conn, key)
+    }
+
+    /// Open `path` encrypted with `key`, converting an existing plain database.
+    ///
+    /// * No file yet: a new encrypted database is created.
+    /// * File opens with the key: used as is.
+    /// * File is a plain SQLite database: it is first copied to
+    ///   `<name>.plain.bak` (a numbered suffix is used if that name is taken),
+    ///   exported into a new encrypted file with `sqlcipher_export`, the row
+    ///   counts of the four tables are compared, and only then does the new file
+    ///   replace the old one. The backup is kept.
+    /// * File opens with neither: [`StoreError::BadKey`]; nothing is touched.
+    ///
+    /// Without the `sqlcipher` feature this returns
+    /// [`StoreError::EncryptionUnavailable`] and does not touch the file.
+    pub fn open_encrypted_migrating(path: &Path, key: &Key) -> Result<Self, StoreError> {
+        if !ENCRYPTION_AVAILABLE {
+            return Err(StoreError::EncryptionUnavailable);
+        }
+        let empty = std::fs::metadata(path)
+            .map(|m| m.len() == 0)
+            .unwrap_or(true);
+        if empty {
+            return Self::open(path, Some(key));
+        }
+        match Self::open(path, Some(key)) {
+            Ok(store) => return Ok(store),
+            Err(StoreError::BadKey) => {}
+            Err(e) => return Err(e),
+        }
+        if !is_plain_database(path) {
+            return Err(StoreError::BadKey);
+        }
+        encrypt_plain_in_place(path, key)?;
+        Self::open(path, Some(key))
     }
 
     /// In-memory database for tests.
@@ -510,6 +650,141 @@ mod tests {
             Err(StoreError::BadKey)
         ));
         assert!(Store::open(&path, None).is_err());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("jitmo-mig-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[cfg(not(feature = "sqlcipher"))]
+    #[test]
+    fn migrating_open_refuses_and_leaves_the_file_alone_without_sqlcipher() {
+        let dir = temp_dir("nofeat");
+        let path = dir.join("p.db");
+        Store::open(&path, None)
+            .unwrap()
+            .set_setting("a", "1")
+            .unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let r = Store::open_encrypted_migrating(&path, &[3u8; 32]);
+        assert!(matches!(r, Err(StoreError::EncryptionUnavailable)));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(!dir.join("p.db.plain.bak").exists());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[cfg(feature = "sqlcipher")]
+    #[test]
+    fn migrating_open_creates_a_new_encrypted_file() {
+        let dir = temp_dir("new");
+        let path = dir.join("n.db");
+        let key = [5u8; 32];
+        Store::open_encrypted_migrating(&path, &key)
+            .unwrap()
+            .set_setting("k", "v")
+            .unwrap();
+        assert!(!std::fs::read(&path)
+            .unwrap()
+            .starts_with(b"SQLite format 3"));
+        assert!(!dir.join("n.db.plain.bak").exists());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[cfg(feature = "sqlcipher")]
+    #[test]
+    fn plain_database_is_converted_keeping_rows_and_a_backup() {
+        let dir = temp_dir("plain");
+        let path = dir.join("p.db");
+        let key = [6u8; 32];
+        {
+            let s = Store::open(&path, None).unwrap();
+            s.set_setting("hotkey", "Ctrl+J").unwrap();
+            s.add_reminder("2026-11-08T12:10:00Z", "call mom").unwrap();
+            s.log_action(
+                "2026-11-08T10:00:00Z",
+                "mute",
+                None,
+                Decision::Ran,
+                None,
+                None,
+            )
+            .unwrap();
+            s.record_default("contact", "ved", "Ved", "2026-11-08T10:00:00Z")
+                .unwrap();
+        }
+        let s = Store::open_encrypted_migrating(&path, &key).unwrap();
+        assert_eq!(s.get_setting("hotkey").unwrap().as_deref(), Some("Ctrl+J"));
+        assert_eq!(s.pending_reminders().unwrap().len(), 1);
+        assert_eq!(s.recent_actions(10).unwrap().len(), 1);
+        assert_eq!(
+            s.default_for_phrase("contact", "ved").unwrap().as_deref(),
+            Some("Ved")
+        );
+        assert_eq!(s.schema_version().unwrap(), MIGRATIONS.len() as u32);
+        drop(s);
+        // The live file is now encrypted; the backup is still plain and complete.
+        assert!(!std::fs::read(&path)
+            .unwrap()
+            .starts_with(b"SQLite format 3"));
+        assert!(Store::open(&path, None).is_err());
+        let bak = dir.join("p.db.plain.bak");
+        assert!(std::fs::read(&bak).unwrap().starts_with(b"SQLite format 3"));
+        let old = Store::open(&bak, None).unwrap();
+        assert_eq!(
+            old.get_setting("hotkey").unwrap().as_deref(),
+            Some("Ctrl+J")
+        );
+        assert!(!dir.join("p.db.enc.tmp").exists());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[cfg(feature = "sqlcipher")]
+    #[test]
+    fn encrypted_database_reopens_and_makes_no_backup() {
+        let dir = temp_dir("reopen");
+        let path = dir.join("e.db");
+        let key = [7u8; 32];
+        Store::open_encrypted_migrating(&path, &key)
+            .unwrap()
+            .set_setting("k", "v")
+            .unwrap();
+        let s = Store::open_encrypted_migrating(&path, &key).unwrap();
+        assert_eq!(s.get_setting("k").unwrap().as_deref(), Some("v"));
+        assert!(!dir.join("e.db.plain.bak").exists());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[cfg(feature = "sqlcipher")]
+    #[test]
+    fn wrong_key_is_refused_and_the_file_is_untouched() {
+        let dir = temp_dir("wrong");
+        let path = dir.join("w.db");
+        Store::open_encrypted_migrating(&path, &[8u8; 32])
+            .unwrap()
+            .set_setting("k", "v")
+            .unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let r = Store::open_encrypted_migrating(&path, &[9u8; 32]);
+        assert!(matches!(r, Err(StoreError::BadKey)));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(!dir.join("w.db.plain.bak").exists());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[cfg(feature = "sqlcipher")]
+    #[test]
+    fn a_file_that_is_not_a_database_is_refused_and_kept() {
+        let dir = temp_dir("junk");
+        let path = dir.join("j.db");
+        std::fs::write(&path, vec![0xABu8; 4096]).unwrap();
+        let r = Store::open_encrypted_migrating(&path, &[1u8; 32]);
+        assert!(matches!(r, Err(StoreError::BadKey)));
+        assert_eq!(std::fs::read(&path).unwrap(), vec![0xABu8; 4096]);
+        assert!(!dir.join("j.db.plain.bak").exists());
         std::fs::remove_dir_all(dir).ok();
     }
 

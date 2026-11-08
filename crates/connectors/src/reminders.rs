@@ -294,6 +294,7 @@ pub fn utc_text(t: DateTime<Local>) -> String {
 
 pub struct Reminders {
     db: PathBuf,
+    key: Option<jitmo_store::Key>,
     now: Box<dyn Fn() -> DateTime<Local> + Send + Sync>,
 }
 
@@ -302,8 +303,15 @@ impl Reminders {
     pub fn new(db: PathBuf) -> Self {
         Reminders {
             db,
+            key: None,
             now: Box::new(Local::now),
         }
+    }
+
+    /// Database key, when the file is encrypted.
+    pub fn with_key(mut self, key: jitmo_store::Key) -> Self {
+        self.key = Some(key);
+        self
     }
 
     pub fn with_now(mut self, now: impl Fn() -> DateTime<Local> + Send + Sync + 'static) -> Self {
@@ -312,7 +320,7 @@ impl Reminders {
     }
 
     fn store(&self) -> Result<Store, ConnError> {
-        Store::open(&self.db, None)
+        Store::open(&self.db, self.key.as_ref())
             .map_err(|e| ConnError::Failed(format!("I couldn't open the reminders: {e}")))
     }
 }
