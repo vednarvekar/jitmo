@@ -45,6 +45,9 @@ pub struct Spec {
     /// loose wording). Without `--worker` the test is left as not built.
     #[serde(default)]
     pub needs_model: bool,
+    /// Files that exist for this test (names; they live in `C:/Docs`).
+    #[serde(default)]
+    pub files: Vec<String>,
     /// For `ran`: a part of the answer shown to the user (case ignored).
     pub message_contains: Option<String>,
     /// A part of the confirm text that must appear.

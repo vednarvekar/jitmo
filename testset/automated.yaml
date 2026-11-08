@@ -104,3 +104,9 @@ T51: { needs_model: true, request: "music off", expect: ran, skill: music.contro
 T59: { needs_model: true, request: "remind me abt mom call at 6", expect: ran, skill: reminders.remind, calls: [{ connector: reminders, action: set, args: { text: "remind me abt mom call at 6" } }] }
 T74: { needs_model: true, request: "Call Ved.", expect: declined }
 T97: { request: "Open Spotify.", expect: ran, skill: apps.open, calls: [{ connector: windows_system, action: open_app, args: { app: spotify } }], live: [windows_system] }
+
+# File tests: the runner supplies the named files (they live in C:/Docs).
+T23: { files: ["Budget 2026.xlsx", "Holiday photo.jpg"], request: "Find the budget sheet from last week.", expect: ran, skill: files.find, calls: [{ connector: files, action: reveal, args: { path: "C:/Docs/Budget 2026.xlsx" } }] }
+T25: { needs_model: true, files: ["Resume.docx", "Invoice.pdf"], request: "Open my resume.", expect: ran, skill: files.open, calls: [{ connector: files, action: open, args: { path: "C:/Docs/Resume.docx" } }] }
+T58: { needs_model: true, files: ["Budget 2026.xlsx", "Holiday photo.jpg"], request: "wheres that budget thing", expect: ran, skill: files.find, calls: [{ connector: files, action: reveal, args: { path: "C:/Docs/Budget 2026.xlsx" } }] }
+T69: { needs_model: true, files: ["Q3 deck.pptx", "Sales deck.pptx"], request: "Open the deck.", expect: asks_question }

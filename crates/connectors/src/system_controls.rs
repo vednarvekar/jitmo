@@ -788,8 +788,8 @@ mod live_setters {
         std::thread::sleep(std::time::Duration::from_secs(4));
         let checked_on = c.check("radio", &text("turn on wifi"));
         assert!(off.is_ok() && on.is_ok(), "{off:?} {on:?}");
-        assert_eq!(checked_off.unwrap(), true);
-        assert_eq!(checked_on.unwrap(), true);
+        assert!(checked_off.unwrap());
+        assert!(checked_on.unwrap());
     }
 
     /// Takes one screenshot, checks it, then deletes it with Undo.
@@ -820,6 +820,6 @@ mod live_lock {
         c.execute("lock", &Args::new()).unwrap();
         let locked = c.check("lock", &Args::new());
         println!("lock check: {locked:?}");
-        assert_eq!(locked.unwrap(), true);
+        assert!(locked.unwrap());
     }
 }

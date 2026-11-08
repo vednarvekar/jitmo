@@ -6,6 +6,7 @@ use crate::spec::{CallSpec, Expect, Spec};
 use jitmo_connectors::fake::{Call, FakeConnector};
 use jitmo_connectors::Connector;
 use jitmo_core::flow::{Flow, Prompter};
+use jitmo_core::resolver::{ContextSource, FileRef};
 use jitmo_core::router::Router;
 use jitmo_ipc::{Choice, CoreEvent};
 use jitmo_model_worker::{WorkerClient, WorkerLauncher};
@@ -85,6 +86,40 @@ pub fn run_case(skills: &[Skill], spec: &Spec, live: bool) -> RunResult {
     run_case_with(skills, spec, live, None)
 }
 
+/// Files that exist only for one test (`files:` in the spec), newest last.
+struct TestFiles(Vec<FileRef>);
+
+impl TestFiles {
+    fn new(names: &[String]) -> Self {
+        TestFiles(
+            names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| FileRef {
+                    name: n.clone(),
+                    path: format!("C:/Docs/{n}"),
+                    modified: 1000 + i as u64,
+                })
+                .collect(),
+        )
+    }
+}
+
+impl ContextSource for TestFiles {
+    fn selected_file(&self) -> Option<FileRef> {
+        None
+    }
+    fn recent_downloads(&self, limit: usize) -> Vec<FileRef> {
+        let mut f = self.0.clone();
+        f.sort_by_key(|x| std::cmp::Reverse(x.modified));
+        f.truncate(limit);
+        f
+    }
+    fn searchable_files(&self) -> Vec<FileRef> {
+        self.0.clone()
+    }
+}
+
 /// Like [`run_case`], with the real model worker doing the routing when given.
 pub fn run_case_with(
     skills: &[Skill],
@@ -124,7 +159,7 @@ pub fn run_case_with(
     if let Some(launcher) = worker {
         router = router.with_worker(WorkerClient::new(launcher.clone(), Duration::from_secs(10)));
     }
-    let mut flow = Flow::new(router, store, map);
+    let mut flow = Flow::new(router, store, map).with_context(TestFiles::new(&spec.files));
     let mut user = Recorder {
         answers: spec.confirm_answers.iter().copied().collect(),
         confirms: Vec::new(),
