@@ -1,0 +1,24 @@
+id: browser.youtube_latest                  # task A4
+task: A4
+version: 1
+category: apps
+capabilities:
+  - browser.open
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 10
+risk: safe
+examples:
+  - "Open MKBHD's latest video on YouTube."
+  - "open that new mkbhd vid"
+slots: {}
+steps:
+  - connector: browser
+    action: youtube_latest
+    args: { text: "{request}" }
+check:
+  connector: browser
+  action: youtube_latest
+  args: { text: "{request}" }
+undo: none

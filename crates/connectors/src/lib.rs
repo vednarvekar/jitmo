@@ -5,6 +5,7 @@
 //! Windows-only code; connectors that need UI Automation call into
 //! `adapter-windows`.
 
+pub mod browser;
 pub mod fake;
 pub mod files;
 pub mod local_calc;
