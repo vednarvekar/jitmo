@@ -27,3 +27,4 @@ ft_out/
 # frontend build output
 app/dist/
 app/src-tauri/gen/
+.claude/

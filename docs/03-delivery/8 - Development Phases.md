@@ -139,6 +139,8 @@ WebView2 can use more than the ~40MB that 06 budgets for the command bar, and SP
 
 **Done when:** these 48 tests pass: T01–T06, T18–T26, T37–T38, T45–T51, T55–T59, T61–T64, T69, T73–T74, T83–T90 and T97–T100. T02, T48 and T63 follow the SP6 and SP7 results. Idle memory is under 300MB and idle CPU under 1% with Tier 0 loaded (PR1, PR3).
 
+**Status (8 Nov 2026):** mostly built, not done. 36 of the 48 tests pass in the automated runner (most connectors are faked there; each has its own tests). Open: Do Not Disturb, multi-file selection, the model extractor, a real Spotify Play, wiring the named pipe and encrypted database, and the first green CI run. The router-only worker idles at 61 MB and 0% CPU. Full list in [8.1 Decision Log](8.1%20-%20Decision%20Log.md), "Phase 2 status".
+
 ## Phase 3 — Work suite and planner
 
 Two tracks run in parallel. Track B can test chains on offline connectors (T75, T79, T81), so it doesn't wait for Track A.

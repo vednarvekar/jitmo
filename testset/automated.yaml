@@ -98,3 +98,9 @@ T04: { needs_model: true, request: "Open MKBHD's latest video on YouTube.", expe
 T05: { needs_model: true, request: "Search YouTube for pasta recipes.", expect: ran, skill: browser.search, calls: [{ connector: browser, action: search, args: { text: "Search YouTube for pasta recipes." } }] }
 T06: { needs_model: true, request: "Open Amazon.", expect: ran, skill: browser.site, calls: [{ connector: browser, action: site, args: { text: "Open Amazon." } }] }
 T61: { needs_model: true, request: "open that new mkbhd vid", expect: ran, skill: browser.youtube_latest, calls: [{ connector: browser, action: youtube_latest, args: { text: "open that new mkbhd vid" } }] }
+
+# More Phase 2 tests.
+T51: { needs_model: true, request: "music off", expect: ran, skill: music.control, calls: [{ connector: spotify, action: control, args: { text: "music off" } }] }
+T59: { needs_model: true, request: "remind me abt mom call at 6", expect: ran, skill: reminders.remind, calls: [{ connector: reminders, action: set, args: { text: "remind me abt mom call at 6" } }] }
+T74: { needs_model: true, request: "Call Ved.", expect: declined }
+T97: { request: "Open Spotify.", expect: ran, skill: apps.open, calls: [{ connector: windows_system, action: open_app, args: { app: spotify } }], live: [windows_system] }
