@@ -234,6 +234,56 @@ impl Store {
         let _ = self.conn.execute("DROP TABLE action_log", []);
     }
 
+    // --- learned defaults (FR10) -----------------------------------------
+
+    /// Remember that, for slots of this type, the words `phrase` ended in `value`.
+    pub fn record_default(
+        &self,
+        slot_type: &str,
+        phrase: &str,
+        value: &str,
+        at: &str,
+    ) -> Result<(), StoreError> {
+        let changed = self.conn.execute(
+            "UPDATE defaults SET uses = uses + 1, last_used = ?4
+             WHERE slot_type = ?1 AND phrase = ?2 AND value = ?3",
+            params![slot_type, phrase, value, at],
+        )?;
+        if changed == 0 {
+            self.conn.execute(
+                "INSERT INTO defaults(slot_type, phrase, value, uses, last_used)
+                 VALUES(?1, ?2, ?3, 1, ?4)",
+                params![slot_type, phrase, value, at],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// What these exact words ended in before (most used, then most recent).
+    pub fn default_for_phrase(
+        &self,
+        slot_type: &str,
+        phrase: &str,
+    ) -> Result<Option<String>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT value FROM defaults WHERE slot_type = ?1 AND phrase = ?2
+             ORDER BY uses DESC, last_used DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query(params![slot_type, phrase])?;
+        Ok(rows.next()?.map(|r| r.get(0)).transpose()?)
+    }
+
+    /// The user's usual value for this slot type: the one chosen at least twice, most used first.
+    pub fn usual_for(&self, slot_type: &str) -> Result<Option<String>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT value FROM defaults WHERE slot_type = ?1
+             GROUP BY value HAVING SUM(uses) >= 2
+             ORDER BY SUM(uses) DESC, MAX(last_used) DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query([slot_type])?;
+        Ok(rows.next()?.map(|r| r.get(0)).transpose()?)
+    }
+
     // --- reminders ------------------------------------------------------
 
     /// Add a reminder. `due_at` is UTC as `YYYY-MM-DDTHH:MM:SSZ`, so text order is time order.
@@ -315,6 +365,34 @@ mod tests {
         assert!(s.due_reminders("2026-11-08T12:10:00Z").unwrap().is_empty());
         assert_eq!(s.pending_reminders().unwrap().len(), 1);
         assert_eq!(s.due_reminders("2026-11-09T00:00:00Z").unwrap()[0].id, late);
+    }
+
+    #[test]
+    fn defaults_are_learned_per_phrase_and_a_usual_needs_two_uses() {
+        let s = Store::open_in_memory().unwrap();
+        s.record_default("contact", "ved", "Ved Narvekar", "2026-11-08T10:00:00Z")
+            .unwrap();
+        assert_eq!(
+            s.default_for_phrase("contact", "ved").unwrap().as_deref(),
+            Some("Ved Narvekar")
+        );
+        assert_eq!(
+            s.usual_for("contact").unwrap(),
+            None,
+            "one use is not a habit"
+        );
+        s.record_default("contact", "ved", "Ved Narvekar", "2026-11-08T11:00:00Z")
+            .unwrap();
+        assert_eq!(
+            s.usual_for("contact").unwrap().as_deref(),
+            Some("Ved Narvekar")
+        );
+        assert_eq!(s.default_for_phrase("contact", "mom").unwrap(), None);
+        assert_eq!(
+            s.usual_for("app").unwrap(),
+            None,
+            "other slot types are separate"
+        );
     }
 
     #[test]

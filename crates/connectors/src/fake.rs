@@ -22,6 +22,8 @@ struct State {
     check_script: VecDeque<Result<bool, ConnError>>,
     default_check: bool,
     execute_error: Option<ConnError>,
+    /// Errors for particular actions only.
+    action_errors: Vec<(String, ConnError)>,
     undoable: bool,
     health: Option<Health>,
 }
@@ -47,6 +49,16 @@ impl FakeConnector {
     /// Make `execute` fail with this error.
     pub fn fail_execute_with(self, err: ConnError) -> Self {
         self.state.lock().unwrap().execute_error = Some(err);
+        self
+    }
+
+    /// Make `execute` fail with this error for this one action only.
+    pub fn fail_action_with(self, action: &str, err: ConnError) -> Self {
+        self.state
+            .lock()
+            .unwrap()
+            .action_errors
+            .push((action.to_string(), err));
         self
     }
 
@@ -112,6 +124,9 @@ impl Connector for FakeConnector {
             action: action.into(),
             args: args.clone(),
         });
+        if let Some((_, e)) = s.action_errors.iter().find(|(a, _)| a == action) {
+            return Err(e.clone());
+        }
         match &s.execute_error {
             Some(e) => Err(e.clone()),
             None => Ok(Output(BTreeMap::from([(

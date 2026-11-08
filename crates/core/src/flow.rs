@@ -244,7 +244,7 @@ impl Flow {
         };
 
         // 2. Fill slots.
-        let mut slots = match resolve_slots(
+        let (mut slots, learned) = match resolve_slots(
             &skill,
             &understanding.spans,
             self.context.as_ref(),
@@ -314,6 +314,23 @@ impl Flow {
             };
             match conn.execute(&step.action, &args) {
                 Ok(out) => executed.push((step.connector.clone(), step.action.clone(), out)),
+                // The app's screen looks different than expected, but an earlier
+                // step already got the user most of the way: hand over to them.
+                Err(ConnError::UiChanged(_))
+                    if skill.fallback.as_deref() == Some("open_chat_and_wait")
+                        && !executed.is_empty() =>
+                {
+                    let who = slots
+                        .get("contact")
+                        .map_or("the".to_string(), |c| format!("{}'s", c.text));
+                    let message = format!("I opened {who} chat. Press Send to finish.");
+                    self.log(text, Some(&skill.id), Decision::Ran, &message, None);
+                    return CoreEvent::Done {
+                        id,
+                        message,
+                        undoable: false,
+                    };
+                }
                 Err(e) => return self.fail(id, text, Some(&skill.id), &e.to_string()),
             }
         }
@@ -345,6 +362,16 @@ impl Flow {
 
         // 6. Log and report. The action already happened and was verified, so a
         //    log failure is a warning on a successful result, never an error.
+        // What the user picked by words is remembered now that it worked (FR10).
+        let at = (self.clock)();
+        for l in &learned {
+            if let Err(e) = self
+                .store
+                .record_default(&l.slot_type, &l.phrase, &l.value, &at)
+            {
+                eprintln!("could not save a learned default: {e}");
+            }
+        }
         // A read-only task answers with the text its last step returned.
         let answer = executed
             .iter()
@@ -418,9 +445,10 @@ fn resolve_slots(
     ctx: &dyn ContextSource,
     store: &Store,
     p: &mut dyn Prompter,
-) -> Result<Slots, SlotError> {
+) -> Result<(Slots, Vec<Learned>), SlotError> {
     let mut used = vec![false; spans.len()];
     let mut out = Slots::new();
+    let mut learned = Vec::new();
     for (name, slot) in &skill.slots {
         match slot {
             Slot::Fixed(v) => {
@@ -435,15 +463,38 @@ fn resolve_slots(
                     used[i] = true;
                     s.text.as_str()
                 });
+                // A setting wins; otherwise the value chosen most often before.
                 let usual = store
                     .get_setting(&format!("usual.{}", sp.kind))
                     .ok()
-                    .flatten();
+                    .flatten()
+                    .or_else(|| store.usual_for(&sp.kind).ok().flatten());
                 match resolver::resolve(&sp.resolve, said, ctx, usual.as_deref()) {
                     Resolution::Found(v) => {
+                        if let Some(words) = said {
+                            learned.push(Learned::new(&sp.kind, words, &v));
+                        }
                         out.insert(name.clone(), v);
                     }
                     Resolution::Choose { question, options } => {
+                        // The same words were settled before: do not ask again.
+                        let remembered = said
+                            .and_then(|w| {
+                                store
+                                    .default_for_phrase(&sp.kind, &w.to_lowercase())
+                                    .ok()
+                                    .flatten()
+                            })
+                            .and_then(|val| {
+                                options
+                                    .iter()
+                                    .find(|(id, _, v)| *id == val || v.text == val)
+                                    .map(|o| o.2.clone())
+                            });
+                        if let Some(v) = remembered {
+                            out.insert(name.clone(), v);
+                            continue;
+                        }
                         let choices: Vec<Choice> = options
                             .iter()
                             .map(|(id, label, _)| Choice {
@@ -456,6 +507,9 @@ fn resolve_slots(
                         else {
                             return Err(SlotError::Cancelled);
                         };
+                        if let Some(words) = said {
+                            learned.push(Learned::new(&sp.kind, words, &v));
+                        }
                         out.insert(name.clone(), v);
                     }
                     Resolution::NotFound(words) if sp.required => {
@@ -469,7 +523,25 @@ fn resolve_slots(
             }
         }
     }
-    Ok(out)
+    Ok((out, learned))
+}
+
+/// A choice made by words, to remember if the task succeeds (FR10).
+struct Learned {
+    slot_type: String,
+    phrase: String,
+    value: String,
+}
+
+impl Learned {
+    fn new(slot_type: &str, phrase: &str, v: &SlotValue) -> Self {
+        Learned {
+            slot_type: slot_type.to_string(),
+            phrase: phrase.to_lowercase(),
+            // Files are remembered by path, so the same words find the same file.
+            value: v.fields.get("path").unwrap_or(&v.text).clone(),
+        }
+    }
 }
 
 /// Replace `{slot}` or `{slot.field}` in a template. A slot or field that is
@@ -989,6 +1061,66 @@ mod tests {
         let ev = flow.handle(41, "move report.pdf to the Invoices folder", &mut u);
         assert_eq!(failed(&ev), "I couldn't find invoices.");
         assert!(files.calls().is_empty());
+    }
+
+    #[test]
+    fn a_choice_is_remembered_so_the_same_words_are_not_asked_twice() {
+        let (mut flow, wa) = whatsapp_flow(Files {
+            selected: None,
+            files: vec![file_ref("Invoice March.pdf"), file_ref("Invoice April.pdf")],
+        });
+        let mut first = user(&[true]);
+        first.choice = Some("C:/Docs/Invoice April.pdf".into());
+        flow.handle(50, "send invoice to ved on whatsapp", &mut first);
+        assert_eq!(first.choices_seen.len(), 2, "the first time it asks");
+        // Same words again: the answer is remembered, no question.
+        let mut second = user(&[true]);
+        let ev = flow.handle(51, "send invoice to ved on whatsapp", &mut second);
+        assert!(second.choices_seen.is_empty(), "it must not ask again");
+        assert_eq!(
+            second.shown,
+            vec!["Send Invoice April.pdf to ved on WhatsApp?"]
+        );
+        assert_eq!(done(&ev).0, "Done.");
+        assert_eq!(wa.execute_count(), 4);
+    }
+
+    #[test]
+    fn a_choice_is_not_remembered_when_the_task_did_not_finish() {
+        let (mut flow, _wa) = whatsapp_flow(Files {
+            selected: None,
+            files: vec![file_ref("Invoice March.pdf"), file_ref("Invoice April.pdf")],
+        });
+        let mut first = user(&[false]); // picks a file, then cancels the send
+        first.choice = Some("C:/Docs/Invoice April.pdf".into());
+        flow.handle(52, "send invoice to ved on whatsapp", &mut first);
+        let mut second = user(&[false]);
+        second.choice = Some("C:/Docs/Invoice March.pdf".into());
+        flow.handle(53, "send invoice to ved on whatsapp", &mut second);
+        assert_eq!(
+            second.choices_seen.len(),
+            2,
+            "a cancelled send teaches nothing"
+        );
+    }
+
+    #[test]
+    fn a_changed_app_screen_hands_over_to_the_user_after_the_chat_opened() {
+        let wa = Arc::new(
+            FakeConnector::new("whatsapp_desktop")
+                .fail_action_with("attach_and_send", ConnError::UiChanged("WhatsApp".into())),
+        );
+        let mut flow =
+            flow_with(&[WHATSAPP], vec![("whatsapp_desktop", wa.clone())]).with_context(Files {
+                selected: None,
+                files: vec![file_ref("report.pdf")],
+            });
+        let mut u = user(&[true]);
+        let ev = flow.handle(54, "send report.pdf to ved on whatsapp", &mut u);
+        assert_eq!(
+            done(&ev),
+            ("I opened ved's chat. Press Send to finish.", false)
+        );
     }
 
     #[test]
