@@ -6,6 +6,7 @@
 //! `adapter-windows`.
 
 pub mod browser;
+pub mod dnd;
 pub mod fake;
 pub mod files;
 pub mod local_calc;
