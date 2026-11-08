@@ -26,6 +26,9 @@ pub struct RunResult {
     /// The one-line result the engine reported.
     pub message: String,
     pub elapsed_ms: f64,
+    /// Time from the start of the request until the first connector execute call
+    /// began (None when nothing ran, or the connector was real and cannot be observed).
+    pub time_to_first_action_ms: Option<f64>,
     /// A send ran although no confirm was shown (target: 0, RQ2).
     pub sent_without_confirm: bool,
     pub crashed: bool,
@@ -181,9 +184,15 @@ pub fn run_case_with(
         asked_question: false,
     };
 
+    let handle_started = Instant::now();
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         flow.handle(1, &spec.request, &mut user)
     }));
+    let time_to_first_action_ms = fakes
+        .iter()
+        .filter_map(|(_, f)| f.first_execute_at())
+        .min()
+        .map(|t| t.saturating_duration_since(handle_started).as_secs_f64() * 1000.0);
     let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
 
     let Ok(event) = outcome else {
@@ -192,6 +201,7 @@ pub fn run_case_with(
             reasons: vec!["the engine crashed".into()],
             message: String::new(),
             elapsed_ms,
+            time_to_first_action_ms: None,
             sent_without_confirm: false,
             crashed: true,
         };
@@ -321,6 +331,7 @@ pub fn run_case_with(
         reasons: why,
         message,
         elapsed_ms,
+        time_to_first_action_ms,
         sent_without_confirm,
         crashed: false,
     }

@@ -24,6 +24,8 @@ pub struct Row {
     /// The one-line result the engine reported.
     pub message: String,
     pub elapsed_ms: Option<f64>,
+    /// Time until the first connector execute call started.
+    pub time_to_first_action_ms: Option<f64>,
     /// Highest memory this process had reached after the test, in MB.
     pub peak_mb: Option<f64>,
     pub sent_without_confirm: bool,
@@ -129,6 +131,12 @@ pub fn metrics(rows: &[Row], peak_bytes: Option<u64>) -> Vec<Metric> {
         .filter_map(|r| r.elapsed_ms)
         .fold(None, |m: Option<f64>, v| Some(m.map_or(v, |m| m.max(v))));
 
+    let slowest_first = rows
+        .iter()
+        .filter(|r| r.number <= 49)
+        .filter_map(|r| r.time_to_first_action_ms)
+        .fold(None, |m: Option<f64>, v| Some(m.map_or(v, |m| m.max(v))));
+
     vec![
         rate_metric(rows, 1, 82, 0.90, "Task success rate (T01–T82)", "90% or higher"),
         zero_metric(
@@ -175,11 +183,17 @@ pub fn metrics(rows: &[Row], peak_bytes: Option<u64>) -> Vec<Metric> {
         Metric {
             name: "Known-task start time (T01–T49)",
             target: "under 0.5 s",
-            measured: match slowest {
-                Some(ms) => format!("slowest built test took {ms:.0} ms in total; time to first action is not measured yet"),
+            measured: match slowest_first {
+                Some(ms) => format!("slowest time to first action {ms:.1} ms (slowest whole test {:.0} ms); fake connectors, so this is engine time only", slowest.unwrap_or(0.0)),
                 None => "no tests built".into(),
             },
-            verdict: Verdict::Incomplete,
+            verdict: match slowest_first {
+                Some(ms) if ms >= 500.0 => Verdict::Missed,
+                Some(_) if in_range(rows, 1, 49).iter().all(|r| r.status != Status::NotBuilt) => {
+                    Verdict::Met
+                }
+                _ => Verdict::Incomplete,
+            },
         },
         zero_metric(
             rows,
@@ -226,16 +240,18 @@ pub fn render(rows: &[Row], metrics: &[Metric]) -> String {
     );
     let _ = writeln!(
         out,
-        "{:<5} {:<6} {:>9} {:>9}  Request",
-        "ID", "Result", "Time", "Peak mem"
+        "{:<5} {:<6} {:>9} {:>11} {:>9}  Request",
+        "ID", "Result", "Time", "To 1st act", "Peak mem"
     );
     for r in &built {
         let _ = writeln!(
             out,
-            "{:<5} {:<6} {:>7.1}ms {:>7.1}MB  {}",
+            "{:<5} {:<6} {:>7.1}ms {:>11} {:>7.1}MB  {}",
             r.id,
             status_label(r.status),
             r.elapsed_ms.unwrap_or(0.0),
+            r.time_to_first_action_ms
+                .map_or("-".to_string(), |ms| format!("{ms:.1}ms")),
             r.peak_mb.unwrap_or(0.0),
             r.request
         );
@@ -284,6 +300,7 @@ mod tests {
             reasons: vec![],
             message: String::new(),
             elapsed_ms: (status != Status::NotBuilt).then_some(1.0),
+            time_to_first_action_ms: None,
             peak_mb: None,
             sent_without_confirm: false,
             crashed: false,
@@ -366,6 +383,26 @@ mod tests {
     fn too_much_memory_is_a_miss() {
         let m = metrics(&all(Status::Pass), Some(3 * 1024 * 1024 * 1024));
         assert_eq!(get(&m, "Peak memory").verdict, Verdict::Missed);
+    }
+
+    #[test]
+    fn start_time_uses_time_to_first_action() {
+        let mut rows = all(Status::Pass);
+        for r in &mut rows {
+            r.time_to_first_action_ms = Some(3.0);
+        }
+        let m = metrics(&rows, None);
+        let start = get(&m, "Known-task start time");
+        assert_eq!(start.verdict, Verdict::Met);
+        assert!(start.measured.contains("3.0 ms"));
+        rows[4].time_to_first_action_ms = Some(900.0);
+        let m = metrics(&rows, None);
+        assert_eq!(get(&m, "Known-task start time").verdict, Verdict::Missed);
+        let m = metrics(&all(Status::NotBuilt), None);
+        assert_eq!(
+            get(&m, "Known-task start time").verdict,
+            Verdict::Incomplete
+        );
     }
 
     #[test]

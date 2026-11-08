@@ -4,6 +4,9 @@
 //! includes Microsoft Store apps such as the Store build of Spotify. An app is
 //! launched by its Start-menu id, never by running text the user typed.
 
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
+
 /// One launchable app.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppEntry {
@@ -111,18 +114,221 @@ pub fn parse_tasklist(csv: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Combine the two sources: Start-menu apps first, then shortcut-only apps whose
+/// name is not already listed.
+pub fn merge_apps(listed: &[AppEntry], shortcuts: &[AppEntry]) -> Vec<AppEntry> {
+    let mut all = listed.to_vec();
+    for s in shortcuts {
+        let n = normalize(&s.name);
+        if !all.iter().any(|e| normalize(&e.name) == n) {
+            all.push(s.clone());
+        }
+    }
+    all
+}
+
+type FastLoader = Box<dyn Fn() -> Vec<AppEntry> + Send + Sync>;
+type FullLoader = Box<dyn Fn() -> Result<Vec<AppEntry>, String> + Send + Sync>;
+
+#[derive(Default)]
+struct IndexState {
+    shortcuts: Vec<AppEntry>,
+    listed: Vec<AppEntry>,
+    merged: Vec<AppEntry>,
+    refreshing: bool,
+    /// A refresh has been started at least once.
+    started: bool,
+    last_refresh: Option<Instant>,
+    last_error: Option<String>,
+}
+
+/// In-memory list of installed apps. It is built on a background thread so a
+/// request never pays for the slow app listing (PowerShell `Get-StartApps`
+/// takes 2-8 s). A request waits only when the index has nothing to answer
+/// from yet, or when the app is missing and the last refresh is old; in both
+/// cases it waits for the refresh already running instead of starting another.
+pub struct AppIndex {
+    state: Mutex<IndexState>,
+    done: Condvar,
+    fast: FastLoader,
+    full: FullLoader,
+    /// A cached answer older than this is served, then refreshed in the background.
+    max_age: Duration,
+    /// A miss triggers a refresh only if the last one is older than this.
+    miss_cooldown: Duration,
+}
+
+impl AppIndex {
+    /// `fast` reads Start Menu shortcuts (milliseconds); `full` asks Windows for
+    /// the full app list (seconds) and is what makes the index complete.
+    pub fn new(
+        fast: impl Fn() -> Vec<AppEntry> + Send + Sync + 'static,
+        full: impl Fn() -> Result<Vec<AppEntry>, String> + Send + Sync + 'static,
+    ) -> Self {
+        AppIndex {
+            state: Mutex::default(),
+            done: Condvar::new(),
+            fast: Box::new(fast),
+            full: Box::new(full),
+            max_age: Duration::from_secs(10 * 60),
+            miss_cooldown: Duration::from_secs(60),
+        }
+    }
+
+    pub fn with_timing(mut self, max_age: Duration, miss_cooldown: Duration) -> Self {
+        self.max_age = max_age;
+        self.miss_cooldown = miss_cooldown;
+        self
+    }
+
+    fn lock(&self) -> MutexGuard<'_, IndexState> {
+        self.state.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn wait<'a>(&self, st: MutexGuard<'a, IndexState>) -> MutexGuard<'a, IndexState> {
+        self.done.wait(st).unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Start building the index on a background thread. Does nothing if a
+    /// build is already running. Returns at once.
+    pub fn warm_up(self: &Arc<Self>) {
+        let mut st = self.lock();
+        self.start_refresh(&mut st);
+    }
+
+    fn start_refresh(self: &Arc<Self>, st: &mut IndexState) {
+        if st.refreshing {
+            return;
+        }
+        st.refreshing = true;
+        st.started = true;
+        let me = Arc::clone(self);
+        std::thread::spawn(move || me.refresh_now());
+    }
+
+    fn refresh_now(&self) {
+        // Stage 1: shortcuts. Quick, so a lookup can often be answered before
+        // the slow listing finishes.
+        let shortcuts = (self.fast)();
+        {
+            let mut st = self.lock();
+            st.merged = merge_apps(&st.listed, &shortcuts);
+            st.shortcuts = shortcuts;
+        }
+        self.done.notify_all();
+        // Stage 2: the full list.
+        let result = (self.full)();
+        let mut st = self.lock();
+        match result {
+            Ok(listed) => {
+                st.merged = merge_apps(&listed, &st.shortcuts);
+                st.listed = listed;
+                st.last_error = None;
+            }
+            Err(e) => st.last_error = Some(e),
+        }
+        st.refreshing = false;
+        st.last_refresh = Some(Instant::now());
+        drop(st);
+        self.done.notify_all();
+    }
+
+    /// Look an app up by name.
+    pub fn lookup(self: &Arc<Self>, wanted: &str) -> Result<Lookup, String> {
+        let mut st = self.lock();
+        if !st.started {
+            self.start_refresh(&mut st);
+        }
+        // Nothing to answer from yet: wait for the build that is running.
+        while st.merged.is_empty() && st.refreshing {
+            st = self.wait(st);
+        }
+        if st.merged.is_empty() {
+            if let Some(e) = &st.last_error {
+                return Err(e.clone());
+            }
+        }
+        let first = find_app(&st.merged, wanted);
+        let age = st.last_refresh.map(|t| t.elapsed());
+        if first != Lookup::NotFound {
+            if !st.refreshing && age.is_none_or(|a| a >= self.max_age) {
+                self.start_refresh(&mut st);
+            }
+            return Ok(first);
+        }
+        // A miss: the app may be new, or the full list may not be in yet.
+        let worth_refreshing = st.refreshing || age.is_none_or(|a| a >= self.miss_cooldown);
+        if !worth_refreshing {
+            return Ok(Lookup::NotFound);
+        }
+        self.start_refresh(&mut st);
+        while st.refreshing {
+            st = self.wait(st);
+        }
+        if st.merged.is_empty() {
+            if let Some(e) = &st.last_error {
+                return Err(e.clone());
+            }
+        }
+        Ok(find_app(&st.merged, wanted))
+    }
+}
+
 #[cfg(windows)]
 mod os {
     use super::*;
     use std::os::windows::process::CommandExt;
+    use std::path::{Path, PathBuf};
     use std::process::Command;
-    use std::sync::Mutex;
+    use std::sync::OnceLock;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-    /// Start-menu apps. Listing takes about a second, so it is cached and only
-    /// refreshed when an app is not found (it may have just been installed).
-    static CACHE: Mutex<Option<Vec<AppEntry>>> = Mutex::new(None);
+    fn index() -> &'static Arc<AppIndex> {
+        static INDEX: OnceLock<Arc<AppIndex>> = OnceLock::new();
+        INDEX.get_or_init(|| Arc::new(AppIndex::new(scan_shortcuts, list_start_apps)))
+    }
+
+    /// Start building the app index in the background. Call once at startup.
+    pub fn warm_up() {
+        index().warm_up();
+    }
+
+    fn collect_lnk(dir: &Path, depth: u32, out: &mut Vec<AppEntry>) {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if depth < 4 {
+                    collect_lnk(&p, depth + 1, out);
+                }
+            } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("lnk")) {
+                if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                    out.push(AppEntry {
+                        name: stem.into(),
+                        app_id: p.to_string_lossy().into_owned(),
+                    });
+                }
+            }
+        }
+    }
+
+    /// Start Menu shortcuts (all users and this user). The "id" is the .lnk path.
+    fn scan_shortcuts() -> Vec<AppEntry> {
+        let tail = Path::new("Microsoft")
+            .join("Windows")
+            .join("Start Menu")
+            .join("Programs");
+        let mut out = Vec::new();
+        for var in ["ProgramData", "APPDATA"] {
+            if let Some(base) = std::env::var_os(var) {
+                collect_lnk(&PathBuf::from(base).join(&tail), 0, &mut out);
+            }
+        }
+        out
+    }
 
     fn list_start_apps() -> Result<Vec<AppEntry>, String> {
         let out = Command::new("powershell.exe")
@@ -138,27 +344,20 @@ mod os {
         Ok(parse_app_list(&String::from_utf8_lossy(&out.stdout)))
     }
 
-    /// Look an app up by name, refreshing the app list once if it is not found.
+    /// Look an app up by name in the in-memory index (see [`AppIndex`]).
     pub fn lookup_app(wanted: &str) -> Result<Lookup, String> {
-        let mut cache = CACHE
-            .lock()
-            .map_err(|_| "app list is unavailable".to_string())?;
-        if let Some(entries) = cache.as_ref() {
-            let found = find_app(entries, wanted);
-            if found != Lookup::NotFound {
-                return Ok(found);
-            }
-        }
-        let fresh = list_start_apps()?;
-        let result = find_app(&fresh, wanted);
-        *cache = Some(fresh);
-        Ok(result)
+        index().lookup(wanted)
     }
 
     /// Start an app. Returns as soon as Windows has been asked to start it.
     pub fn launch(app: &AppEntry) -> Result<(), String> {
+        let target = if app.app_id.to_lowercase().ends_with(".lnk") {
+            app.app_id.clone() // a Start Menu shortcut from the scan
+        } else {
+            format!("shell:AppsFolder\\{}", app.app_id)
+        };
         Command::new("explorer.exe")
-            .arg(format!("shell:AppsFolder\\{}", app.app_id))
+            .arg(target)
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map(|_| ())
@@ -187,7 +386,7 @@ mod os {
 }
 
 #[cfg(windows)]
-pub use os::{is_app_running, launch, lookup_app};
+pub use os::{is_app_running, launch, lookup_app, warm_up};
 
 #[cfg(test)]
 mod tests {
@@ -285,6 +484,111 @@ mod tests {
         assert!(title_matches("Spotify Free", "spotify"));
         assert!(!title_matches("N/A", "spotify"));
         assert!(!title_matches("", "spotify"));
+    }
+
+    fn app(name: &str) -> AppEntry {
+        AppEntry {
+            name: name.into(),
+            app_id: format!("{name}!id"),
+        }
+    }
+
+    /// An index whose slow listing sleeps and counts how often it ran.
+    fn slow_index(full_ms: u64) -> (Arc<AppIndex>, Arc<std::sync::atomic::AtomicUsize>) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let runs = Arc::new(AtomicUsize::new(0));
+        let r = runs.clone();
+        let idx = AppIndex::new(
+            || vec![app("Quick")],
+            move || {
+                r.fetch_add(1, Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(full_ms));
+                Ok(vec![app("Notepad"), app("Spotify")])
+            },
+        );
+        (Arc::new(idx), runs)
+    }
+
+    #[test]
+    fn merge_keeps_listed_apps_and_adds_new_shortcuts_only() {
+        let m = merge_apps(&[app("Notepad")], &[app("notepad"), app("Quick")]);
+        assert_eq!(m.len(), 2);
+        assert_eq!(m[1].name, "Quick");
+    }
+
+    #[test]
+    fn a_hit_in_the_fast_stage_does_not_wait_for_the_slow_listing() {
+        let (idx, _) = slow_index(1500);
+        idx.warm_up();
+        let t = Instant::now();
+        assert!(matches!(idx.lookup("quick"), Ok(Lookup::Found(_))));
+        assert!(
+            t.elapsed() < Duration::from_millis(1000),
+            "{:?}",
+            t.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_lookup_during_warm_up_waits_for_it_and_does_not_start_a_second() {
+        use std::sync::atomic::Ordering;
+        let (idx, runs) = slow_index(300);
+        idx.warm_up();
+        assert!(matches!(idx.lookup("spotify"), Ok(Lookup::Found(_))));
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_warm_index_answers_without_loading_again() {
+        use std::sync::atomic::Ordering;
+        let (idx, runs) = slow_index(50);
+        idx.warm_up();
+        assert!(matches!(idx.lookup("notepad"), Ok(Lookup::Found(_))));
+        let t = Instant::now();
+        for _ in 0..50 {
+            assert!(matches!(idx.lookup("notepad"), Ok(Lookup::Found(_))));
+        }
+        assert!(t.elapsed() < Duration::from_millis(100));
+        // A miss just after a refresh is answered at once, not by listing again.
+        assert_eq!(idx.lookup("telegram"), Ok(Lookup::NotFound));
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn an_old_index_answers_first_and_refreshes_in_the_background() {
+        use std::sync::atomic::Ordering;
+        let (idx, runs) = slow_index(300);
+        let idx = Arc::new(
+            Arc::try_unwrap(idx)
+                .ok()
+                .unwrap()
+                .with_timing(Duration::from_millis(0), Duration::from_secs(60)),
+        );
+        assert!(matches!(idx.lookup("notepad"), Ok(Lookup::Found(_))));
+        let t = Instant::now();
+        assert!(matches!(idx.lookup("notepad"), Ok(Lookup::Found(_))));
+        assert!(t.elapsed() < Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(600));
+        assert!(runs.load(Ordering::SeqCst) >= 2);
+    }
+
+    #[test]
+    fn a_miss_after_the_cooldown_refreshes_and_finds_new_apps() {
+        let installed = Arc::new(Mutex::new(vec![app("Notepad")]));
+        let i = installed.clone();
+        let idx = Arc::new(
+            AppIndex::new(Vec::new, move || Ok(i.lock().unwrap().clone()))
+                .with_timing(Duration::from_secs(600), Duration::from_millis(0)),
+        );
+        assert_eq!(idx.lookup("telegram"), Ok(Lookup::NotFound));
+        installed.lock().unwrap().push(app("Telegram"));
+        assert!(matches!(idx.lookup("telegram"), Ok(Lookup::Found(_))));
+    }
+
+    #[test]
+    fn a_failed_listing_with_nothing_cached_is_an_error() {
+        let idx = Arc::new(AppIndex::new(Vec::new, || Err("no powershell".into())));
+        assert_eq!(idx.lookup("x"), Err("no powershell".to_string()));
     }
 
     #[test]

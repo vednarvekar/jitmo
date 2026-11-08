@@ -30,6 +30,8 @@ struct State {
     health: Option<Health>,
     /// Errors for particular executes only, by position (0 = the first call).
     nth_errors: Vec<(usize, ConnError)>,
+    /// When the first `execute` call started.
+    first_execute_at: Option<std::time::Instant>,
 }
 
 pub struct FakeConnector {
@@ -101,6 +103,11 @@ impl FakeConnector {
         self
     }
 
+    /// When the first `execute` call started (None if there was none).
+    pub fn first_execute_at(&self) -> Option<std::time::Instant> {
+        self.state.lock().unwrap().first_execute_at
+    }
+
     /// Everything that was called, in order.
     pub fn calls(&self) -> Vec<Call> {
         self.state.lock().unwrap().calls.clone()
@@ -135,7 +142,9 @@ impl Connector for FakeConnector {
     }
 
     fn execute(&self, action: &str, args: &Args) -> Result<Output, ConnError> {
+        let started = std::time::Instant::now();
         let mut s = self.state.lock().unwrap();
+        s.first_execute_at.get_or_insert(started);
         let index = s
             .calls
             .iter()

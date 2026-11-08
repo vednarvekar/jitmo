@@ -115,9 +115,32 @@ mod tests {
     fn live_open_app_and_verify() {
         let app = std::env::var("JITMO_LIVE_APP").unwrap_or_else(|_| "calculator".into());
         let c = WindowsSystem;
+        // JITMO_WARM_SECS=n: warm the index first and wait n seconds (what the
+        // app does at startup); unset: a cold lookup that has to build it.
+        if let Some(secs) = std::env::var("JITMO_WARM_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+        {
+            apps::warm_up();
+            std::thread::sleep(Duration::from_secs(secs));
+        }
+        let t = Instant::now();
+        let looked = apps::lookup_app(&app).unwrap();
+        println!("TIMING first lookup_app: {:?} -> {looked:?}", t.elapsed());
+        let t = Instant::now();
+        let _ = apps::lookup_app(&app).unwrap();
+        println!("TIMING second lookup_app: {:?}", t.elapsed());
+        let t = Instant::now();
         let out = c.execute("open_app", &args(&app)).unwrap();
+        println!(
+            "TIMING execute(open_app), lookup + launch: {:?}",
+            t.elapsed()
+        );
         println!("opened: {out:?}");
-        assert_eq!(c.check("app_is_running", &args(&app)), Ok(true));
+        let t = Instant::now();
+        let running = c.check("app_is_running", &args(&app));
+        println!("TIMING check(app_is_running): {:?}", t.elapsed());
+        assert_eq!(running, Ok(true));
     }
 
     #[test]
