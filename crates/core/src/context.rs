@@ -20,14 +20,20 @@ const SKIP_DIRS: [&str; 4] = ["node_modules", ".git", "AppData", "target"];
 
 /// Shared place where the app puts the current Explorer selection.
 #[derive(Clone, Default)]
-pub struct SelectionSnapshot(Arc<Mutex<Option<PathBuf>>>);
+pub struct SelectionSnapshot(Arc<Mutex<Vec<PathBuf>>>);
 
 impl SelectionSnapshot {
+    /// Remember a single selected item, or none.
     pub fn set(&self, path: Option<PathBuf>) {
-        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = path;
+        self.set_all(path.into_iter().collect());
     }
 
-    fn get(&self) -> Option<PathBuf> {
+    /// Remember every selected item.
+    pub fn set_all(&self, paths: Vec<PathBuf>) {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = paths;
+    }
+
+    fn get_all(&self) -> Vec<PathBuf> {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
@@ -140,7 +146,15 @@ fn walk_dirs(dir: &Path, depth: usize, out: &mut Vec<FileRef>) {
 
 impl ContextSource for FsContext {
     fn selected_file(&self) -> Option<FileRef> {
-        self.selection.get().and_then(|p| file_ref(&p))
+        self.selection.get_all().first().and_then(|p| file_ref(p))
+    }
+
+    fn selected_files(&self) -> Vec<FileRef> {
+        self.selection
+            .get_all()
+            .iter()
+            .filter_map(|p| file_ref(p))
+            .collect()
     }
 
     fn recent_downloads(&self, limit: usize) -> Vec<FileRef> {
@@ -222,6 +236,25 @@ mod tests {
     }
 
     #[test]
+    fn several_selected_files_are_all_returned_and_missing_ones_dropped() {
+        let root = temp("multi");
+        for n in ["a.pdf", "b.pdf", "c.pdf"] {
+            fs::write(root.join(n), "x").unwrap();
+        }
+        let snap = SelectionSnapshot::default();
+        let ctx = FsContext::new(root.clone(), vec![], snap.clone());
+        snap.set_all(vec![
+            root.join("a.pdf"),
+            root.join("gone.pdf"),
+            root.join("b.pdf"),
+            root.join("c.pdf"),
+        ]);
+        let names: Vec<String> = ctx.selected_files().into_iter().map(|f| f.name).collect();
+        assert_eq!(names, ["a.pdf", "b.pdf", "c.pdf"]);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn selection_comes_from_the_snapshot_and_must_still_exist() {
         let root = temp("sel");
         fs::write(root.join("picked.docx"), "x").unwrap();
@@ -232,6 +265,7 @@ mod tests {
         assert_eq!(ctx.selected_file().unwrap().name, "picked.docx");
         snap.set(Some(root.join("gone.docx")));
         assert!(ctx.selected_file().is_none());
+        assert!(ctx.selected_files().is_empty());
         let _ = fs::remove_dir_all(root);
     }
 }

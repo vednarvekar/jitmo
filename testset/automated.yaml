@@ -108,6 +108,7 @@ T97: { request: "Open Spotify.", expect: ran, skill: apps.open, calls: [{ connec
 # File tests: the runner supplies the named files (they live in C:/Docs).
 T23: { files: ["Budget 2026.xlsx", "Holiday photo.jpg"], request: "Find the budget sheet from last week.", expect: ran, skill: files.find, calls: [{ connector: files, action: reveal, args: { path: "C:/Docs/Budget 2026.xlsx" } }] }
 T25: { needs_model: true, files: ["Resume.docx", "Invoice.pdf"], request: "Open my resume.", expect: ran, skill: files.open, calls: [{ connector: files, action: open, args: { path: "C:/Docs/Resume.docx" } }] }
+T26: { needs_model: true, files: ["Jan.pdf", "Feb.pdf", "Mar.pdf", "Notes.docx"], selected: ["Jan.pdf", "Feb.pdf", "Mar.pdf"], folders: ["Invoices"], request: "Move these PDFs to the Invoices folder.", expect: ran, skill: files.move, calls: [{ connector: files, action: move, args: { path: "C:/Docs/Jan.pdf", dir: "C:/Docs/Invoices" } }, { connector: files, action: move, args: { path: "C:/Docs/Feb.pdf", dir: "C:/Docs/Invoices" } }, { connector: files, action: move, args: { path: "C:/Docs/Mar.pdf", dir: "C:/Docs/Invoices" } }] }
 T58: { needs_model: true, files: ["Budget 2026.xlsx", "Holiday photo.jpg"], request: "wheres that budget thing", expect: ran, skill: files.find, calls: [{ connector: files, action: reveal, args: { path: "C:/Docs/Budget 2026.xlsx" } }] }
 T69: { needs_model: true, files: ["Q3 deck.pptx", "Sales deck.pptx"], request: "Open the deck.", expect: asks_question }
 

@@ -139,7 +139,9 @@ fn note_selection(app: &AppHandle) {
     {
         let hwnd = jitmo_adapter_windows::explorer::foreground_window();
         std::thread::spawn(move || {
-            snapshot.set(jitmo_adapter_windows::explorer::explorer_selection(hwnd));
+            snapshot.set_all(jitmo_adapter_windows::explorer::explorer_selection_all(
+                hwnd,
+            ));
         });
     }
 }

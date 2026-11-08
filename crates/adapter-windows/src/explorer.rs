@@ -13,15 +13,33 @@ pub fn parse_selection(output: &str) -> Option<PathBuf> {
     Some(PathBuf::from(line))
 }
 
-/// PowerShell that prints the first selected item of the Explorer window with
-/// this handle. Nothing is printed for any other window or an empty selection.
+/// Most selected items that are read from one window.
+pub const MAX_SELECTED: usize = 50;
+
+/// Every non-blank line of the script output is one selected item's full path
+/// (at most [`MAX_SELECTED`]).
+pub fn parse_selections(output: &str) -> Vec<PathBuf> {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .take(MAX_SELECTED)
+        .map(PathBuf::from)
+        .collect()
+}
+
+/// PowerShell that prints the selected items (one path per line, at most
+/// [`MAX_SELECTED`]) of the Explorer window with this handle. Nothing is printed
+/// for any other window or an empty selection.
 pub fn selection_script(hwnd: isize) -> String {
     format!(
         "$sh = New-Object -ComObject Shell.Application; \
          foreach ($w in $sh.Windows()) {{ \
            if ($w.HWND -eq {hwnd}) {{ \
              $i = $w.Document.SelectedItems(); \
-             if ($i.Count -ge 1) {{ $i.Item(0).Path; break }} \
+             $n = [Math]::Min($i.Count, {MAX_SELECTED}); \
+             for ($k = 0; $k -lt $n; $k++) {{ $i.Item($k).Path }}; \
+             break \
            }} \
          }}"
     )
@@ -48,24 +66,32 @@ mod os {
     /// Explorer window with something selected. Takes a few hundred
     /// milliseconds, so call it off the UI thread.
     pub fn explorer_selection(hwnd: isize) -> Option<PathBuf> {
+        explorer_selection_all(hwnd).into_iter().next()
+    }
+
+    /// Every selected item (at most 50) in the Explorer window `hwnd`; empty for
+    /// any other window or an empty selection. Same cost as [`explorer_selection`].
+    pub fn explorer_selection_all(hwnd: isize) -> Vec<PathBuf> {
         if hwnd == 0 {
-            return None;
+            return Vec::new();
         }
-        let out = Command::new("powershell")
+        let Ok(out) = Command::new("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command"])
             .arg(selection_script(hwnd))
             .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
             .output()
-            .ok()?;
+        else {
+            return Vec::new();
+        };
         if !out.status.success() {
-            return None;
+            return Vec::new();
         }
-        parse_selection(&String::from_utf8_lossy(&out.stdout))
+        parse_selections(&String::from_utf8_lossy(&out.stdout))
     }
 }
 
 #[cfg(windows)]
-pub use os::{explorer_selection, foreground_window};
+pub use os::{explorer_selection, explorer_selection_all, foreground_window};
 
 #[cfg(test)]
 mod tests {
@@ -83,6 +109,28 @@ mod tests {
     fn empty_output_means_nothing_selected() {
         assert_eq!(parse_selection(""), None);
         assert_eq!(parse_selection("  \r\n"), None);
+    }
+
+    #[test]
+    fn every_line_is_one_selected_path_capped_at_fifty() {
+        assert_eq!(
+            parse_selections("C:\\a.pdf\r\n\r\n  C:\\b c.pdf \r\nC:\\d.pdf"),
+            vec![
+                PathBuf::from("C:\\a.pdf"),
+                PathBuf::from("C:\\b c.pdf"),
+                PathBuf::from("C:\\d.pdf")
+            ]
+        );
+        assert!(parse_selections(" \r\n").is_empty());
+        let many: String = (0..80).map(|i| format!("C:\\f{i}.txt\n")).collect();
+        assert_eq!(parse_selections(&many).len(), MAX_SELECTED);
+    }
+
+    #[test]
+    fn script_prints_all_selected_items() {
+        let s = selection_script(7);
+        assert!(s.contains("$i.Item($k).Path"));
+        assert!(s.contains("Math]::Min($i.Count, 50)"));
     }
 
     #[test]

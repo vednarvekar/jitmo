@@ -87,11 +87,15 @@ pub fn run_case(skills: &[Skill], spec: &Spec, live: bool) -> RunResult {
 }
 
 /// Files that exist only for one test (`files:` in the spec), newest last.
-struct TestFiles(Vec<FileRef>);
+struct TestFiles {
+    files: Vec<FileRef>,
+    selected: Vec<FileRef>,
+    folders: Vec<FileRef>,
+}
 
 impl TestFiles {
-    fn new(names: &[String]) -> Self {
-        TestFiles(
+    fn new(spec: &Spec) -> Self {
+        let make = |names: &[String]| -> Vec<FileRef> {
             names
                 .iter()
                 .enumerate()
@@ -100,23 +104,34 @@ impl TestFiles {
                     path: format!("C:/Docs/{n}"),
                     modified: 1000 + i as u64,
                 })
-                .collect(),
-        )
+                .collect()
+        };
+        TestFiles {
+            files: make(&spec.files),
+            selected: make(&spec.selected),
+            folders: make(&spec.folders),
+        }
     }
 }
 
 impl ContextSource for TestFiles {
     fn selected_file(&self) -> Option<FileRef> {
-        None
+        self.selected.first().cloned()
+    }
+    fn selected_files(&self) -> Vec<FileRef> {
+        self.selected.clone()
+    }
+    fn searchable_folders(&self) -> Vec<FileRef> {
+        self.folders.clone()
     }
     fn recent_downloads(&self, limit: usize) -> Vec<FileRef> {
-        let mut f = self.0.clone();
+        let mut f = self.files.clone();
         f.sort_by_key(|x| std::cmp::Reverse(x.modified));
         f.truncate(limit);
         f
     }
     fn searchable_files(&self) -> Vec<FileRef> {
-        self.0.clone()
+        self.files.clone()
     }
 }
 
@@ -159,7 +174,7 @@ pub fn run_case_with(
     if let Some(launcher) = worker {
         router = router.with_worker(WorkerClient::new(launcher.clone(), Duration::from_secs(10)));
     }
-    let mut flow = Flow::new(router, store, map).with_context(TestFiles::new(&spec.files));
+    let mut flow = Flow::new(router, store, map).with_context(TestFiles::new(spec));
     let mut user = Recorder {
         answers: spec.confirm_answers.iter().copied().collect(),
         confirms: Vec::new(),
