@@ -804,3 +804,209 @@ kbd {
 .grey-orb {
   filter: contrast(0.3333);
 }
+
+/* ===== Orb behaviours: random idle moves, looking at the pointer, a poke reaction ===== */
+.grey-orb .geye {
+  /* the neutral pair: left and right eye; the loop and every behaviour start from here */
+  left: var(--x);
+  top: 29%;
+  width: 11%;
+  height: 34%;
+}
+.grey-orb .geye.l {
+  --x: 30%;
+}
+.grey-orb .geye.r {
+  --x: 59%;
+}
+/* the default loop only runs while the orb is in its "loop" behaviour */
+.grey-orb:not([data-b="loop"]) .geye {
+  animation: none;
+}
+.grey-orb .geyes {
+  translate: var(--gx, 0px) var(--gy, 0px);
+  transition: translate 0.14s ease-out;
+  transform-origin: 50% 50%;
+}
+.grey-orb .geye {
+  transition:
+    top 0.18s,
+    width 0.18s,
+    height 0.18s;
+}
+
+.grey-orb[data-b="blink"] .geye {
+  animation: b-blink 0.45s ease-in-out both;
+}
+.grey-orb[data-b="wink"] .geye.r {
+  animation: b-blink 0.6s ease-in-out both;
+}
+.grey-orb[data-b="surprised"] .geye {
+  animation: b-surprise 0.9s ease-in-out both;
+}
+.grey-orb[data-b="smile"] .geye {
+  animation: b-smile 1.5s ease-in-out both;
+}
+.grey-orb[data-b="sleepy"] .geye {
+  animation: b-sleepy 2.6s ease-in-out both;
+}
+.grey-orb[data-b="tilt"] .geyes {
+  animation: b-tilt 1.6s ease-in-out both;
+}
+.grey-orb[data-b="glance"] .geyes {
+  animation: b-glance 1.5s ease-in-out both;
+}
+.grey-orb[data-b="lookaround"] .geyes {
+  animation: b-around 2.6s ease-in-out both;
+}
+/* the light on the sphere stirs during some of these */
+.grey-orb[data-b="smile"] .gl,
+.grey-orb[data-b="surprised"] .gl {
+  animation-duration: 1.2s;
+}
+
+@keyframes b-blink {
+  0%,
+  100% {
+    top: 29%;
+    height: 34%;
+    width: 11%;
+  }
+  50% {
+    top: 44%;
+    height: 4%;
+    width: 12%;
+  }
+}
+@keyframes b-surprise {
+  0%,
+  100% {
+    top: 29%;
+    height: 34%;
+    width: 11%;
+  }
+  25%,
+  75% {
+    top: 26%;
+    height: 40%;
+    width: 15%;
+  }
+}
+@keyframes b-smile {
+  0%,
+  100% {
+    top: 29%;
+    height: 34%;
+    width: 11%;
+  }
+  22%,
+  78% {
+    top: 40%;
+    height: 7%;
+    width: 16%;
+  }
+}
+@keyframes b-sleepy {
+  0%,
+  100% {
+    top: 29%;
+    height: 34%;
+    width: 11%;
+  }
+  28% {
+    top: 42%;
+    height: 7%;
+  }
+  48% {
+    top: 35%;
+    height: 20%;
+  }
+  72% {
+    top: 43%;
+    height: 5%;
+  }
+  90% {
+    top: 35%;
+    height: 22%;
+  }
+}
+@keyframes b-tilt {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  35% {
+    transform: rotate(-14deg);
+  }
+  70% {
+    transform: rotate(9deg);
+  }
+}
+@keyframes b-glance {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-16%);
+  }
+  60% {
+    transform: translateX(16%);
+  }
+}
+@keyframes b-around {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-15%, -6%);
+  }
+  45% {
+    transform: translate(14%, -9%);
+  }
+  70% {
+    transform: translate(10%, 10%);
+  }
+  85% {
+    transform: translate(-12%, 8%);
+  }
+}
+
+/* Pointer near: the eyes stop their routine and follow it. */
+.grey-orb[data-look="1"] .geye {
+  animation: none;
+}
+.grey-orb[data-look="1"] .geyes {
+  animation: none;
+}
+/* Pointer right on the orb: a smile. */
+.grey-orb[data-look="1"][data-over="1"] .geye {
+  top: 40%;
+  height: 7%;
+  width: 16%;
+}
+
+/* A click squashes the orb and the eyes go wide. */
+.grey-orb[data-poke="1"] {
+  animation: poke 0.38s ease-out;
+}
+.grey-orb[data-poke="1"] .geye {
+  animation: b-surprise 0.38s ease-out both;
+}
+@keyframes poke {
+  30% {
+    transform: scale(0.82, 1.12);
+  }
+  62% {
+    transform: scale(1.09, 0.93);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grey-orb .geye,
+  .grey-orb .geyes,
+  .grey-orb {
+    animation: none !important;
+  }
+}
