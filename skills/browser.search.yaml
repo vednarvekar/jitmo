@@ -1,0 +1,24 @@
+id: browser.search                  # task A5
+task: A5
+version: 1
+category: apps
+capabilities:
+  - browser.open
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 10
+risk: safe
+examples:
+  - "Search YouTube for pasta recipes."
+  - "google best budget phones"
+slots: {}
+steps:
+  - connector: browser
+    action: search
+    args: { text: "{request}" }
+check:
+  connector: browser
+  action: search
+  args: { text: "{request}" }
+undo: none

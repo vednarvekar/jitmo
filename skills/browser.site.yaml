@@ -1,0 +1,24 @@
+id: browser.site                  # task A6
+task: A6
+version: 1
+category: apps
+capabilities:
+  - browser.open
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 10
+risk: safe
+examples:
+  - "Open Amazon."
+  - "go to github"
+slots: {}
+steps:
+  - connector: browser
+    action: site
+    args: { text: "{request}" }
+check:
+  connector: browser
+  action: site
+  args: { text: "{request}" }
+undo: none
