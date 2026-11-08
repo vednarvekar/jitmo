@@ -5,3 +5,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_yaml_ng = "0.10"          # MIT. Maintained fork; serde_yaml itself is archived.
+ed25519-compact = "2"           # MIT. Pure Rust, no build script. Skill-file signatures (6.1: Ed25519).
+thiserror.workspace = true

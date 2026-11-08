@@ -285,6 +285,30 @@ mod tests {
         assert_eq!(s.recent_actions(1).unwrap()[0].undo_token, None);
     }
 
+    #[cfg(feature = "sqlcipher")]
+    #[test]
+    fn encrypted_file_is_unreadable_without_the_right_key() {
+        let dir = std::env::temp_dir().join(format!("jitmo-enc-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("enc.db");
+        let key = [9u8; 32];
+        {
+            let s = Store::open(&path, Some(&key)).unwrap();
+            s.set_setting("secret", "hunter2").unwrap();
+        }
+        // Plain SQLite files start with this header; an encrypted one must not.
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(!bytes.starts_with(b"SQLite format 3"));
+        assert!(!bytes.windows(7).any(|w| w == b"hunter2"));
+        // Right key works, wrong key and no key are refused.
+        let s = Store::open(&path, Some(&key)).unwrap();
+        assert_eq!(s.get_setting("secret").unwrap().as_deref(), Some("hunter2"));
+        drop(s);
+        assert!(matches!(Store::open(&path, Some(&[1u8; 32])), Err(StoreError::BadKey)));
+        assert!(Store::open(&path, None).is_err());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
     #[cfg(not(feature = "sqlcipher"))]
     #[test]
     fn key_is_refused_without_sqlcipher() {

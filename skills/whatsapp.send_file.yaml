@@ -1,0 +1,40 @@
+id: whatsapp.send_file          # task M2
+version: 1
+category: messaging
+capabilities:
+  - files.read:selected
+  - contacts.read
+  - whatsapp.send
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 15
+risk: sends_or_shares
+examples:
+  - "send this file to ved on whatsapp"
+  - "whatsapp the pdf to Ved"
+slots:
+  file:
+    type: file_ref
+    required: true
+    resolve: [selected_file, named_file, recent_download]
+  contact:
+    type: contact
+    required: true
+    resolve: [named_contact, usual_contact]
+  app: whatsapp
+confirm:
+  text: "Send {file.name} to {contact.name} on WhatsApp?"
+steps:
+  - connector: whatsapp_desktop
+    action: open_chat
+    args: { contact: "{contact}" }
+  - connector: whatsapp_desktop
+    action: attach_and_send
+    args: { file: "{file.path}" }
+check:
+  connector: whatsapp_desktop
+  action: last_message_is_file
+  args: { contact: "{contact}", file_name: "{file.name}" }
+undo: none
+fallback: open_chat_and_wait
