@@ -221,6 +221,9 @@ fn main() {
             if let Err(e) = registered {
                 eprintln!("could not register the hotkey `{hotkey}`: {e}");
                 create_bar(app.handle());
+            } else if std::env::var_os("JITMO_OPEN_ON_START").is_some() {
+                // For measuring and demos: show the bar without pressing the hotkey.
+                create_bar(app.handle());
             }
             Ok(())
         })
