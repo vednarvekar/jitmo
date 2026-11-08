@@ -725,3 +725,101 @@ mod live {
         assert!(vol.is_ok(), "the volume script must at least run: {vol:?}");
     }
 }
+
+#[cfg(all(test, windows))]
+mod live_setters {
+    use super::*;
+
+    fn conn() -> SystemControls {
+        SystemControls::new(
+            Arc::new(PowerShell),
+            std::env::temp_dir().join("jitmo-live-shots"),
+        )
+    }
+
+    fn text(t: &str) -> Args {
+        [("text".to_string(), t.to_string())].into()
+    }
+
+    fn pct(out: &Output) -> i32 {
+        out.0["message"]
+            .split(|c: char| !c.is_ascii_digit())
+            .find(|s| !s.is_empty())
+            .and_then(|s| s.parse().ok())
+            .unwrap()
+    }
+
+    /// Changes the real volume and brightness by 10 points and puts them back.
+    /// `cargo test -p jitmo-connectors live_volume_and_brightness -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn live_volume_and_brightness_change_and_restore() {
+        let c = conn();
+        let start = pct(&c.execute("adjust", &text("set the volume to 44")).unwrap());
+        println!("volume start-ish: {start}");
+        let down = pct(&c.execute("adjust", &text("turn the volume down")).unwrap());
+        println!("volume after down: {down}");
+        let up = pct(&c.execute("adjust", &text("turn the volume up")).unwrap());
+        println!("volume after up: {up}");
+        assert_eq!(down, start - 10);
+        assert_eq!(up, start);
+
+        let b0 = pct(&c.execute("adjust", &text("set brightness to 83")).unwrap());
+        let b1 = pct(&c.execute("adjust", &text("dim the screen")).unwrap());
+        let b2 = pct(&c
+            .execute("adjust", &text("make the screen brighter"))
+            .unwrap());
+        println!("brightness: {b0} -> {b1} -> {b2}");
+        assert_eq!(b1, b0 - 10);
+        assert_eq!(b2, b0);
+    }
+
+    /// Turns Wi-Fi off, checks it, turns it back on. The network drops for a few seconds.
+    #[test]
+    #[ignore]
+    fn live_wifi_off_then_on() {
+        let c = conn();
+        let off = c.execute("radio", &text("turn off wifi"));
+        println!("off: {off:?}");
+        let checked_off = c.check("radio", &text("turn off wifi"));
+        // Always put it back, even if the checks above failed.
+        let on = c.execute("radio", &text("turn on wifi"));
+        println!("on: {on:?}");
+        std::thread::sleep(std::time::Duration::from_secs(4));
+        let checked_on = c.check("radio", &text("turn on wifi"));
+        assert!(off.is_ok() && on.is_ok(), "{off:?} {on:?}");
+        assert_eq!(checked_off.unwrap(), true);
+        assert_eq!(checked_on.unwrap(), true);
+    }
+
+    /// Takes one screenshot, checks it, then deletes it with Undo.
+    #[test]
+    #[ignore]
+    fn live_screenshot_and_undo() {
+        let c = conn();
+        let out = c.execute("screenshot", &Args::new()).unwrap();
+        let path = out.0["path"].clone();
+        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        println!("screenshot: {path} ({size} bytes)");
+        assert!(c.check("screenshot", &Args::new()).unwrap());
+        assert!(size > 10_000);
+        c.undo("screenshot", &out).unwrap().unwrap();
+        assert!(!std::path::Path::new(&path).exists());
+    }
+}
+
+#[cfg(all(test, windows))]
+mod live_lock {
+    use super::*;
+
+    /// Locks the screen for real. You have to unlock it afterwards.
+    #[test]
+    #[ignore]
+    fn live_lock_and_detect_the_lock_screen() {
+        let c = SystemControls::new(Arc::new(PowerShell), std::env::temp_dir());
+        c.execute("lock", &Args::new()).unwrap();
+        let locked = c.check("lock", &Args::new());
+        println!("lock check: {locked:?}");
+        assert_eq!(locked.unwrap(), true);
+    }
+}
