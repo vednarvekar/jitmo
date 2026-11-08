@@ -15,6 +15,7 @@
 //! (see docs/03-delivery/8.1 - Decision Log.md).
 
 use jitmo_connectors::{fake::FakeConnector, Connector};
+use jitmo_core::context::{FsContext, SelectionSnapshot};
 use jitmo_core::flow::Flow;
 use jitmo_core::router::Router;
 use jitmo_core::service::CoreService;
@@ -40,6 +41,8 @@ const DESTROY_AFTER_HIDDEN: Duration = Duration::from_secs(60);
 
 struct AppState {
     core: CoreService,
+    /// What Explorer had selected when the bar was last opened.
+    selection: SelectionSnapshot,
     /// Bumped on every show and hide, so a pending "destroy" timer can tell it is stale.
     visibility: AtomicU64,
 }
@@ -107,6 +110,12 @@ fn create_bar(app: &AppHandle) {
 }
 
 fn toggle(app: &AppHandle) {
+    if !app
+        .get_webview_window(BAR)
+        .is_some_and(|w| w.is_visible().unwrap_or(false))
+    {
+        note_selection(app); // the bar is about to open: remember what is selected now
+    }
     match app.get_webview_window(BAR) {
         Some(w) if w.is_visible().unwrap_or(false) => hide(app),
         Some(w) => {
@@ -118,6 +127,20 @@ fn toggle(app: &AppHandle) {
             let _ = app.emit("bar-shown", ());
         }
         None => create_bar(app),
+    }
+}
+
+/// Remember the Explorer selection from before the bar takes focus. Clears the
+/// old one at once; the new one arrives a moment later.
+fn note_selection(app: &AppHandle) {
+    let snapshot = app.state::<AppState>().selection.clone();
+    snapshot.set(None);
+    #[cfg(windows)]
+    {
+        let hwnd = jitmo_adapter_windows::explorer::foreground_window();
+        std::thread::spawn(move || {
+            snapshot.set(jitmo_adapter_windows::explorer::explorer_selection(hwnd));
+        });
     }
 }
 
@@ -215,13 +238,16 @@ fn main() {
                 .get_setting("hotkey")?
                 .unwrap_or_else(|| DEFAULT_HOTKEY.to_string());
 
-            let flow = Flow::new(router(), store, connectors());
+            let selection = SelectionSnapshot::default();
+            let flow = Flow::new(router(), store, connectors())
+                .with_context(FsContext::for_current_user(selection.clone()));
             let handle = app.handle().clone();
             let core = CoreService::spawn(flow, move |event| {
                 let _ = handle.emit("core-event", &event);
             });
             app.manage(AppState {
                 core,
+                selection,
                 visibility: AtomicU64::new(0),
             });
 

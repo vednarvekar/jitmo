@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 jitmo-connectors = { path = "../../crates/connectors" }
 jitmo-core = { path = "../../crates/core" }
+jitmo-adapter-windows = { path = "../../crates/adapter-windows" }
 jitmo-model-worker = { path = "../../crates/model-worker", default-features = false }
 jitmo-ipc = { path = "../../crates/ipc" }
 jitmo-skills = { path = "../../crates/skills" }

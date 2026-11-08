@@ -6,4 +6,5 @@
 //! everywhere.
 
 pub mod apps;
+pub mod explorer;
 pub mod memory;

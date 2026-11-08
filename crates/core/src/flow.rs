@@ -12,6 +12,7 @@
 //! [`Prompter`], which the service layer implements over the UI pipe.
 
 use crate::policy::{self, Outcome, StepFacts};
+use crate::resolver::{self, ContextSource, NoContext, Resolution, SlotValue};
 use crate::router::{decide, RouteDecision, Router};
 use crate::verifier::{verify, Verdict};
 use jitmo_connectors::{Args, ConnError, Connector, Health, Output};
@@ -40,16 +41,9 @@ struct UndoRecord {
     expires: Instant,
 }
 
-/// A slot's value. `text` is what the user said; `fields` hold parts of it,
-/// like `{file.name}`. The real resolver (Phase 2) will fill in more fields,
-/// such as `path`. Until then only `name` exists, and a template that needs
-/// another field is refused up front instead of being guessed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SlotValue {
-    text: String,
-    fields: BTreeMap<String, String>,
-}
-
+/// Slot values by name. A template that needs a field a value does not have
+/// (a contact's number before contacts are resolved) is refused up front
+/// instead of being guessed.
 type Slots = BTreeMap<String, SlotValue>;
 
 pub struct Flow {
@@ -60,6 +54,7 @@ pub struct Flow {
     last_undo: Option<UndoRecord>,
     /// Overrides the policy's Undo window (tests).
     undo_window: Option<Duration>,
+    context: Box<dyn ContextSource>,
 }
 
 impl Flow {
@@ -75,7 +70,14 @@ impl Flow {
             clock: Box::new(iso_now),
             last_undo: None,
             undo_window: None,
+            context: Box::new(NoContext),
         }
+    }
+
+    /// Where selected files, downloads and file names come from.
+    pub fn with_context(mut self, context: impl ContextSource + 'static) -> Self {
+        self.context = Box::new(context);
+        self
     }
 
     /// Replace the clock (tests).
@@ -242,9 +244,16 @@ impl Flow {
         };
 
         // 2. Fill slots.
-        let slots = match resolve_slots(&skill, &understanding.spans) {
+        let slots = match resolve_slots(
+            &skill,
+            &understanding.spans,
+            self.context.as_ref(),
+            &self.store,
+            p,
+        ) {
             Ok(s) => s,
-            Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
+            Err(SlotError::Message(msg)) => return self.fail(id, text, Some(&skill.id), &msg),
+            Err(SlotError::Cancelled) => return self.cancelled(id, text, Some(&skill.id)),
         };
 
         // 3. Policy. A broken log must not unblock anything, so if the block
@@ -385,42 +394,75 @@ impl Flow {
     }
 }
 
+/// Why slot filling stopped.
+enum SlotError {
+    /// A one-line message for the user.
+    Message(String),
+    /// The user dismissed the question.
+    Cancelled,
+}
+
 /// Fill each slot from the spans the router found (first unused span of the
-/// slot's type), or from the skill's fixed value.
-fn resolve_slots(skill: &Skill, spans: &[Span]) -> Result<Slots, String> {
+/// slot's type), or from the skill's fixed value. Real things (files) come from
+/// the resolver; if several fit equally the user is asked one question (FR4).
+fn resolve_slots(
+    skill: &Skill,
+    spans: &[Span],
+    ctx: &dyn ContextSource,
+    store: &Store,
+    p: &mut dyn Prompter,
+) -> Result<Slots, SlotError> {
     let mut used = vec![false; spans.len()];
     let mut out = Slots::new();
     for (name, slot) in &skill.slots {
         match slot {
             Slot::Fixed(v) => {
-                out.insert(name.clone(), value_from_text(v));
+                out.insert(name.clone(), SlotValue::from_text(v));
             }
             Slot::Param(sp) => {
                 let found = spans
                     .iter()
                     .enumerate()
                     .find(|(i, s)| !used[*i] && s.kind == sp.kind);
-                match found {
-                    Some((i, s)) => {
-                        used[i] = true;
-                        out.insert(name.clone(), value_from_text(&s.text));
+                let said = found.map(|(i, s)| {
+                    used[i] = true;
+                    s.text.as_str()
+                });
+                let usual = store
+                    .get_setting(&format!("usual.{}", sp.kind))
+                    .ok()
+                    .flatten();
+                match resolver::resolve(&sp.resolve, said, ctx, usual.as_deref()) {
+                    Resolution::Found(v) => {
+                        out.insert(name.clone(), v);
                     }
-                    None if sp.required => return Err(format!("I'm missing the {name}.")),
-                    None => {}
+                    Resolution::Choose { question, options } => {
+                        let choices: Vec<Choice> = options
+                            .iter()
+                            .map(|(id, label, _)| Choice {
+                                id: id.clone(),
+                                label: label.clone(),
+                            })
+                            .collect();
+                        let picked = p.choose(&question, &choices).ok_or(SlotError::Cancelled)?;
+                        let Some((_, _, v)) = options.into_iter().find(|(id, _, _)| *id == picked)
+                        else {
+                            return Err(SlotError::Cancelled);
+                        };
+                        out.insert(name.clone(), v);
+                    }
+                    Resolution::NotFound(words) if sp.required => {
+                        return Err(SlotError::Message(match words {
+                            Some(w) => format!("I couldn't find {w}."),
+                            None => format!("I'm missing the {name}."),
+                        }))
+                    }
+                    Resolution::NotFound(_) => {}
                 }
             }
         }
     }
     Ok(out)
-}
-
-/// A slot value made from the words the user said. Only `name` is known until
-/// the real resolver can look things up (a file's `path`, a contact's number).
-fn value_from_text(text: &str) -> SlotValue {
-    SlotValue {
-        text: text.to_string(),
-        fields: BTreeMap::from([("name".to_string(), text.to_string())]),
-    }
 }
 
 /// Replace `{slot}` or `{slot.field}` in a template. A slot or field that is
@@ -822,7 +864,7 @@ mod tests {
 
     #[test]
     fn fill_replaces_slots_and_never_guesses() {
-        let slots = Slots::from([("a".to_string(), value_from_text("x"))]);
+        let slots = Slots::from([("a".to_string(), SlotValue::from_text("x"))]);
         assert_eq!(fill("{a} and {a}!", &slots).unwrap(), "x and x!");
         assert_eq!(fill("no slots", &slots).unwrap(), "no slots");
         assert_eq!(fill("{b}", &slots).unwrap_err(), "I'm missing the b.");
@@ -835,7 +877,7 @@ mod tests {
 
     #[test]
     fn dotted_fields_are_filled_from_the_slot() {
-        let slots = Slots::from([("file".to_string(), value_from_text("report.pdf"))]);
+        let slots = Slots::from([("file".to_string(), SlotValue::from_text("report.pdf"))]);
         assert_eq!(fill("{file.name}", &slots).unwrap(), "report.pdf");
         assert_eq!(fill("{file}", &slots).unwrap(), "report.pdf");
         // A field the stub cannot know is refused, never guessed from the name.
@@ -849,27 +891,104 @@ mod tests {
         );
     }
 
-    #[test]
-    fn whatsapp_skill_shows_its_confirm_with_dotted_names() {
-        // Same skill, with the one field the stub cannot resolve (file.path) swapped for file.name.
-        let yaml = WHATSAPP.replace("{file.path}", "{file.name}");
+    /// A fixed file context for resolver tests.
+    struct Files {
+        selected: Option<crate::resolver::FileRef>,
+        files: Vec<crate::resolver::FileRef>,
+    }
+
+    impl ContextSource for Files {
+        fn selected_file(&self) -> Option<crate::resolver::FileRef> {
+            self.selected.clone()
+        }
+        fn recent_downloads(&self, limit: usize) -> Vec<crate::resolver::FileRef> {
+            self.files.iter().take(limit).cloned().collect()
+        }
+        fn searchable_files(&self) -> Vec<crate::resolver::FileRef> {
+            self.files.clone()
+        }
+    }
+
+    fn file_ref(name: &str) -> crate::resolver::FileRef {
+        crate::resolver::FileRef {
+            name: name.into(),
+            path: format!("C:/Docs/{name}"),
+            modified: 1,
+        }
+    }
+
+    fn whatsapp_flow(ctx: Files) -> (Flow, Arc<FakeConnector>) {
         let wa = Arc::new(FakeConnector::new("whatsapp_desktop"));
-        let mut flow = flow_with(&[&yaml], vec![("whatsapp_desktop", wa.clone())]);
+        let flow = flow_with(&[WHATSAPP], vec![("whatsapp_desktop", wa.clone())]).with_context(ctx);
+        (flow, wa)
+    }
+
+    #[test]
+    fn a_named_file_is_found_and_its_path_reaches_the_connector() {
+        let (mut flow, wa) = whatsapp_flow(Files {
+            selected: None,
+            files: vec![file_ref("report.pdf")],
+        });
         let mut u = user(&[true]);
         let ev = flow.handle(30, "send report.pdf to ved on whatsapp", &mut u);
         assert_eq!(u.shown, vec!["Send report.pdf to ved on WhatsApp?"]);
         assert_eq!(done(&ev).0, "Done.");
-        assert_eq!(wa.execute_count(), 2); // open_chat, attach_and_send
+        let sent = wa.calls().into_iter().any(|c| {
+            matches!(&c, Call::Execute { action, args }
+                if action == "attach_and_send" && args.get("file").map(String::as_str) == Some("C:/Docs/report.pdf"))
+        });
+        assert!(sent, "the file path must be passed to the connector");
     }
 
     #[test]
-    fn a_template_that_cannot_be_filled_is_refused_before_the_confirm() {
-        // The shipped skill needs file.path, which only the Phase 2 resolver can supply.
-        let wa = Arc::new(FakeConnector::new("whatsapp_desktop"));
-        let mut flow = flow_with(&[WHATSAPP], vec![("whatsapp_desktop", wa.clone())]);
+    fn this_file_means_the_selected_file() {
+        let (mut flow, _wa) = whatsapp_flow(Files {
+            selected: Some(file_ref("picked.docx")),
+            files: vec![file_ref("other.pdf")],
+        });
+        let mut u = user(&[true]);
+        let ev = flow.handle(32, "send this to ved on whatsapp", &mut u);
+        assert_eq!(u.shown, vec!["Send picked.docx to ved on WhatsApp?"]);
+        assert_eq!(done(&ev).0, "Done.");
+    }
+
+    #[test]
+    fn two_equal_files_ask_one_question_and_use_the_answer() {
+        let (mut flow, wa) = whatsapp_flow(Files {
+            selected: None,
+            files: vec![file_ref("Invoice March.pdf"), file_ref("Invoice April.pdf")],
+        });
+        let mut u = user(&[true]);
+        u.choice = Some("C:/Docs/Invoice April.pdf".into());
+        let ev = flow.handle(33, "send invoice to ved on whatsapp", &mut u);
+        assert_eq!(u.choices_seen.len(), 2);
+        assert_eq!(u.shown, vec!["Send Invoice April.pdf to ved on WhatsApp?"]);
+        assert_eq!(done(&ev).0, "Done.");
+        assert_eq!(wa.execute_count(), 2);
+    }
+
+    #[test]
+    fn dismissing_the_question_cancels_and_sends_nothing() {
+        let (mut flow, wa) = whatsapp_flow(Files {
+            selected: None,
+            files: vec![file_ref("Invoice March.pdf"), file_ref("Invoice April.pdf")],
+        });
+        let mut u = user(&[true]);
+        u.choice = None;
+        let ev = flow.handle(34, "send invoice to ved on whatsapp", &mut u);
+        assert_eq!(done(&ev).0, "Cancelled.");
+        assert!(wa.calls().is_empty());
+    }
+
+    #[test]
+    fn a_file_that_does_not_exist_is_not_guessed_and_nothing_is_confirmed() {
+        let (mut flow, wa) = whatsapp_flow(Files {
+            selected: None,
+            files: vec![file_ref("holiday.jpg")],
+        });
         let mut u = user(&[true]);
         let ev = flow.handle(31, "send report.pdf to ved on whatsapp", &mut u);
-        assert_eq!(failed(&ev), "I'm missing the file.path.");
+        assert_eq!(failed(&ev), "I couldn't find report.pdf.");
         assert!(
             u.shown.is_empty(),
             "no confirm for a send that cannot finish"
@@ -881,7 +1000,7 @@ mod tests {
     fn recipients_are_counted_from_the_contact_slot() {
         let skill = Skill::parse(SEND).unwrap();
         let count = |who: &str| {
-            let slots = Slots::from([("contact".to_string(), value_from_text(who))]);
+            let slots = Slots::from([("contact".to_string(), SlotValue::from_text(who))]);
             recipient_count(&skill, &slots)
         };
         assert_eq!(count("ved"), 1);
@@ -1060,7 +1179,7 @@ mod tests {
                         Slot::Fixed(v) => v.clone(),
                         Slot::Param(_) => "sample".into(),
                     };
-                    (n.clone(), value_from_text(&text))
+                    (n.clone(), SlotValue::from_text(&text))
                 })
                 .collect();
             let filled = check_templates(&skill, &slots);

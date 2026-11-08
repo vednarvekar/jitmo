@@ -1816,6 +1816,7 @@ version = "0.1.0"
 name = "jitmo-app"
 version = "0.1.0"
 dependencies = [
+ "jitmo-adapter-windows",
  "jitmo-connectors",
  "jitmo-core",
  "jitmo-ipc",
