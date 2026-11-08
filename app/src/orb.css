@@ -1,0 +1,489 @@
+/* Grey orb (stands where the plus was). One long, continuous eye sequence. */
+.orb-btn {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: none;
+  transition: transform 0.25s;
+}
+.orb-btn:hover {
+  background: transparent;
+  transform: scale(1.07);
+}
+.orb-btn:active {
+  transform: scale(0.94);
+}
+.grey-orb {
+  position: relative;
+  display: block;
+  border-radius: 50%;
+  overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(circle at 32% 26%, #cfcfd4, #8e8e95 62%, #77777e);
+  box-shadow:
+    inset 0 -3px 6px rgba(0, 0, 0, 0.18),
+    inset 0 2px 4px rgba(255, 255, 255, 0.6),
+    0 1px 3px rgba(0, 0, 0, 0.25);
+  /* The glass wrapper triples contrast; undo that for the orb so it keeps its soft greys. */
+  filter: contrast(0.3333);
+}
+/* Light drifting across the sphere, slowly, back and forth with no restart point. */
+.grey-orb .gl {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(5px);
+  z-index: -1;
+}
+.grey-orb .gl1 {
+  width: 70%;
+  height: 70%;
+  left: -18%;
+  top: -18%;
+  background: rgba(255, 255, 255, 0.85);
+  animation: gl-a 7s ease-in-out infinite alternate;
+}
+.grey-orb .gl2 {
+  width: 62%;
+  height: 62%;
+  right: -22%;
+  bottom: -20%;
+  background: rgba(60, 60, 70, 0.45);
+  animation: gl-b 7s ease-in-out infinite alternate;
+}
+@keyframes gl-a {
+  to {
+    transform: translate(70%, 55%);
+  }
+}
+@keyframes gl-b {
+  to {
+    transform: translate(-75%, -55%);
+  }
+}
+
+.grey-orb .geyes {
+  position: absolute;
+  inset: 0;
+}
+.grey-orb .geye {
+  position: absolute;
+  background: #fff;
+  border-radius: 99px;
+  box-shadow: 0 0 3px rgba(255, 255, 255, 0.7);
+  left: var(--x);
+  top: 29%;
+  width: 11%;
+  height: 34%;
+}
+.grey-orb .geye.l {
+  --x: 30%;
+}
+.grey-orb .geye.r {
+  --x: 59%;
+}
+
+/* The long sequence: one 20 second loop that starts and ends in the same pose.
+   0 neutral | 8-24 the reference morph | 30 neutral | 34 blink | 41 wink | 48 surprise |
+   56 smile | 66-75 sleepy | 80 tilt | 84 blink | 95 reference morph | 100 neutral */
+.grey-orb .routine {
+  animation: head-long 20s ease-in-out infinite;
+  transition: opacity 0.35s ease;
+}
+.grey-orb .routine .geye.l {
+  animation: eye-l-long 20s ease-in-out infinite;
+}
+.grey-orb .routine .geye.r {
+  animation: eye-r-long 20s ease-in-out infinite;
+}
+@keyframes eye-l-long {
+  0%,
+  6% {
+    left: 30%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  10%,
+  14% {
+    left: 31%;
+    top: 24%;
+    width: 11%;
+    height: 40%;
+  }
+  18%,
+  22% {
+    left: 25%;
+    top: 40%;
+    width: 11%;
+    height: 17%;
+  }
+  26% {
+    left: 31%;
+    top: 24%;
+    width: 11%;
+    height: 40%;
+  }
+  30%,
+  32% {
+    left: 30%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  34% {
+    left: 30%;
+    top: 44%;
+    width: 12%;
+    height: 4%;
+  }
+  36%,
+  44% {
+    left: 30%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  48%,
+  50% {
+    left: 29%;
+    top: 26%;
+    width: 15%;
+    height: 40%;
+  }
+  53% {
+    left: 30%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  56%,
+  60% {
+    left: 28%;
+    top: 40%;
+    width: 16%;
+    height: 7%;
+  }
+  63% {
+    left: 30%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  66% {
+    left: 30%;
+    top: 42%;
+    width: 11%;
+    height: 7%;
+  }
+  69% {
+    left: 30%;
+    top: 35%;
+    width: 11%;
+    height: 20%;
+  }
+  72%,
+  75% {
+    left: 30%;
+    top: 43%;
+    width: 11%;
+    height: 5%;
+  }
+  79%,
+  82% {
+    left: 30%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  84% {
+    left: 30%;
+    top: 44%;
+    width: 12%;
+    height: 4%;
+  }
+  86%,
+  91% {
+    left: 30%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  95% {
+    left: 31%;
+    top: 24%;
+    width: 11%;
+    height: 40%;
+  }
+  98%,
+  100% {
+    left: 30%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+}
+@keyframes eye-r-long {
+  0%,
+  6% {
+    left: 59%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  10%,
+  14% {
+    left: 55%;
+    top: 40%;
+    width: 22%;
+    height: 14%;
+  }
+  18%,
+  22% {
+    left: 55%;
+    top: 46%;
+    width: 18%;
+    height: 6%;
+  }
+  26% {
+    left: 55%;
+    top: 40%;
+    width: 22%;
+    height: 14%;
+  }
+  30%,
+  32% {
+    left: 59%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  34% {
+    left: 59%;
+    top: 44%;
+    width: 12%;
+    height: 4%;
+  }
+  36%,
+  39% {
+    left: 59%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  41% {
+    left: 59%;
+    top: 44%;
+    width: 12%;
+    height: 4%;
+  }
+  44% {
+    left: 59%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  48%,
+  50% {
+    left: 57%;
+    top: 26%;
+    width: 15%;
+    height: 40%;
+  }
+  53% {
+    left: 59%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  56%,
+  60% {
+    left: 57%;
+    top: 40%;
+    width: 16%;
+    height: 7%;
+  }
+  63% {
+    left: 59%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  66% {
+    left: 59%;
+    top: 42%;
+    width: 11%;
+    height: 7%;
+  }
+  69% {
+    left: 59%;
+    top: 35%;
+    width: 11%;
+    height: 20%;
+  }
+  72%,
+  75% {
+    left: 59%;
+    top: 43%;
+    width: 11%;
+    height: 5%;
+  }
+  79%,
+  82% {
+    left: 59%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  84% {
+    left: 59%;
+    top: 44%;
+    width: 12%;
+    height: 4%;
+  }
+  86%,
+  91% {
+    left: 59%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+  95% {
+    left: 55%;
+    top: 40%;
+    width: 22%;
+    height: 14%;
+  }
+  98%,
+  100% {
+    left: 59%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+}
+/* The eyes also drift and tilt as a pair across the same 20 seconds. */
+@keyframes head-long {
+  0%,
+  44%,
+  62%,
+  76%,
+  90%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  47% {
+    transform: translate(-10%, -4%) rotate(0deg);
+  }
+  52% {
+    transform: translate(10%, -6%) rotate(0deg);
+  }
+  57% {
+    transform: translate(7%, 8%) rotate(0deg);
+  }
+  60% {
+    transform: translate(-8%, 6%) rotate(0deg);
+  }
+  80% {
+    transform: translate(0, 0) rotate(-12deg);
+  }
+  85% {
+    transform: translate(0, 0) rotate(8deg);
+  }
+}
+
+/* The attentive pair: shown only while the pointer is near, and it follows the pointer. */
+.grey-orb .attend {
+  opacity: 0;
+  translate: var(--gx, 0px) var(--gy, 0px);
+  transition: opacity 0.35s ease;
+}
+.grey-orb[data-look="1"] .attend {
+  opacity: 1;
+}
+.grey-orb[data-look="1"] .routine {
+  opacity: 0;
+}
+.grey-orb .attend .geye {
+  transition:
+    top 0.25s ease,
+    height 0.25s ease,
+    width 0.25s ease;
+}
+/* Pointer right on the orb: the attentive pair smiles. */
+.grey-orb[data-over="1"] .attend .geye {
+  top: 40%;
+  height: 7%;
+  width: 16%;
+}
+
+/* A click squashes the orb. */
+.grey-orb[data-poke="1"] {
+  animation: poke 0.42s ease-out;
+}
+@keyframes poke {
+  30% {
+    transform: scale(0.82, 1.12);
+  }
+  62% {
+    transform: scale(1.09, 0.93);
+  }
+}
+
+/* Moods */
+.grey-orb.working .routine,
+.grey-orb.working .routine .geye {
+  animation-duration: 5s;
+}
+.grey-orb.working .gl {
+  animation-duration: 1.6s;
+}
+.grey-orb.done .routine,
+.grey-orb.failed .routine {
+  animation: none;
+}
+.grey-orb.done .routine .geye,
+.grey-orb.failed .routine .geye {
+  animation: none;
+}
+.grey-orb.done .routine .geye {
+  top: 38%;
+  width: 16%;
+  height: 9%;
+  background: transparent;
+  box-shadow: none;
+  border: 2.4px solid #fff;
+  border-bottom: 0;
+  border-radius: 99px 99px 0 0;
+}
+.grey-orb.done .routine .geye.l {
+  left: 26%;
+}
+.grey-orb.done .routine .geye.r {
+  left: 58%;
+}
+.grey-orb.failed .routine .geye {
+  top: 38%;
+  width: 15%;
+  height: 15%;
+  border-radius: 3px;
+  transform: rotate(45deg) scale(0.4, 1.3);
+}
+.grey-orb.failed .routine .geye.l {
+  left: 28%;
+}
+.grey-orb.failed .routine .geye.r {
+  left: 57%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .grey-orb,
+  .grey-orb .routine,
+  .grey-orb .routine .geye,
+  .grey-orb .gl {
+    animation: none !important;
+  }
+}
