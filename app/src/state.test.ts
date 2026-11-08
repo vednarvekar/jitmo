@@ -96,3 +96,11 @@ describe("auto-hide and focus rules", () => {
     expect(hideOnBlur({ phase: "choice", id: 1, question: "Which?", choices: [] })).toBe(false);
   });
 });
+
+describe("reading time", () => {
+  it("gives long messages longer on screen", () => {
+    const long = "x".repeat(140); // 100 characters past 40
+    expect(autoHideMs({ phase: "done", id: 1, message: long, undoable: false })).toBe(5_000 + 6_000);
+    expect(autoHideMs({ phase: "failed", id: 1, message: long })).toBe(8_000 + 6_000);
+  });
+});

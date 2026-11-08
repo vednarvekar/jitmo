@@ -22,6 +22,8 @@ struct State {
     check_script: VecDeque<Result<bool, ConnError>>,
     default_check: bool,
     execute_error: Option<ConnError>,
+    /// Text shown to the user as the answer (a fake that must say it is a fake).
+    answer: Option<String>,
     /// Errors for particular actions only.
     action_errors: Vec<(String, ConnError)>,
     undoable: bool,
@@ -46,6 +48,12 @@ impl FakeConnector {
             id: id.into(),
             state: Mutex::new(state),
         }
+    }
+
+    /// Make every successful `execute` answer with this text instead of plain "Done.".
+    pub fn with_answer(self, text: &str) -> Self {
+        self.state.lock().unwrap().answer = Some(text.to_string());
+        self
     }
 
     /// Make `execute` fail with this error.
@@ -145,10 +153,13 @@ impl Connector for FakeConnector {
         }
         match &s.execute_error {
             Some(e) => Err(e.clone()),
-            None => Ok(Output(BTreeMap::from([(
-                "action".to_string(),
-                action.to_string(),
-            )]))),
+            None => {
+                let mut out = BTreeMap::from([("action".to_string(), action.to_string())]);
+                if let Some(a) = &s.answer {
+                    out.insert("message".to_string(), a.clone());
+                }
+                Ok(Output(out))
+            }
         }
     }
 
@@ -215,5 +226,21 @@ mod tests {
             FakeConnector::new("a").fail_execute_with(ConnError::NotInstalled("Spotify".into()));
         let err = c.execute("play", &Args::new()).unwrap_err();
         assert_eq!(err.to_string(), "Spotify isn't installed.");
+    }
+}
+
+#[cfg(test)]
+mod answer_tests {
+    use super::*;
+
+    #[test]
+    fn a_fake_can_say_it_is_a_fake() {
+        let c = FakeConnector::new("x").with_answer("Test only.");
+        let out = c.execute("send", &Args::new()).unwrap();
+        assert_eq!(out.0["message"], "Test only.");
+        let plain = FakeConnector::new("y")
+            .execute("send", &Args::new())
+            .unwrap();
+        assert!(!plain.0.contains_key("message"));
     }
 }

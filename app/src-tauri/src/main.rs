@@ -454,15 +454,14 @@ fn connectors(
     db: &std::path::Path,
     key: Option<&jitmo_store::Key>,
 ) -> HashMap<String, Arc<dyn Connector>> {
-    let mut map: HashMap<String, Arc<dyn Connector>> = ["stub_messenger"]
-        .iter()
-        .map(|id| {
-            (
-                id.to_string(),
-                Arc::new(FakeConnector::new(id)) as Arc<dyn Connector>,
-            )
-        })
-        .collect();
+    // The test send skill (`stub.send`) only checks the confirm card. It must say
+    // so, or "Done." would look like a real message went out.
+    let mut map: HashMap<String, Arc<dyn Connector>> = HashMap::from([(
+        "stub_messenger".to_string(),
+        Arc::new(FakeConnector::new("stub_messenger").with_answer(
+            "This was a test: nothing was really sent. Real messaging is not built yet.",
+        )) as Arc<dyn Connector>,
+    )]);
     // The place for "will it rain tomorrow" when none is said (setting `default_place`).
     let default_place = open_store(db, key)
         .ok()

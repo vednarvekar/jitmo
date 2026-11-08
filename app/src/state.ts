@@ -76,14 +76,19 @@ export const UNDO_WINDOW_MS = 10_000;
 export const RESULT_HIDE_MS = 5_000;
 export const ERROR_HIDE_MS = 8_000;
 
+/** Extra time for long messages: about 60 ms for each character past 40. */
+function readingTime(message: string): number {
+  return Math.max(0, message.length - 40) * 60;
+}
+
 /** Milliseconds until the bar should close by itself, or null if it must stay
  *  (the user is mid-task: working, confirming or choosing, or nothing is shown). */
 export function autoHideMs(s: BarState): number | null {
   switch (s.phase) {
     case "done":
-      return s.undoable ? UNDO_WINDOW_MS + 1_000 : RESULT_HIDE_MS;
+      return s.undoable ? UNDO_WINDOW_MS + 1_000 : RESULT_HIDE_MS + readingTime(s.message);
     case "failed":
-      return ERROR_HIDE_MS;
+      return ERROR_HIDE_MS + readingTime(s.message);
     default:
       return null;
   }
