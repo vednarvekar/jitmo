@@ -363,6 +363,7 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/calc.math.yaml"),
         include_str!("../../../skills/calc.moon.yaml"),
         include_str!("../../../skills/calc.time_in.yaml"),
+        include_str!("../../../skills/settings.place.yaml"),
         include_str!("../../../skills/files.find.yaml"),
         include_str!("../../../skills/files.recent.yaml"),
         include_str!("../../../skills/files.open.yaml"),
@@ -525,6 +526,13 @@ fn connectors(
             Arc::new(jitmo_connectors::system_controls::PowerShell),
             pictures_dir(),
         )),
+    );
+    map.insert(
+        "settings".into(),
+        Arc::new(match key {
+            Some(k) => jitmo_connectors::settings::Settings::new(db.to_path_buf()).with_key(*k),
+            None => jitmo_connectors::settings::Settings::new(db.to_path_buf()),
+        }),
     );
     map.insert(
         "reminders".into(),
