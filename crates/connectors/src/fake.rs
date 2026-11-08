@@ -26,6 +26,8 @@ struct State {
     action_errors: Vec<(String, ConnError)>,
     undoable: bool,
     health: Option<Health>,
+    /// Errors for particular executes only, by position (0 = the first call).
+    nth_errors: Vec<(usize, ConnError)>,
 }
 
 pub struct FakeConnector {
@@ -59,6 +61,12 @@ impl FakeConnector {
             .unwrap()
             .action_errors
             .push((action.to_string(), err));
+        self
+    }
+
+    /// Make only the `n`th `execute` call (0 = the first) fail with this error.
+    pub fn fail_nth_execute(self, n: usize, err: ConnError) -> Self {
+        self.state.lock().unwrap().nth_errors.push((n, err));
         self
     }
 
@@ -120,10 +128,18 @@ impl Connector for FakeConnector {
 
     fn execute(&self, action: &str, args: &Args) -> Result<Output, ConnError> {
         let mut s = self.state.lock().unwrap();
+        let index = s
+            .calls
+            .iter()
+            .filter(|c| matches!(c, Call::Execute { .. }))
+            .count();
         s.calls.push(Call::Execute {
             action: action.into(),
             args: args.clone(),
         });
+        if let Some((_, e)) = s.nth_errors.iter().find(|(n, _)| *n == index) {
+            return Err(e.clone());
+        }
         if let Some((_, e)) = s.action_errors.iter().find(|(a, _)| a == action) {
             return Err(e.clone());
         }

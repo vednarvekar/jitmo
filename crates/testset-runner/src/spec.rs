@@ -48,6 +48,12 @@ pub struct Spec {
     /// Files that exist for this test (names; they live in `C:/Docs`).
     #[serde(default)]
     pub files: Vec<String>,
+    /// Which of `files` are selected in Explorer when the bar opens (names, in order).
+    #[serde(default)]
+    pub selected: Vec<String>,
+    /// Folders that exist for this test (names; they live in `C:/Docs`).
+    #[serde(default)]
+    pub folders: Vec<String>,
     /// For `ran`: a part of the answer shown to the user (case ignored).
     pub message_contains: Option<String>,
     /// A part of the confirm text that must appear.

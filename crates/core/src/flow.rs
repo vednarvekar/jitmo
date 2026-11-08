@@ -296,6 +296,10 @@ impl Flow {
 
         // 4. Run the steps.
         let mut executed: Vec<(String, String, Output)> = Vec::new();
+        // Per-file slot sets that worked in the last multi-file step, and an
+        // honest summary when only some of the files were done.
+        let mut verified_slots: Vec<Slots> = Vec::new();
+        let mut partial: Option<String> = None;
         for step in &skill.steps {
             let Some(conn) = self.connectors.get(&step.connector).cloned() else {
                 return self.fail(
@@ -308,30 +312,62 @@ impl Flow {
             if let Some(err) = health_error(conn.as_ref(), &step.connector) {
                 return self.fail(id, text, Some(&skill.id), &err.to_string());
             }
-            let args = match fill_args(&step.args, &slots) {
-                Ok(a) => a,
-                Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
-            };
-            match conn.execute(&step.action, &args) {
-                Ok(out) => executed.push((step.connector.clone(), step.action.clone(), out)),
-                // The app's screen looks different than expected, but an earlier
-                // step already got the user most of the way: hand over to them.
-                Err(ConnError::UiChanged(_))
-                    if skill.fallback.as_deref() == Some("open_chat_and_wait")
-                        && !executed.is_empty() =>
-                {
-                    let who = slots
-                        .get("contact")
-                        .map_or("the".to_string(), |c| format!("{}'s", c.text));
-                    let message = format!("I opened {who} chat. Press Send to finish.");
-                    self.log(text, Some(&skill.id), Decision::Ran, &message, None);
-                    return CoreEvent::Done {
-                        id,
-                        message,
-                        undoable: false,
-                    };
+            // Several files selected: the same step runs once per file.
+            let per_file = expand_multi(&step.args, &slots);
+            let multi = per_file.is_some();
+            let variants = per_file.unwrap_or_else(|| vec![slots.clone()]);
+            let total = variants.len();
+            let mut done_slots: Vec<Slots> = Vec::new();
+            let mut first_err: Option<ConnError> = None;
+            for one in variants {
+                let args = match fill_args(&step.args, &one) {
+                    Ok(a) => a,
+                    Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
+                };
+                match conn.execute(&step.action, &args) {
+                    Ok(out) => {
+                        executed.push((step.connector.clone(), step.action.clone(), out));
+                        done_slots.push(one);
+                    }
+                    // The app's screen looks different than expected, but an earlier
+                    // step already got the user most of the way: hand over to them.
+                    Err(ConnError::UiChanged(_))
+                        if skill.fallback.as_deref() == Some("open_chat_and_wait")
+                            && !executed.is_empty() =>
+                    {
+                        let who = slots
+                            .get("contact")
+                            .map_or("the".to_string(), |c| format!("{}'s", c.text));
+                        let message = format!("I opened {who} chat. Press Send to finish.");
+                        self.log(text, Some(&skill.id), Decision::Ran, &message, None);
+                        return CoreEvent::Done {
+                            id,
+                            message,
+                            undoable: false,
+                        };
+                    }
+                    // One file failing must not undo or hide the others.
+                    Err(e) if multi => {
+                        first_err.get_or_insert(e);
+                    }
+                    Err(e) => return self.fail(id, text, Some(&skill.id), &e.to_string()),
                 }
-                Err(e) => return self.fail(id, text, Some(&skill.id), &e.to_string()),
+            }
+            if multi {
+                if done_slots.is_empty() {
+                    let e =
+                        first_err.map_or("Something went wrong.".to_string(), |e| e.to_string());
+                    return self.fail(id, text, Some(&skill.id), &e);
+                }
+                if done_slots.len() < total {
+                    let verb = if step.action == "move" {
+                        "Moved"
+                    } else {
+                        "Did"
+                    };
+                    partial = Some(format!("{verb} {} of {total} files.", done_slots.len()));
+                }
+                verified_slots = done_slots;
             }
         }
 
@@ -345,18 +381,26 @@ impl Flow {
                     &format!("{} isn't available.", check.connector),
                 );
             };
-            let args = match fill_args(&check.args, &slots) {
-                Ok(a) => a,
-                Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
+            // After a multi-file step, each file that was done is checked.
+            let to_check = if verified_slots.is_empty() {
+                vec![slots.clone()]
+            } else {
+                std::mem::take(&mut verified_slots)
             };
-            let msg = format!(
-                "I couldn't confirm that it worked. Please check {}.",
-                check.connector
-            );
-            if let Verdict::NotVerified { message } =
-                verify(conn.as_ref(), &check.action, &args, &msg)
-            {
-                return self.fail(id, text, Some(&skill.id), &message);
+            for one in &to_check {
+                let args = match fill_args(&check.args, one) {
+                    Ok(a) => a,
+                    Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
+                };
+                let msg = format!(
+                    "I couldn't confirm that it worked. Please check {}.",
+                    check.connector
+                );
+                if let Verdict::NotVerified { message } =
+                    verify(conn.as_ref(), &check.action, &args, &msg)
+                {
+                    return self.fail(id, text, Some(&skill.id), &message);
+                }
             }
         }
 
@@ -406,7 +450,7 @@ impl Flow {
             }),
             _ => None,
         };
-        let base = answer.unwrap_or_else(|| "Done.".to_string());
+        let base = partial.or(answer).unwrap_or_else(|| "Done.".to_string());
         let message = if log_id.is_some() {
             base
         } else {
@@ -471,7 +515,8 @@ fn resolve_slots(
                     .or_else(|| store.usual_for(&sp.kind).ok().flatten());
                 match resolver::resolve(&sp.resolve, said, ctx, usual.as_deref()) {
                     Resolution::Found(v) => {
-                        if let Some(words) = said {
+                        // A set of files is not one thing to remember.
+                        if let (Some(words), false) = (said, v.fields.contains_key("paths")) {
                             learned.push(Learned::new(&sp.kind, words, &v));
                         }
                         out.insert(name.clone(), v);
@@ -569,6 +614,38 @@ fn fill(template: &str, slots: &Slots) -> Result<String, String> {
     }
     out.push_str(rest);
     Ok(out)
+}
+
+/// When a step's arguments use `{slot.path}` of a slot holding several files,
+/// one copy of the slots per file, with that slot narrowed to the one file.
+/// `None` for an ordinary step.
+fn expand_multi(args: &BTreeMap<String, String>, slots: &Slots) -> Option<Vec<Slots>> {
+    let (name, value) = slots.iter().find(|(name, v)| {
+        v.fields.contains_key("paths") && {
+            let key = format!("{{{name}.path}}");
+            args.values().any(|a| a.contains(&key))
+        }
+    })?;
+    let variants: Vec<Slots> = value
+        .paths()
+        .into_iter()
+        .map(|path| {
+            let file = path.rsplit(['\\', '/']).next().unwrap_or(path);
+            let mut one = slots.clone();
+            one.insert(
+                name.clone(),
+                SlotValue {
+                    text: file.to_string(),
+                    fields: BTreeMap::from([
+                        ("name".to_string(), file.to_string()),
+                        ("path".to_string(), path.to_string()),
+                    ]),
+                },
+            );
+            one
+        })
+        .collect();
+    (!variants.is_empty()).then_some(variants)
 }
 
 fn fill_args(args: &BTreeMap<String, String>, slots: &Slots) -> Result<Args, String> {
@@ -1052,6 +1129,113 @@ mod tests {
         });
         assert!(moved);
         assert_eq!(flow.undo(), "Undone.");
+    }
+
+    /// Three PDFs selected in Explorer, plus an Invoices folder.
+    struct Selected3(Vec<crate::resolver::FileRef>);
+
+    impl ContextSource for Selected3 {
+        fn selected_file(&self) -> Option<crate::resolver::FileRef> {
+            self.0.first().cloned()
+        }
+        fn selected_files(&self) -> Vec<crate::resolver::FileRef> {
+            self.0.clone()
+        }
+        fn recent_downloads(&self, _: usize) -> Vec<crate::resolver::FileRef> {
+            Vec::new()
+        }
+        fn searchable_files(&self) -> Vec<crate::resolver::FileRef> {
+            Vec::new()
+        }
+        fn searchable_folders(&self) -> Vec<crate::resolver::FileRef> {
+            vec![file_ref("Invoices")]
+        }
+    }
+
+    fn multi_move_flow(files: Arc<FakeConnector>) -> Flow {
+        let selected = ["a.pdf", "b.pdf", "c.pdf"].map(file_ref).to_vec();
+        flow_with(&[MOVE], vec![("files", files)]).with_context(Selected3(selected))
+    }
+
+    fn moved_paths(files: &FakeConnector) -> Vec<String> {
+        files
+            .calls()
+            .into_iter()
+            .filter_map(|c| match c {
+                Call::Execute { action, args } if action == "move" => args.get("path").cloned(),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn t26_several_selected_files_move_one_by_one_under_one_request() {
+        let files = Arc::new(FakeConnector::new("files").undoable());
+        let mut flow = multi_move_flow(files.clone());
+        let mut u = user(&[]);
+        let ev = flow.handle(60, "Move these PDFs to the Invoices folder.", &mut u);
+        assert!(u.shown.is_empty());
+        assert_eq!(done(&ev), ("Done.", true));
+        assert_eq!(files.execute_count(), 3);
+        assert_eq!(
+            moved_paths(&files),
+            ["C:/Docs/a.pdf", "C:/Docs/b.pdf", "C:/Docs/c.pdf"]
+        );
+        assert_eq!(files.check_count(), 3, "each file is verified");
+        assert_eq!(
+            log_decisions(&flow),
+            vec!["ran"],
+            "one request, one log row"
+        );
+        assert_eq!(flow.undo(), "Undone.");
+        let undone = files
+            .calls()
+            .iter()
+            .filter(|c| matches!(c, Call::Undo { .. }))
+            .count();
+        assert_eq!(undone, 3);
+    }
+
+    #[test]
+    fn a_failed_file_gives_an_honest_partial_result_and_keeps_undo() {
+        let files = Arc::new(
+            FakeConnector::new("files")
+                .undoable()
+                .fail_nth_execute(1, ConnError::Failed("Couldn't move b.pdf.".into())),
+        );
+        let mut flow = multi_move_flow(files.clone());
+        let ev = flow.handle(61, "move these pdfs to the Invoices folder", &mut user(&[]));
+        assert_eq!(done(&ev), ("Moved 2 of 3 files.", true));
+        assert_eq!(files.execute_count(), 3, "the rest still run");
+        assert_eq!(files.check_count(), 2, "only moved files are verified");
+        assert_eq!(flow.undo(), "Undone.");
+        let undone = files
+            .calls()
+            .iter()
+            .filter(|c| matches!(c, Call::Undo { .. }))
+            .count();
+        assert_eq!(undone, 2);
+    }
+
+    #[test]
+    fn if_every_file_fails_the_request_fails_with_the_first_reason() {
+        let files = Arc::new(
+            FakeConnector::new("files").fail_execute_with(ConnError::Failed("No room.".into())),
+        );
+        let mut flow = multi_move_flow(files.clone());
+        let ev = flow.handle(62, "move these pdfs to the Invoices folder", &mut user(&[]));
+        assert_eq!(failed(&ev), "No room.");
+        assert_eq!(flow.undo(), "Nothing to undo.");
+    }
+
+    #[test]
+    fn a_single_selected_file_still_runs_once_and_says_done() {
+        let files = Arc::new(FakeConnector::new("files").undoable());
+        let mut flow = flow_with(&[MOVE], vec![("files", files.clone())])
+            .with_context(Selected3(vec![file_ref("a.pdf")]));
+        let ev = flow.handle(63, "move these to the Invoices folder", &mut user(&[]));
+        assert_eq!(done(&ev), ("Done.", true));
+        assert_eq!(moved_paths(&files), ["C:/Docs/a.pdf"]);
     }
 
     #[test]

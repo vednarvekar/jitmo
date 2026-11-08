@@ -44,6 +44,33 @@ impl SlotValue {
             ]),
         }
     }
+
+    /// Several files at once ("these PDFs"). `text` and `name` read "3 files",
+    /// `path` is the first file and `paths` holds all of them, one per line (a
+    /// newline cannot appear in a Windows path). Use [`SlotValue::paths`] to read them.
+    pub fn from_files(files: &[FileRef]) -> Self {
+        let text = format!("{} files", files.len());
+        let joined: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        SlotValue {
+            text: text.clone(),
+            fields: BTreeMap::from([
+                ("name".to_string(), text),
+                (
+                    "path".to_string(),
+                    files.first().map(|f| f.path.clone()).unwrap_or_default(),
+                ),
+                ("paths".to_string(), joined.join("\n")),
+            ]),
+        }
+    }
+
+    /// The files of a multi value; empty for any other value.
+    pub fn paths(&self) -> Vec<&str> {
+        self.fields
+            .get("paths")
+            .map(|p| p.split('\n').filter(|s| !s.is_empty()).collect())
+            .unwrap_or_default()
+    }
 }
 
 /// A file the context service knows about.
@@ -60,6 +87,10 @@ pub struct FileRef {
 pub trait ContextSource: Send {
     /// The file selected when the bar was opened, if any.
     fn selected_file(&self) -> Option<FileRef>;
+    /// Every file selected when the bar was opened (default: the one file, if any).
+    fn selected_files(&self) -> Vec<FileRef> {
+        self.selected_file().into_iter().collect()
+    }
     /// Newest downloads first.
     fn recent_downloads(&self, limit: usize) -> Vec<FileRef>;
     /// Every file that `named_file` may match against.
@@ -115,8 +146,24 @@ pub fn resolve(
     let said = said.map(str::trim).filter(|s| !s.is_empty());
     let deictic = said.is_none_or(is_deictic);
     let recency = said.is_some_and(is_recency);
+    let plural = said.and_then(plural_selection);
     for strategy in strategies {
         match strategy.as_str() {
+            "selected_file" if plural.is_some() => {
+                let exts = plural.as_deref().unwrap_or_default();
+                let mut files = ctx.selected_files();
+                if !exts.is_empty() {
+                    files.retain(|f| {
+                        let ext = f.name.rsplit_once('.').map_or("", |(_, e)| e);
+                        exts.iter().any(|x| x.eq_ignore_ascii_case(ext))
+                    });
+                }
+                match files.len() {
+                    0 => {}
+                    1 => return Resolution::Found(SlotValue::from_file(&files[0])),
+                    _ => return Resolution::Found(SlotValue::from_files(&files)),
+                }
+            }
             "selected_file" if deictic => {
                 if let Some(f) = ctx.selected_file() {
                     return Resolution::Found(SlotValue::from_file(&f));
@@ -130,7 +177,10 @@ pub fn resolve(
                 }
             }
             "named_file" => {
-                if let (Some(words), false, false) = (said, deictic, recency) {
+                // "these pdfs" points at the selection; it never names a file.
+                if let (Some(words), false, false, false) =
+                    (said, deictic, recency, plural.is_some())
+                {
                     if let Some(r) = match_named_file(words, &ctx.searchable_files()) {
                         return r;
                     }
@@ -201,6 +251,36 @@ fn is_deictic(words: &str) -> bool {
         }
     }
     any_pointer
+}
+
+/// "these", "these pdfs", "the selected files", "them": pointing words (at least
+/// one plural) plus generic nouns and file-type words. Gives the extensions the
+/// type words allow (empty = any type), or `None` if the words are anything else
+/// or do not point at several files.
+fn plural_selection(words: &str) -> Option<Vec<&'static str>> {
+    let mut pointer = false;
+    let mut plural = false;
+    let mut exts: Vec<&'static str> = Vec::new();
+    for t in tokens(words) {
+        match t.as_str() {
+            "these" | "those" | "them" => {
+                pointer = true;
+                plural = true;
+            }
+            "selected" | "current" | "this" | "that" => pointer = true,
+            "files" | "documents" | "docs" | "ones" => plural = true,
+            "file" | "document" | "doc" | "one" | "thing" | "the" | "all" | "of" => {}
+            w => {
+                let (stem, s) = match w.strip_suffix('s') {
+                    Some(stem) if w.len() > 3 => (stem, true),
+                    _ => (w, false),
+                };
+                exts.extend(type_extensions(stem)?);
+                plural |= s;
+            }
+        }
+    }
+    (pointer && plural).then_some(exts)
 }
 
 /// "the latest download", "my newest file", "the last one I downloaded".
@@ -341,12 +421,21 @@ mod tests {
 
     struct Fixed {
         selected: Option<FileRef>,
+        /// Several selected files; when set, these are the selection.
+        many: Vec<FileRef>,
         files: Vec<FileRef>,
     }
 
     impl ContextSource for Fixed {
         fn selected_file(&self) -> Option<FileRef> {
-            self.selected.clone()
+            self.many.first().cloned().or_else(|| self.selected.clone())
+        }
+        fn selected_files(&self) -> Vec<FileRef> {
+            if self.many.is_empty() {
+                self.selected.iter().cloned().collect()
+            } else {
+                self.many.clone()
+            }
         }
         fn recent_downloads(&self, limit: usize) -> Vec<FileRef> {
             let mut f = self.files.clone();
@@ -378,6 +467,7 @@ mod tests {
     fn ctx() -> Fixed {
         Fixed {
             selected: None,
+            many: Vec::new(),
             files: vec![
                 file("Invoice March.pdf", 100),
                 file("Invoice April.pdf", 200),
@@ -401,6 +491,84 @@ mod tests {
         let v = found(resolve(&file_slot(), Some("this file"), &c, None));
         assert_eq!(v.text, "Report.pdf");
         assert_eq!(v.fields["path"], "C:\\Users\\me\\Documents\\Report.pdf");
+    }
+
+    fn three_selected() -> Fixed {
+        let mut c = ctx();
+        c.many = vec![file("a.pdf", 1), file("b.PDF", 2), file("notes.docx", 3)];
+        c
+    }
+
+    #[test]
+    fn these_with_several_selected_is_one_multi_value() {
+        for words in ["these", "the selected files", "them", "these files"] {
+            let v = found(resolve(&file_slot(), Some(words), &three_selected(), None));
+            assert_eq!(v.text, "3 files", "{words}");
+            assert_eq!(v.fields["name"], "3 files");
+            assert_eq!(v.fields["path"], "C:\\Users\\me\\Documents\\a.pdf");
+            assert_eq!(
+                v.paths(),
+                [
+                    "C:\\Users\\me\\Documents\\a.pdf",
+                    "C:\\Users\\me\\Documents\\b.PDF",
+                    "C:\\Users\\me\\Documents\\notes.docx"
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn these_pdfs_keeps_only_the_selected_pdfs() {
+        let v = found(resolve(
+            &file_slot(),
+            Some("these pdfs"),
+            &three_selected(),
+            None,
+        ));
+        assert_eq!(v.text, "2 files");
+        assert_eq!(v.paths().len(), 2);
+        // Only one pdf left: it is just that file.
+        let mut c = three_selected();
+        c.many.remove(0);
+        let v = found(resolve(&file_slot(), Some("these pdfs"), &c, None));
+        assert_eq!(v.text, "b.PDF");
+        assert!(!v.fields.contains_key("paths"));
+        // No pdf at all: not found, and never a fuzzy name match.
+        let mut c = three_selected();
+        c.many = vec![file("notes.docx", 3)];
+        assert!(matches!(
+            resolve(&file_slot(), Some("these pdfs"), &c, None),
+            Resolution::NotFound(_)
+        ));
+    }
+
+    #[test]
+    fn single_selection_and_singular_words_are_unchanged() {
+        let mut c = ctx();
+        c.selected = Some(file("Report.pdf", 1));
+        for words in ["this", "this file", "these", "them"] {
+            let v = found(resolve(&file_slot(), Some(words), &c, None));
+            assert_eq!(v.text, "Report.pdf", "{words}");
+            assert!(!v.fields.contains_key("paths"));
+        }
+        // Singular words with several selected: the first, as before.
+        let v = found(resolve(
+            &file_slot(),
+            Some("this file"),
+            &three_selected(),
+            None,
+        ));
+        assert_eq!(v.text, "a.pdf");
+    }
+
+    #[test]
+    fn plural_selection_words() {
+        assert_eq!(plural_selection("these pdfs"), Some(vec!["pdf"]));
+        assert_eq!(plural_selection("these"), Some(vec![]));
+        assert_eq!(plural_selection("this file"), None);
+        assert_eq!(plural_selection("the invoices"), None);
+        assert_eq!(plural_selection("my budget files"), None);
+        assert_eq!(plural_selection("pdfs"), None, "no pointing word");
     }
 
     #[test]
