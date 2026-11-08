@@ -22,3 +22,7 @@ export const onBarBlurred = (cb: () => void): Promise<UnlistenFn> => listen("bar
 
 /** The page has drawn; the window may be shown now (it is created hidden). */
 export const barReady = () => invoke<void>("bar_ready");
+
+/** Rust asks the bar to close itself (the hotkey was pressed while it was open),
+ *  so the pop-down animation can play before the window is hidden. */
+export const onBarClose = (cb: () => void): Promise<UnlistenFn> => listen("bar-close", () => cb());

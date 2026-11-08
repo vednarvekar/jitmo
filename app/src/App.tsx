@@ -19,8 +19,10 @@ let nextId = Date.now();
 const HOVER_GRACE_MS = 2_500;
 /** How many past requests Up/Down can step through. */
 const HISTORY_SIZE = 30;
+/** How long the pop-down animation runs before the window is hidden (see styles.css). */
+const POP_DOWN_MS = 170;
 /** One-tap ideas shown under an empty bar. */
-const SUGGESTIONS = ["Open Spotify", "Set a 10-minute timer", "What's 18% of 2,450?", "Pause the music"];
+const SUGGESTIONS = ["Open Spotify", "10-minute timer", "Pause music", "18% of 2,450"];
 
 export default function App() {
   const [state, dispatch] = useReducer(reduce, initialState);
@@ -37,6 +39,21 @@ export default function App() {
   const hover = useRef(false);
   // Dragging makes the window lose focus for a moment; that is not a click elsewhere.
   const dragUntil = useRef(0);
+
+  // Pop-up and pop-down: the page plays the animation, then asks Rust to hide.
+  const [anim, setAnim] = useState<"in" | "out" | "idle">("in");
+  const closing = useRef(false);
+  const playIn = useCallback(() => {
+    closing.current = false;
+    setAnim("idle");
+    requestAnimationFrame(() => setAnim("in"));
+  }, []);
+  const closeBar = useCallback(() => {
+    if (closing.current) return;
+    closing.current = true;
+    setAnim("out");
+    setTimeout(() => bridge.hideBar(), POP_DOWN_MS);
+  }, []);
 
   const resetBar = useCallback(() => {
     dispatch({ type: "reset" });
@@ -59,16 +76,20 @@ export default function App() {
         dispatch({ type: "core", event, now: Date.now() });
         if (event.type === "done" && event.undoable) setUndoUntil(Date.now() + UNDO_WINDOW_MS);
       }),
-      bridge.onBarShown(resetBar),
+      bridge.onBarShown(() => {
+        resetBar();
+        playIn();
+      }),
+      bridge.onBarClose(closeBar),
       bridge.onBarBlurred(() => {
         if (Date.now() < dragUntil.current) return;
-        if (hideOnBlur(stateRef.current)) bridge.hideBar();
+        if (hideOnBlur(stateRef.current)) closeBar();
       }),
     ];
     return () => {
       unlisten.forEach((p) => p.then((f) => f()));
     };
-  }, [resetBar]);
+  }, [resetBar, playIn, closeBar]);
 
   // A finished result closes the bar by itself, unless the pointer is on it.
   useEffect(() => {
@@ -79,7 +100,7 @@ export default function App() {
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (hover.current) arm(HOVER_GRACE_MS);
-        else bridge.hideBar();
+        else closeBar();
       }, delay);
     };
     arm(ms);
@@ -124,7 +145,7 @@ export default function App() {
         if (id !== null && (s.phase === "working" || s.phase === "confirm" || s.phase === "choice")) {
           bridge.cancel(id);
         } else {
-          bridge.hideBar();
+          closeBar();
         }
       } else if (
         (s.phase === "done" || s.phase === "failed") &&
@@ -176,7 +197,7 @@ export default function App() {
   const showStatus = state.phase === "working" || state.phase === "done" || state.phase === "failed";
 
   return (
-    <div className="shell" ref={rootRef}>
+    <div className="shell" ref={rootRef} data-anim={anim}>
       <div
         className="bar"
         data-phase={state.phase}
@@ -249,18 +270,19 @@ export default function App() {
             />
           )}
 
+          {canSend && (
           <button
             className="go"
             aria-label="Run"
             title="Run (Enter)"
-            disabled={!canSend}
             onClick={() => send(text)}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <button className="close" aria-label="Close" title="Close (Esc)" onClick={() => bridge.hideBar()}>
+          )}
+          <button className="close" aria-label="Close" title="Close (Esc)" onClick={closeBar}>
             ×
           </button>
         </div>

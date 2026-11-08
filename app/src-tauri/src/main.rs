@@ -106,6 +106,7 @@ fn show_when_ready(app: &AppHandle) {
             place_bar(app, &w);
             let _ = w.show();
             let _ = w.set_focus();
+            let _ = app.emit("bar-shown", ()); // starts the pop-up animation
         }
     }
 }
@@ -282,7 +283,21 @@ fn toggle(app: &AppHandle) {
         note_selection(app); // the bar is about to open: remember what is selected now
     }
     match app.get_webview_window(BAR) {
-        Some(w) if w.is_visible().unwrap_or(false) => hide(app),
+        Some(w) if w.is_visible().unwrap_or(false) => {
+            // Let the page play its pop-down animation, then it asks us to hide.
+            // If it does not answer, hide anyway.
+            let _ = app.emit("bar-close", ());
+            let app = app.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(500));
+                if app
+                    .get_webview_window(BAR)
+                    .is_some_and(|w| w.is_visible().unwrap_or(false))
+                {
+                    hide(&app);
+                }
+            });
+        }
         Some(w) => {
             app.state::<AppState>()
                 .visibility
