@@ -98,3 +98,10 @@ Do not accept SP2 as passed. Take the doc 5 fallback: **add rules for common pat
 - Annotation was done by one author (the same agent that wrote rules), so conventions match the rules; real users' phrasing will be harder. I read doc 4 while writing rules, so doc4 is not fully blind; the test set is.
 - Labelling inconsistencies I found were fixed on val/test before scoring (e.g. "do not disturb" always a setting, "event with person" kept whole).
 - Sample sizes are small: 100 sentences gives roughly +/-7 points of noise.
+
+## Round 3 (8 Nov): fine-tune on generated data - still FAIL
+- `gen_train.py` made 1,800 template sentences (`data/train_gen.txt`); `finetune.py` trained GLiNER-small on them plus val, val2 and test (1,940 examples, 750 steps, CPU, ~25 min). doc4 and fresh were never trained on. Model: `models/gliner_small_ft`; scoring: `score_ft.py`.
+- Result with the frozen rules on top (threshold 0.3-0.5): **doc4 55/64 = 86%** (rules were tuned on doc4, so not blind), **fresh 63-64/100** (was 62). Fine-tuning gave about +2 points. Final training loss stayed high (2.9), so the model learned little from template data.
+- Misses on fresh are mostly: annotation convention disputes (e.g. "Shape of You by Ed Sheeran" as one or two spans, "next hour" as duration), unseen apps/artists/senders (Obsidian, Pritam, Fireship), and message-text boundaries (commas inside messages).
+- Conclusion: templates do not teach real phrasing. What helps is real labelled requests with one fixed convention, plus runtime gazetteers (contacts, installed apps, file index) for names. For V1's 22 offline tasks most slots come from closed lists (apps, settings, folders), which the rules already handle (doc4 86%).
+- Decision: keep rules + GLiNER-small for V1, add runtime gazetteers, and collect real usage logs for a later fine-tune on real data. Do not spend more time on synthetic data.
