@@ -15,6 +15,7 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 jitmo-connectors = { path = "../../crates/connectors" }
 jitmo-core = { path = "../../crates/core" }
 jitmo-adapter-windows = { path = "../../crates/adapter-windows" }

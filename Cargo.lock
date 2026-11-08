@@ -1826,6 +1826,7 @@ version = "0.1.0"
 name = "jitmo-app"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "jitmo-adapter-windows",
  "jitmo-connectors",
  "jitmo-core",
@@ -1845,6 +1846,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "jitmo-adapter-windows",
+ "jitmo-store",
  "regex",
  "thiserror 2.0.21",
 ]

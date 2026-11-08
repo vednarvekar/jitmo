@@ -198,6 +198,8 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/files.recent.yaml"),
         include_str!("../../../skills/files.open.yaml"),
         include_str!("../../../skills/files.move.yaml"),
+        include_str!("../../../skills/reminders.remind.yaml"),
+        include_str!("../../../skills/reminders.timer.yaml"),
         include_str!("../../../skills/stub.send.yaml"),
     ]
     .iter()
@@ -207,6 +209,37 @@ fn load_skills() -> Vec<Skill> {
 
 /// `windows_system` is real (it opens apps). The rest are still fakes that
 /// report success, until their connectors are built in Phase 2.
+/// Every 10 seconds, show the reminders and timers that have come due as
+/// Windows notifications. Runs on its own thread with its own database connection.
+fn start_reminder_scheduler(db: std::path::PathBuf) {
+    std::thread::spawn(move || {
+        let Ok(store) = Store::open(&db, None) else {
+            eprintln!("reminders: could not open the database");
+            return;
+        };
+        loop {
+            let now = chrono_utc_now();
+            let _ = jitmo_core::scheduler::fire_due(&store, &now, &mut |n| {
+                #[cfg(windows)]
+                {
+                    jitmo_adapter_windows::toast::show_toast(&n.title, &n.body).is_ok()
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = n;
+                    false
+                }
+            });
+            std::thread::sleep(std::time::Duration::from_secs(10));
+        }
+    });
+}
+
+/// Now as `YYYY-MM-DDTHH:MM:SSZ`, the format reminders are stored in.
+fn chrono_utc_now() -> String {
+    jitmo_connectors::reminders::utc_text(chrono::Local::now())
+}
+
 /// The current user's Downloads folder.
 fn downloads_dir() -> std::path::PathBuf {
     std::env::var_os("USERPROFILE")
@@ -216,7 +249,7 @@ fn downloads_dir() -> std::path::PathBuf {
         .join("Downloads")
 }
 
-fn connectors() -> HashMap<String, Arc<dyn Connector>> {
+fn connectors(db: &std::path::Path) -> HashMap<String, Arc<dyn Connector>> {
     let mut map: HashMap<String, Arc<dyn Connector>> = ["spotify", "stub_messenger"]
         .iter()
         .map(|id| {
@@ -226,6 +259,12 @@ fn connectors() -> HashMap<String, Arc<dyn Connector>> {
             )
         })
         .collect();
+    map.insert(
+        "reminders".into(),
+        Arc::new(jitmo_connectors::reminders::Reminders::new(
+            db.to_path_buf(),
+        )),
+    );
     map.insert(
         "files".into(),
         Arc::new(jitmo_connectors::files::Files::new(downloads_dir())),
@@ -257,13 +296,15 @@ fn main() {
             // Store: next to the user's other app data.
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
+            let db_path = dir.join("jitmo.db");
             let store = Store::open(&dir.join("jitmo.db"), None)?;
+            start_reminder_scheduler(db_path.clone());
             let hotkey = store
                 .get_setting("hotkey")?
                 .unwrap_or_else(|| DEFAULT_HOTKEY.to_string());
 
             let selection = SelectionSnapshot::default();
-            let flow = Flow::new(router(), store, connectors())
+            let flow = Flow::new(router(), store, connectors(&db_path))
                 .with_context(FsContext::for_current_user(selection.clone()));
             let handle = app.handle().clone();
             let core = CoreService::spawn(flow, move |event| {

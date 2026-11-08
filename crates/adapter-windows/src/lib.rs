@@ -8,3 +8,4 @@
 pub mod apps;
 pub mod explorer;
 pub mod memory;
+pub mod toast;

@@ -1,0 +1,26 @@
+id: reminders.timer                  # task R2
+task: R2
+version: 1
+category: reminders
+capabilities:
+  - reminders.write
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 5
+risk: changes_data
+examples:
+  - "set a 10-minute timer"
+  - "set a timer for an hour"
+slots: {}
+steps:
+  - connector: reminders
+    action: set
+    args: { text: "{request}" }
+check:
+  connector: reminders
+  action: set
+  args: { text: "{request}" }
+undo:
+  - connector: reminders
+    action: set

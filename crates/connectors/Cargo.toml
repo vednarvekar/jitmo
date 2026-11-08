@@ -11,6 +11,7 @@ thiserror.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 chrono-tz = "0.10"
 regex = "1"
+jitmo-store = { path = "../store" }
 
 [target.'cfg(windows)'.dependencies]
 jitmo-adapter-windows = { path = "../adapter-windows" }

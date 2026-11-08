@@ -1,0 +1,26 @@
+id: reminders.remind                  # task R1
+task: R1
+version: 1
+category: reminders
+capabilities:
+  - reminders.write
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 5
+risk: changes_data
+examples:
+  - "remind me to call mom at 6pm"
+  - "remind me tomorrow at 9am to send the report"
+slots: {}
+steps:
+  - connector: reminders
+    action: set
+    args: { text: "{request}" }
+check:
+  connector: reminders
+  action: set
+  args: { text: "{request}" }
+undo:
+  - connector: reminders
+    action: set

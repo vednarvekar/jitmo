@@ -58,3 +58,23 @@ T24:
   skill: files.recent
   calls:
     - { connector: files, action: recent, args: { text: "What did I download today?" } }
+
+# Reminders (fake connector here; parsing and storage are covered by the connector's own tests).
+T37:
+  request: "Remind me to call mom at 6pm."
+  expect: ran
+  skill: reminders.remind
+  calls:
+    - { connector: reminders, action: set, args: { text: "Remind me to call mom at 6pm." } }
+T38:
+  request: "Set a 10-minute timer."
+  expect: ran
+  skill: reminders.timer
+  calls:
+    - { connector: reminders, action: set, args: { text: "Set a 10-minute timer." } }
+T99:
+  request: "Set a 10-minute timer."
+  expect: ran
+  skill: reminders.timer
+  calls:
+    - { connector: reminders, action: set, args: { text: "Set a 10-minute timer." } }

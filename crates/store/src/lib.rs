@@ -98,6 +98,14 @@ pub struct LogEntry {
     pub undo_token: Option<String>,
 }
 
+/// A reminder or timer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reminder {
+    pub id: i64,
+    pub due_at: String,
+    pub text: String,
+}
+
 pub struct Store {
     conn: Connection,
 }
@@ -105,7 +113,11 @@ pub struct Store {
 impl Store {
     /// Open (or create) the database at `path`, then run any missing migrations.
     pub fn open(path: &Path, key: Option<&Key>) -> Result<Self, StoreError> {
-        Self::init(Connection::open(path)?, key)
+        let conn = Connection::open(path)?;
+        // The app, the reminder scheduler and the reminders connector each hold
+        // their own connection to this file; wait briefly instead of failing.
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        Self::init(conn, key)
     }
 
     /// In-memory database for tests.
@@ -222,6 +234,61 @@ impl Store {
         let _ = self.conn.execute("DROP TABLE action_log", []);
     }
 
+    // --- reminders ------------------------------------------------------
+
+    /// Add a reminder. `due_at` is UTC as `YYYY-MM-DDTHH:MM:SSZ`, so text order is time order.
+    pub fn add_reminder(&self, due_at: &str, text: &str) -> Result<i64, StoreError> {
+        self.conn.execute(
+            "INSERT INTO reminders(due_at, text) VALUES(?1, ?2)",
+            params![due_at, text],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Reminders not yet shown whose time has come, oldest first.
+    pub fn due_reminders(&self, now: &str) -> Result<Vec<Reminder>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, due_at, text FROM reminders
+             WHERE done = 0 AND due_at <= ?1 ORDER BY due_at, id",
+        )?;
+        let rows = stmt.query_map([now], |r| {
+            Ok(Reminder {
+                id: r.get(0)?,
+                due_at: r.get(1)?,
+                text: r.get(2)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Reminders still waiting (not shown, not deleted), soonest first.
+    pub fn pending_reminders(&self) -> Result<Vec<Reminder>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, due_at, text FROM reminders WHERE done = 0 ORDER BY due_at, id")?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Reminder {
+                id: r.get(0)?,
+                due_at: r.get(1)?,
+                text: r.get(2)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    pub fn mark_reminder_done(&self, id: i64) -> Result<(), StoreError> {
+        self.conn
+            .execute("UPDATE reminders SET done = 1 WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Remove a reminder (Undo of "remind me").
+    pub fn delete_reminder(&self, id: i64) -> Result<(), StoreError> {
+        self.conn
+            .execute("DELETE FROM reminders WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
     /// Clear the undo token once Undo is used or no longer possible.
     pub fn clear_undo_token(&self, id: i64) -> Result<(), StoreError> {
         self.conn.execute(
@@ -235,6 +302,28 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reminders_come_due_in_time_order_and_only_once() {
+        let s = Store::open_in_memory().unwrap();
+        let late = s.add_reminder("2026-11-08T18:00:00Z", "call mom").unwrap();
+        let early = s.add_reminder("2026-11-08T12:10:00Z", "timer").unwrap();
+        assert!(s.due_reminders("2026-11-08T12:00:00Z").unwrap().is_empty());
+        let due = s.due_reminders("2026-11-08T12:10:00Z").unwrap();
+        assert_eq!(due.iter().map(|r| r.id).collect::<Vec<_>>(), [early]);
+        s.mark_reminder_done(early).unwrap();
+        assert!(s.due_reminders("2026-11-08T12:10:00Z").unwrap().is_empty());
+        assert_eq!(s.pending_reminders().unwrap().len(), 1);
+        assert_eq!(s.due_reminders("2026-11-09T00:00:00Z").unwrap()[0].id, late);
+    }
+
+    #[test]
+    fn a_deleted_reminder_never_fires() {
+        let s = Store::open_in_memory().unwrap();
+        let id = s.add_reminder("2026-11-08T12:10:00Z", "x").unwrap();
+        s.delete_reminder(id).unwrap();
+        assert!(s.due_reminders("2027-01-01T00:00:00Z").unwrap().is_empty());
+    }
 
     #[test]
     fn migrations_create_all_four_tables() {

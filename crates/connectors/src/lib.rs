@@ -8,6 +8,7 @@
 pub mod fake;
 pub mod files;
 pub mod local_calc;
+pub mod reminders;
 #[cfg(windows)]
 pub mod windows_system;
 

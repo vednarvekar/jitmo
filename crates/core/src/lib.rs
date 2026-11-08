@@ -7,5 +7,6 @@ pub mod flow;
 pub mod policy;
 pub mod resolver;
 pub mod router;
+pub mod scheduler;
 pub mod service;
 pub mod verifier;
