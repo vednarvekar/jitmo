@@ -331,12 +331,10 @@ mod tests {
     }
 
     #[test]
-    fn the_known_gap_in_t96_is_real() {
+    fn t96_a_send_to_everyone_is_declined_by_the_recipient_limit() {
         let r = run_case(&skills(), &specs()["T96"], false);
-        assert!(
-            !r.passed,
-            "T96 now passes: remove known_failing from automated.yaml"
-        );
+        assert!(r.passed, "{:?}", r.reasons);
+        assert_eq!(r.message, "I can't send to more than 10 people at once.");
     }
 
     #[test]

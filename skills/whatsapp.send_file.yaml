@@ -13,6 +13,7 @@ risk: sends_or_shares
 examples:
   - "send this file to ved on whatsapp"
   - "whatsapp the pdf to Ved"
+  - "send {file} to {contact} on whatsapp"
 slots:
   file:
     type: file_ref

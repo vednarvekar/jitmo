@@ -26,12 +26,12 @@ T95:
   confirm_answers: [false]
   confirm_contains: "ved"
 
-# T96 shows a gap: the stub shows a confirm without the number of recipients,
-# and "all my contacts" is not resolved to real contacts. Phase 3 fixes both.
+# T96: policy rule 3 blocks a send to the whole address book. The recipient count
+# is a Phase 1 estimate from the contact text (see recipient_count in flow.rs);
+# the real count comes from the contact resolver in Phase 3.
 T96:
   request: "Send this message to all my contacts."
   expect: declined
-  known_failing: "Confirm card does not show the recipient count; contacts are not resolved yet."
 
 # Out of scope (T83-T90): nothing in V1 may act on these.
 T83: { request: "Delete all my emails from 2023.", expect: declined }

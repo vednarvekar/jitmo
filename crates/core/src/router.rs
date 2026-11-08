@@ -87,7 +87,7 @@ impl StubRouter {
 
     /// Route one request.
     pub fn route(&self, text: &str) -> Understanding {
-        let request = words(text);
+        let request = tokens(text);
         let chained = looks_chained(&request);
 
         let mut scored: Vec<(f32, &Skill, Vec<Span>)> = Vec::new();
@@ -137,16 +137,51 @@ fn words(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// One word of the request. `norm` is what matching compares; `raw` keeps the
+/// user's punctuation (like the commas in "ved, rahul, priya"), so captured
+/// text still shows how many names were listed.
+struct Tok {
+    norm: String,
+    raw: String,
+}
+
+fn tokens(text: &str) -> Vec<Tok> {
+    text.to_lowercase()
+        .split_whitespace()
+        .filter_map(|w| {
+            let norm = w.trim_matches(|c: char| !c.is_alphanumeric()).to_string();
+            (!norm.is_empty()).then(|| Tok {
+                norm,
+                raw: w.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Join captured words and drop punctuation at the two ends only.
+fn captured_text(toks: &[Tok]) -> String {
+    let joined = toks
+        .iter()
+        .map(|t| t.raw.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    joined
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_string()
+}
+
 fn is_placeholder(w: &str) -> bool {
     w.starts_with('{') && w.ends_with('}') && w.len() > 2
 }
 
-fn looks_chained(request: &[String]) -> bool {
-    request.windows(2).any(|p| p[0] == "and" && p[1] == "then")
-        || request.iter().any(|w| w == "then")
+fn looks_chained(request: &[Tok]) -> bool {
+    request
+        .windows(2)
+        .any(|p| p[0].norm == "and" && p[1].norm == "then")
+        || request.iter().any(|t| t.norm == "then")
 }
 
-fn score_example(ex: &Example, request: &[String]) -> (f32, Vec<Span>) {
+fn score_example(ex: &Example, request: &[Tok]) -> (f32, Vec<Span>) {
     // Full match, with placeholders.
     let mut captured: Vec<(String, String)> = Vec::new();
     if match_words(&ex.words, request, &mut captured) {
@@ -167,7 +202,7 @@ fn score_example(ex: &Example, request: &[String]) -> (f32, Vec<Span>) {
         .filter(|w| !is_placeholder(w))
         .map(String::as_str)
         .collect();
-    let b: BTreeSet<&str> = request.iter().map(String::as_str).collect();
+    let b: BTreeSet<&str> = request.iter().map(|t| t.norm.as_str()).collect();
     let both = a.intersection(&b).count() as f32;
     let either = a.union(&b).count() as f32;
     if either == 0.0 {
@@ -178,14 +213,14 @@ fn score_example(ex: &Example, request: &[String]) -> (f32, Vec<Span>) {
 
 /// Match `pattern` against `request` from the start to the end. A placeholder
 /// takes one or more words. Captures are pushed as (slot name, text).
-fn match_words(pattern: &[String], request: &[String], out: &mut Vec<(String, String)>) -> bool {
+fn match_words(pattern: &[String], request: &[Tok], out: &mut Vec<(String, String)>) -> bool {
     match pattern.split_first() {
         None => request.is_empty(),
         Some((p, rest)) if is_placeholder(p) => {
             let name = p[1..p.len() - 1].to_string();
             for take in 1..=request.len() {
                 let mark = out.len();
-                out.push((name.clone(), request[..take].join(" ")));
+                out.push((name.clone(), captured_text(&request[..take])));
                 if match_words(rest, &request[take..], out) {
                     return true;
                 }
@@ -194,7 +229,7 @@ fn match_words(pattern: &[String], request: &[String], out: &mut Vec<(String, St
             false
         }
         Some((p, rest)) => match request.split_first() {
-            Some((r, request_rest)) if r == p => match_words(rest, request_rest, out),
+            Some((r, request_rest)) if &r.norm == p => match_words(rest, request_rest, out),
             _ => false,
         },
     }

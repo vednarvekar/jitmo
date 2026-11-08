@@ -16,11 +16,11 @@ use crate::router::{decide, RouteDecision, StubRouter};
 use crate::verifier::{verify, Verdict};
 use jitmo_connectors::{Args, ConnError, Connector, Health, Output};
 use jitmo_ipc::{Choice, CoreEvent, RequestId, Span};
-use jitmo_skills::{Risk, Skill, Slot, Undo};
-use jitmo_store::{Decision, Store, StoreError};
+use jitmo_skills::{Skill, Slot, Undo};
+use jitmo_store::{Decision, Store};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// How the flow talks to the user mid-request.
 pub trait Prompter {
@@ -30,12 +30,27 @@ pub trait Prompter {
     fn choose(&mut self, question: &str, choices: &[Choice]) -> Option<String>;
 }
 
+/// What Undo needs: every step that ran (Undo walks them backwards) and when
+/// the window closes.
 struct UndoRecord {
-    log_id: i64,
-    connector: String,
-    action: String,
-    output: Output,
+    /// The action-log row to clear. `None` if writing the log failed.
+    log_id: Option<i64>,
+    /// (connector, action, output) of each step, in the order they ran.
+    steps: Vec<(String, String, Output)>,
+    expires: Instant,
 }
+
+/// A slot's value. `text` is what the user said; `fields` hold parts of it,
+/// like `{file.name}`. The real resolver (Phase 2) will fill in more fields,
+/// such as `path`. Until then only `name` exists, and a template that needs
+/// another field is refused up front instead of being guessed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SlotValue {
+    text: String,
+    fields: BTreeMap<String, String>,
+}
+
+type Slots = BTreeMap<String, SlotValue>;
 
 pub struct Flow {
     router: StubRouter,
@@ -43,6 +58,8 @@ pub struct Flow {
     connectors: HashMap<String, Arc<dyn Connector>>,
     clock: Box<dyn Fn() -> String + Send>,
     last_undo: Option<UndoRecord>,
+    /// Overrides the policy's Undo window (tests).
+    undo_window: Option<Duration>,
 }
 
 impl Flow {
@@ -57,6 +74,7 @@ impl Flow {
             connectors,
             clock: Box::new(iso_now),
             last_undo: None,
+            undo_window: None,
         }
     }
 
@@ -66,39 +84,78 @@ impl Flow {
         self
     }
 
+    /// Replace the Undo window that the policy sets (tests).
+    pub fn with_undo_window(mut self, window: Duration) -> Self {
+        self.undo_window = Some(window);
+        self
+    }
+
     pub fn store(&self) -> &Store {
         &self.store
     }
 
     /// Handle one request and return its final event.
     pub fn handle(&mut self, id: RequestId, text: &str, prompter: &mut dyn Prompter) -> CoreEvent {
-        match self.run(id, text, prompter) {
-            Ok(event) => event,
-            Err(_) => CoreEvent::Failed {
-                id,
-                message: "Something went wrong.".into(),
-            },
-        }
+        self.run(id, text, prompter)
     }
 
     /// Undo the last undoable action, if any. Returns the one-line result.
+    ///
+    /// Steps are undone newest first. Only works inside the policy's Undo
+    /// window (10 seconds), so a forgotten action is never reversed later.
     pub fn undo(&mut self) -> String {
         let Some(rec) = self.last_undo.take() else {
             return "Nothing to undo.".into();
         };
-        let Some(conn) = self.connectors.get(&rec.connector).cloned() else {
+        if Instant::now() > rec.expires {
+            self.clear_token(rec.log_id);
+            return "Undo is no longer available.".into();
+        }
+        let (mut undone, mut skipped) = (0, 0);
+        for (connector, action, output) in rec.steps.iter().rev() {
+            let Some(conn) = self.connectors.get(connector) else {
+                skipped += 1;
+                continue;
+            };
+            match conn.undo(action, output) {
+                None => skipped += 1,
+                Some(Ok(())) => undone += 1,
+                Some(Err(e)) => {
+                    // Stop here: undoing earlier steps without this one could
+                    // leave things in a state the user did not expect.
+                    if undone > 0 {
+                        self.clear_token(rec.log_id);
+                    }
+                    return if undone > 0 {
+                        format!("{e} Part of it was undone.")
+                    } else {
+                        e.to_string()
+                    };
+                }
+            }
+        }
+        if undone == 0 {
             return "That can't be undone.".into();
-        };
-        match conn.undo(&rec.action, &rec.output) {
-            None => "That can't be undone.".into(),
-            Some(Err(e)) => e.to_string(),
-            Some(Ok(())) => {
-                let _ = self.store.clear_undo_token(rec.log_id);
-                "Undone.".into()
+        }
+        self.clear_token(rec.log_id);
+        if skipped > 0 {
+            "Undone, except for steps that can't be undone.".into()
+        } else {
+            "Undone.".into()
+        }
+    }
+
+    fn clear_token(&self, log_id: Option<i64>) {
+        if let Some(id) = log_id {
+            if let Err(e) = self.store.clear_undo_token(id) {
+                eprintln!("could not update the action log: {e}");
             }
         }
     }
 
+    /// Write to the action log. A broken log must never change what the user
+    /// is told about an action, so a failure is reported on stderr and returns
+    /// `None`; the caller decides whether the user needs a warning.
     fn log(
         &self,
         request: &str,
@@ -106,15 +163,21 @@ impl Flow {
         decision: Decision,
         result: &str,
         undo_token: Option<&str>,
-    ) -> Result<i64, StoreError> {
-        self.store.log_action(
+    ) -> Option<i64> {
+        match self.store.log_action(
             &(self.clock)(),
             request,
             skill_id,
             decision,
             Some(result),
             undo_token,
-        )
+        ) {
+            Ok(id) => Some(id),
+            Err(e) => {
+                eprintln!("could not write to the action log: {e}");
+                None
+            }
+        }
     }
 
     fn fail(
@@ -123,34 +186,24 @@ impl Flow {
         request: &str,
         skill_id: Option<&str>,
         message: &str,
-    ) -> Result<CoreEvent, StoreError> {
-        self.log(request, skill_id, Decision::Failed, message, None)?;
-        Ok(CoreEvent::Failed {
+    ) -> CoreEvent {
+        self.log(request, skill_id, Decision::Failed, message, None);
+        CoreEvent::Failed {
             id,
             message: message.into(),
-        })
+        }
     }
 
-    fn cancelled(
-        &self,
-        id: RequestId,
-        request: &str,
-        skill_id: Option<&str>,
-    ) -> Result<CoreEvent, StoreError> {
-        self.log(request, skill_id, Decision::Cancelled, "Cancelled.", None)?;
-        Ok(CoreEvent::Done {
+    fn cancelled(&self, id: RequestId, request: &str, skill_id: Option<&str>) -> CoreEvent {
+        self.log(request, skill_id, Decision::Cancelled, "Cancelled.", None);
+        CoreEvent::Done {
             id,
             message: "Cancelled.".into(),
             undoable: false,
-        })
+        }
     }
 
-    fn run(
-        &mut self,
-        id: RequestId,
-        text: &str,
-        p: &mut dyn Prompter,
-    ) -> Result<CoreEvent, StoreError> {
+    fn run(&mut self, id: RequestId, text: &str, p: &mut dyn Prompter) -> CoreEvent {
         // 1. Route.
         let understanding = self.router.route(text);
         let skill_id = match decide(&understanding) {
@@ -194,37 +247,45 @@ impl Flow {
             Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
         };
 
-        // 3. Policy.
-        let recipients = u32::from(skill.risk == Risk::SendsOrShares);
-        let facts = StepFacts::from_skill(&skill, false, recipients);
-        let outcome = policy::evaluate_and_log(&self.store, &(self.clock)(), text, &facts)?;
+        // 3. Policy. A broken log must not unblock anything, so if the block
+        //    cannot be logged the decision still stands.
+        let facts = StepFacts::from_skill(&skill, false, recipient_count(&skill, &slots));
+        let outcome = policy::evaluate_and_log(&self.store, &(self.clock)(), text, &facts)
+            .unwrap_or_else(|e| {
+                eprintln!("could not write to the action log: {e}");
+                policy::evaluate(&facts)
+            });
+        if let Outcome::Block { reason, .. } = outcome {
+            return CoreEvent::Failed {
+                id,
+                message: reason.message().into(),
+            };
+        }
+
+        // Every template must be fillable before the user is asked anything, so
+        // nobody confirms a send that would then stop halfway.
+        if let Err(msg) = check_templates(&skill, &slots) {
+            return self.fail(id, text, Some(&skill.id), &msg);
+        }
+
         let mut confirmed = false;
-        match outcome {
-            Outcome::Block { reason, .. } => {
-                return Ok(CoreEvent::Failed {
-                    id,
-                    message: reason.message().into(),
-                });
+        if outcome == Outcome::Confirm {
+            let template = skill
+                .confirm
+                .as_ref()
+                .map_or("Go ahead?", |c| c.text.as_str());
+            let card = match fill(template, &slots) {
+                Ok(t) => t,
+                Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
+            };
+            if !p.confirm(&card) {
+                return self.cancelled(id, text, Some(&skill.id));
             }
-            Outcome::Confirm => {
-                let template = skill
-                    .confirm
-                    .as_ref()
-                    .map_or("Go ahead?", |c| c.text.as_str());
-                let card = match fill(template, &slots) {
-                    Ok(t) => t,
-                    Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
-                };
-                if !p.confirm(&card) {
-                    return self.cancelled(id, text, Some(&skill.id));
-                }
-                confirmed = true;
-            }
-            Outcome::RunThenUndo { .. } | Outcome::Run => {}
+            confirmed = true;
         }
 
         // 4. Run the steps.
-        let mut last_output: Option<(String, String, Output)> = None;
+        let mut executed: Vec<(String, String, Output)> = Vec::new();
         for step in &skill.steps {
             let Some(conn) = self.connectors.get(&step.connector).cloned() else {
                 return self.fail(
@@ -242,7 +303,7 @@ impl Flow {
                 Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
             };
             match conn.execute(&step.action, &args) {
-                Ok(out) => last_output = Some((step.connector.clone(), step.action.clone(), out)),
+                Ok(out) => executed.push((step.connector.clone(), step.action.clone(), out)),
                 Err(e) => return self.fail(id, text, Some(&skill.id), &e.to_string()),
             }
         }
@@ -272,10 +333,14 @@ impl Flow {
             }
         }
 
-        // 6. Log and report.
-        let can_undo = matches!(outcome, Outcome::RunThenUndo { .. })
-            && matches!(skill.undo, Undo::Steps(_))
-            && last_output.is_some();
+        // 6. Log and report. The action already happened and was verified, so a
+        //    log failure is a warning on a successful result, never an error.
+        let undo_seconds = match outcome {
+            Outcome::RunThenUndo { seconds } => Some(seconds),
+            _ => None,
+        };
+        let can_undo =
+            undo_seconds.is_some() && matches!(skill.undo, Undo::Steps(_)) && !executed.is_empty();
         let decision = if confirmed {
             Decision::Confirmed
         } else {
@@ -287,21 +352,28 @@ impl Flow {
             decision,
             "Done.",
             can_undo.then_some("available"),
-        )?;
-        self.last_undo = match (can_undo, last_output) {
-            (true, Some((connector, action, output))) => Some(UndoRecord {
+        );
+        self.last_undo = match (can_undo, undo_seconds) {
+            (true, Some(seconds)) => Some(UndoRecord {
                 log_id,
-                connector,
-                action,
-                output,
+                steps: executed,
+                expires: Instant::now()
+                    + self
+                        .undo_window
+                        .unwrap_or_else(|| Duration::from_secs(u64::from(seconds))),
             }),
             _ => None,
         };
-        Ok(CoreEvent::Done {
+        let message = if log_id.is_some() {
+            "Done."
+        } else {
+            "Done. (I couldn't save this to the activity log.)"
+        };
+        CoreEvent::Done {
             id,
-            message: "Done.".into(),
+            message: message.into(),
             undoable: can_undo,
-        })
+        }
     }
 
     /// A short human label for a skill, used in questions.
@@ -315,13 +387,13 @@ impl Flow {
 
 /// Fill each slot from the spans the router found (first unused span of the
 /// slot's type), or from the skill's fixed value.
-fn resolve_slots(skill: &Skill, spans: &[Span]) -> Result<BTreeMap<String, String>, String> {
+fn resolve_slots(skill: &Skill, spans: &[Span]) -> Result<Slots, String> {
     let mut used = vec![false; spans.len()];
-    let mut out = BTreeMap::new();
+    let mut out = Slots::new();
     for (name, slot) in &skill.slots {
         match slot {
             Slot::Fixed(v) => {
-                out.insert(name.clone(), v.clone());
+                out.insert(name.clone(), value_from_text(v));
             }
             Slot::Param(sp) => {
                 let found = spans
@@ -331,7 +403,7 @@ fn resolve_slots(skill: &Skill, spans: &[Span]) -> Result<BTreeMap<String, Strin
                 match found {
                     Some((i, s)) => {
                         used[i] = true;
-                        out.insert(name.clone(), s.text.clone());
+                        out.insert(name.clone(), value_from_text(&s.text));
                     }
                     None if sp.required => return Err(format!("I'm missing the {name}.")),
                     None => {}
@@ -342,8 +414,18 @@ fn resolve_slots(skill: &Skill, spans: &[Span]) -> Result<BTreeMap<String, Strin
     Ok(out)
 }
 
-/// Replace `{slot}` in a template. An unknown slot is an error, never a guess.
-fn fill(template: &str, slots: &BTreeMap<String, String>) -> Result<String, String> {
+/// A slot value made from the words the user said. Only `name` is known until
+/// the real resolver can look things up (a file's `path`, a contact's number).
+fn value_from_text(text: &str) -> SlotValue {
+    SlotValue {
+        text: text.to_string(),
+        fields: BTreeMap::from([("name".to_string(), text.to_string())]),
+    }
+}
+
+/// Replace `{slot}` or `{slot.field}` in a template. A slot or field that is
+/// not known is an error, never a guess.
+fn fill(template: &str, slots: &Slots) -> Result<String, String> {
     let mut out = String::new();
     let mut rest = template;
     while let Some(i) = rest.find('{') {
@@ -354,7 +436,11 @@ fn fill(template: &str, slots: &BTreeMap<String, String>) -> Result<String, Stri
             return Ok(out);
         };
         let key = &after[..j];
-        match slots.get(key) {
+        let value = match key.split_once('.') {
+            Some((slot, field)) => slots.get(slot).and_then(|v| v.fields.get(field)),
+            None => slots.get(key).map(|v| &v.text),
+        };
+        match value {
             Some(v) => out.push_str(v),
             None => return Err(format!("I'm missing the {key}.")),
         }
@@ -364,13 +450,56 @@ fn fill(template: &str, slots: &BTreeMap<String, String>) -> Result<String, Stri
     Ok(out)
 }
 
-fn fill_args(
-    args: &BTreeMap<String, String>,
-    slots: &BTreeMap<String, String>,
-) -> Result<Args, String> {
+fn fill_args(args: &BTreeMap<String, String>, slots: &Slots) -> Result<Args, String> {
     args.iter()
         .map(|(k, v)| Ok((k.clone(), fill(v, slots)?)))
         .collect()
+}
+
+/// Fill every template in the skill (confirm text, step and check arguments)
+/// without running anything, so a gap shows up before the user is asked to
+/// confirm. The first gap is reported as a one-line message.
+fn check_templates(skill: &Skill, slots: &Slots) -> Result<(), String> {
+    if let Some(c) = &skill.confirm {
+        fill(&c.text, slots)?;
+    }
+    for step in skill.steps.iter().chain(skill.check.iter()) {
+        fill_args(&step.args, slots)?;
+    }
+    Ok(())
+}
+
+/// How many people a send goes to, read from the skill's `contact` slots.
+///
+/// Phase 1 stand-in for the resolver. Names split by commas, `&` or "and"
+/// are counted. "all", "everyone" and "contacts" mean the whole address book,
+/// which is always over the limit. Anything that is not a send counts as 1.
+fn recipient_count(skill: &Skill, slots: &Slots) -> u32 {
+    let mut total: Option<u32> = None;
+    for (name, slot) in &skill.slots {
+        if matches!(slot, Slot::Param(sp) if sp.kind == "contact") {
+            if let Some(v) = slots.get(name) {
+                total = Some(total.unwrap_or(0).saturating_add(people_in(&v.text)));
+            }
+        }
+    }
+    total.unwrap_or(1)
+}
+
+fn people_in(text: &str) -> u32 {
+    let lower = text.to_lowercase();
+    let whole_book = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .any(|w| matches!(w, "all" | "everyone" | "everybody" | "contacts"));
+    if whole_book {
+        return u32::MAX;
+    }
+    let names = lower
+        .split([',', '&'])
+        .flat_map(|part| part.split(" and "))
+        .filter(|name| !name.trim().is_empty())
+        .count();
+    names.max(1) as u32
 }
 
 fn health_error(conn: &dyn Connector, name: &str) -> Option<ConnError> {
@@ -697,11 +826,258 @@ mod tests {
 
     #[test]
     fn fill_replaces_slots_and_never_guesses() {
-        let slots = BTreeMap::from([("a".to_string(), "x".to_string())]);
+        let slots = Slots::from([("a".to_string(), value_from_text("x"))]);
         assert_eq!(fill("{a} and {a}!", &slots).unwrap(), "x and x!");
         assert_eq!(fill("no slots", &slots).unwrap(), "no slots");
         assert_eq!(fill("{b}", &slots).unwrap_err(), "I'm missing the b.");
         assert_eq!(fill("odd { text", &slots).unwrap(), "odd { text");
+    }
+
+    // --- review fixes ---------------------------------------------------------
+
+    const WHATSAPP: &str = include_str!("../../../skills/whatsapp.send_file.yaml");
+
+    #[test]
+    fn dotted_fields_are_filled_from_the_slot() {
+        let slots = Slots::from([("file".to_string(), value_from_text("report.pdf"))]);
+        assert_eq!(fill("{file.name}", &slots).unwrap(), "report.pdf");
+        assert_eq!(fill("{file}", &slots).unwrap(), "report.pdf");
+        // A field the stub cannot know is refused, never guessed from the name.
+        assert_eq!(
+            fill("{file.path}", &slots).unwrap_err(),
+            "I'm missing the file.path."
+        );
+        assert_eq!(
+            fill("{nope.name}", &slots).unwrap_err(),
+            "I'm missing the nope.name."
+        );
+    }
+
+    #[test]
+    fn whatsapp_skill_shows_its_confirm_with_dotted_names() {
+        // Same skill, with the one field the stub cannot resolve (file.path) swapped for file.name.
+        let yaml = WHATSAPP.replace("{file.path}", "{file.name}");
+        let wa = Arc::new(FakeConnector::new("whatsapp_desktop"));
+        let mut flow = flow_with(&[&yaml], vec![("whatsapp_desktop", wa.clone())]);
+        let mut u = user(&[true]);
+        let ev = flow.handle(30, "send report.pdf to ved on whatsapp", &mut u);
+        assert_eq!(u.shown, vec!["Send report.pdf to ved on WhatsApp?"]);
+        assert_eq!(done(&ev).0, "Done.");
+        assert_eq!(wa.execute_count(), 2); // open_chat, attach_and_send
+    }
+
+    #[test]
+    fn a_template_that_cannot_be_filled_is_refused_before_the_confirm() {
+        // The shipped skill needs file.path, which only the Phase 2 resolver can supply.
+        let wa = Arc::new(FakeConnector::new("whatsapp_desktop"));
+        let mut flow = flow_with(&[WHATSAPP], vec![("whatsapp_desktop", wa.clone())]);
+        let mut u = user(&[true]);
+        let ev = flow.handle(31, "send report.pdf to ved on whatsapp", &mut u);
+        assert_eq!(failed(&ev), "I'm missing the file.path.");
+        assert!(
+            u.shown.is_empty(),
+            "no confirm for a send that cannot finish"
+        );
+        assert!(wa.calls().is_empty());
+    }
+
+    #[test]
+    fn recipients_are_counted_from_the_contact_slot() {
+        let skill = Skill::parse(SEND).unwrap();
+        let count = |who: &str| {
+            let slots = Slots::from([("contact".to_string(), value_from_text(who))]);
+            recipient_count(&skill, &slots)
+        };
+        assert_eq!(count("ved"), 1);
+        assert_eq!(count("ved and rahul"), 2);
+        assert_eq!(count("ved, rahul & priya"), 3);
+        assert_eq!(count("all my contacts"), u32::MAX);
+        assert_eq!(count("everyone"), u32::MAX);
+        assert_eq!(
+            count("Allison"),
+            1,
+            "a name that merely contains `all` is one person"
+        );
+        assert_eq!(
+            recipient_count(&Skill::parse(OPEN).unwrap(), &Slots::new()),
+            1
+        );
+    }
+
+    #[test]
+    fn rule_3_now_blocks_a_send_to_too_many_people() {
+        let m = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut flow = flow_with(&[SEND], vec![("stub_messenger", m.clone())]);
+        let mut u = user(&[true]);
+        let ev = flow.handle(32, "send hi to all my contacts", &mut u);
+        assert_eq!(failed(&ev), "I can't send to more than 10 people at once.");
+        assert!(u.shown.is_empty() && m.calls().is_empty());
+        assert_eq!(log_decisions(&flow), vec!["blocked"]);
+
+        let eleven = "a, b, c, d, e, f, g, h, i, j, k";
+        let ev = flow.handle(33, &format!("send hi to {eleven}"), &mut user(&[true]));
+        assert!(failed(&ev).contains("more than 10"));
+
+        // Ten people still need a confirm, and then go through.
+        let ten = "a, b, c, d, e, f, g, h, i, j";
+        let mut u = user(&[true]);
+        let ev = flow.handle(34, &format!("send hi to {ten}"), &mut u);
+        assert_eq!(done(&ev).0, "Done.");
+        assert_eq!(u.shown.len(), 1);
+    }
+
+    #[test]
+    fn undo_is_refused_after_the_window_closes() {
+        let sys = Arc::new(FakeConnector::new("windows_system").undoable());
+        let mut flow = flow_with(&[&undoable_open()], vec![("windows_system", sys.clone())])
+            .with_undo_window(Duration::ZERO);
+        flow.handle(40, "open spotify", &mut user(&[]));
+        std::thread::sleep(Duration::from_millis(5));
+        assert_eq!(flow.undo(), "Undo is no longer available.");
+        assert!(
+            !sys.calls().iter().any(|c| matches!(c, Call::Undo { .. })),
+            "nothing may be undone late"
+        );
+        assert_eq!(flow.store().recent_actions(1).unwrap()[0].undo_token, None);
+        assert_eq!(flow.undo(), "Nothing to undo.");
+    }
+
+    #[test]
+    fn the_default_undo_window_comes_from_the_policy() {
+        let sys = Arc::new(FakeConnector::new("windows_system").undoable());
+        let mut flow = flow_with(&[&undoable_open()], vec![("windows_system", sys)]);
+        flow.handle(41, "open spotify", &mut user(&[]));
+        let secs = flow
+            .last_undo
+            .as_ref()
+            .unwrap()
+            .expires
+            .saturating_duration_since(Instant::now())
+            .as_secs_f32();
+        assert!(
+            (8.0..=10.0).contains(&secs),
+            "window was {secs}s, expected about 10"
+        );
+    }
+
+    #[test]
+    fn a_broken_log_does_not_turn_success_into_failure() {
+        let sys = Arc::new(FakeConnector::new("windows_system").undoable());
+        let mut flow = flow_with(&[&undoable_open()], vec![("windows_system", sys)]);
+        flow.store().break_action_log_for_tests();
+        let ev = flow.handle(42, "open spotify", &mut user(&[]));
+        assert_eq!(
+            done(&ev),
+            ("Done. (I couldn't save this to the activity log.)", true)
+        );
+        assert_eq!(flow.undo(), "Undone.", "Undo still works without a log row");
+    }
+
+    #[test]
+    fn a_broken_log_keeps_the_real_message_for_failures_blocks_and_cancels() {
+        let m = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut flow = flow_with(&[SEND], vec![("stub_messenger", m.clone())]);
+        flow.store().break_action_log_for_tests();
+        assert_eq!(
+            failed(&flow.handle(43, "what is the capital of france", &mut user(&[]))),
+            "I can't do that yet."
+        );
+        assert_eq!(
+            failed(&flow.handle(44, "send hi to everyone", &mut user(&[]))),
+            "I can't send to more than 10 people at once."
+        );
+        assert_eq!(
+            done(&flow.handle(45, "send hi to ved", &mut user(&[false]))).0,
+            "Cancelled."
+        );
+        assert_eq!(m.execute_count(), 0);
+    }
+
+    fn two_step_undoable() -> String {
+        undoable_open().replace(
+            "check:",
+            "  - connector: spotify\n    action: focus\ncheck:",
+        )
+    }
+
+    #[test]
+    fn undo_reverses_every_step_newest_first() {
+        // Steps: windows_system.open_app, then spotify.focus. Undo steps are declared in the skill.
+        let sys = Arc::new(FakeConnector::new("windows_system").undoable());
+        let sp = Arc::new(FakeConnector::new("spotify").undoable());
+        let mut flow = flow_with(
+            &[&two_step_undoable()],
+            vec![("windows_system", sys.clone()), ("spotify", sp.clone())],
+        );
+        assert!(done(&flow.handle(50, "open spotify", &mut user(&[]))).1);
+        assert_eq!(flow.undo(), "Undone.");
+        assert!(sp
+            .calls()
+            .iter()
+            .any(|c| matches!(c, Call::Undo { action } if action == "focus")));
+        assert!(sys
+            .calls()
+            .iter()
+            .any(|c| matches!(c, Call::Undo { action } if action == "open_app")));
+    }
+
+    #[test]
+    fn partial_undo_is_reported_honestly() {
+        let sys = Arc::new(FakeConnector::new("windows_system").undoable());
+        let sp = Arc::new(FakeConnector::new("spotify")); // cannot undo
+        let mut flow = flow_with(
+            &[&two_step_undoable()],
+            vec![("windows_system", sys), ("spotify", sp)],
+        );
+        flow.handle(51, "open spotify", &mut user(&[]));
+        assert_eq!(
+            flow.undo(),
+            "Undone, except for steps that can't be undone."
+        );
+    }
+
+    #[test]
+    fn nothing_undoable_says_so() {
+        let sys = Arc::new(FakeConnector::new("windows_system"));
+        let sp = Arc::new(FakeConnector::new("spotify"));
+        let mut flow = flow_with(
+            &[&two_step_undoable()],
+            vec![("windows_system", sys), ("spotify", sp)],
+        );
+        flow.handle(52, "open spotify", &mut user(&[]));
+        assert_eq!(flow.undo(), "That can't be undone.");
+    }
+
+    #[test]
+    fn every_shipped_skill_can_be_filled_from_its_own_example() {
+        // Catches a template that references something the flow can never supply.
+        // Skills may still need fields only the Phase 2 resolver provides; those
+        // are listed here so the gap is visible and cannot grow unnoticed.
+        let needs_resolver = ["whatsapp.send_file"];
+        for yaml in [OPEN, PAUSE, SEND, WHATSAPP] {
+            let skill = Skill::parse(yaml).unwrap();
+            let slots: Slots = skill
+                .slots
+                .iter()
+                .map(|(n, s)| {
+                    let text = match s {
+                        Slot::Fixed(v) => v.clone(),
+                        Slot::Param(_) => "sample".into(),
+                    };
+                    (n.clone(), value_from_text(&text))
+                })
+                .collect();
+            let filled = check_templates(&skill, &slots);
+            if needs_resolver.contains(&skill.id.as_str()) {
+                assert!(
+                    filled.is_err(),
+                    "{}: remove it from `needs_resolver`",
+                    skill.id
+                );
+            } else {
+                assert!(filled.is_ok(), "{}: {filled:?}", skill.id);
+            }
+        }
     }
 
     #[test]

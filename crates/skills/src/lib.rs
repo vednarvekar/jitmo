@@ -9,7 +9,7 @@
 
 use ed25519_compact::{PublicKey, Signature};
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SkillError {
@@ -171,6 +171,33 @@ impl Skill {
             _ => {}
         }
 
+        // Every {placeholder} must name a declared slot, so a skill can never
+        // reach the user with a template the engine cannot fill.
+        let declared: BTreeSet<&str> = self.slots.keys().map(String::as_str).collect();
+        if let Some(c) = &self.confirm {
+            check_template("confirm text", &c.text, &declared, true, &mut p);
+        }
+        let undo_steps: &[Step] = match &self.undo {
+            Undo::Steps(s) => s,
+            Undo::Keyword(_) => &[],
+        };
+        for (i, step) in self
+            .steps
+            .iter()
+            .chain(self.check.iter())
+            .chain(undo_steps)
+            .enumerate()
+        {
+            for (arg, value) in &step.args {
+                let place = format!("step {} arg `{arg}`", i + 1);
+                check_template(&place, value, &declared, true, &mut p);
+            }
+        }
+        for example in &self.examples {
+            // Examples match words, so a slot there stands for the whole value.
+            check_template("example", example, &declared, false, &mut p);
+        }
+
         if p.is_empty() {
             Ok(())
         } else {
@@ -178,6 +205,55 @@ impl Skill {
                 id: self.id.clone(),
                 problems: p,
             })
+        }
+    }
+}
+
+/// The names inside `{...}` in a template. Each is `slot` or `slot.field`.
+/// An unclosed brace or an empty or odd name is an error.
+pub fn placeholders(template: &str) -> Result<Vec<String>, String> {
+    let mut names = Vec::new();
+    let mut rest = template;
+    while let Some(open) = rest.find('{') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else {
+            return Err("has a `{` with no closing `}`".into());
+        };
+        let name = &after[..close];
+        let well_formed = !name.is_empty()
+            && name.split('.').all(|part| {
+                !part.is_empty() && part.chars().all(|c| c.is_alphanumeric() || c == '_')
+            });
+        if !well_formed {
+            return Err(format!("has an invalid placeholder `{{{name}}}`"));
+        }
+        names.push(name.to_string());
+        rest = &after[close + 1..];
+    }
+    Ok(names)
+}
+
+fn check_template(
+    place: &str,
+    template: &str,
+    declared: &BTreeSet<&str>,
+    allow_fields: bool,
+    problems: &mut Vec<String>,
+) {
+    match placeholders(template) {
+        Err(e) => problems.push(format!("{place} {e}")),
+        Ok(names) => {
+            for name in names {
+                let (slot, field) = match name.split_once('.') {
+                    Some((s, f)) => (s, Some(f)),
+                    None => (name.as_str(), None),
+                };
+                if !declared.contains(slot) {
+                    problems.push(format!("{place}: `{{{name}}}` does not match any slot"));
+                } else if field.is_some() && !allow_fields {
+                    problems.push(format!("{place}: `{{{name}}}` cannot use a field here"));
+                }
+            }
         }
     }
 }
@@ -298,6 +374,56 @@ mod tests {
     fn bad_undo_keyword_is_rejected() {
         let yaml = SAMPLE.replace("undo: none", "undo: maybe");
         assert!(problems(&yaml).iter().any(|m| m.contains("undo must be")));
+    }
+
+    #[test]
+    fn placeholder_names_are_parsed() {
+        assert_eq!(
+            placeholders("Send {file.name} to {contact}").unwrap(),
+            vec!["file.name", "contact"]
+        );
+        assert!(placeholders("no placeholders").unwrap().is_empty());
+        assert!(placeholders("open { app").is_err());
+        assert!(placeholders("bad {}").is_err());
+        assert!(placeholders("bad {a..b}").is_err());
+        assert!(placeholders("bad {a b}").is_err());
+    }
+
+    #[test]
+    fn a_placeholder_for_a_missing_slot_is_rejected_everywhere() {
+        let confirm = SAMPLE.replace("{contact.name}", "{person.name}");
+        assert!(problems(&confirm)
+            .iter()
+            .any(|m| m.contains("confirm text") && m.contains("{person.name}")));
+
+        let arg = SAMPLE.replace("{file.path}", "{doc.path}");
+        assert!(problems(&arg)
+            .iter()
+            .any(|m| m.contains("arg `file`") && m.contains("{doc.path}")));
+
+        let check = SAMPLE.replace("file_name: \"{file.name}\"", "file_name: \"{nope}\"");
+        assert!(problems(&check).iter().any(|m| m.contains("{nope}")));
+    }
+
+    #[test]
+    fn dotted_fields_are_allowed_in_confirms_and_args_but_not_in_examples() {
+        assert!(Skill::parse(SAMPLE).is_ok()); // uses {file.name}, {contact.name}, {file.path}
+        let example = SAMPLE.replace(
+            "send this file to ved on whatsapp",
+            "send {file.name} to ved",
+        );
+        assert!(problems(&example)
+            .iter()
+            .any(|m| m.contains("cannot use a field")));
+    }
+
+    #[test]
+    fn an_unclosed_brace_is_rejected() {
+        // Only the last placeholder of the confirm loses its closing brace.
+        let yaml = SAMPLE.replace("{contact.name} on WhatsApp", "{contact.name on WhatsApp");
+        assert!(problems(&yaml)
+            .iter()
+            .any(|m| m.contains("confirm text") && m.contains("no closing")));
     }
 
     #[test]

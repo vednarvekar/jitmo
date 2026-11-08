@@ -215,6 +215,13 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// Makes every later log write fail, so tests can check that a broken log
+    /// never turns a finished action into an error. Not for production code.
+    #[doc(hidden)]
+    pub fn break_action_log_for_tests(&self) {
+        let _ = self.conn.execute("DROP TABLE action_log", []);
+    }
+
     /// Clear the undo token once Undo is used or no longer possible.
     pub fn clear_undo_token(&self, id: i64) -> Result<(), StoreError> {
         self.conn.execute(
