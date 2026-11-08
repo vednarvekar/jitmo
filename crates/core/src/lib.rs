@@ -2,6 +2,7 @@
 //!
 //! No Windows-only code lives here, so it builds and tests anywhere.
 
+pub mod flow;
 pub mod policy;
 pub mod router;
 pub mod verifier;

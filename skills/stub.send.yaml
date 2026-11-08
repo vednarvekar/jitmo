@@ -1,0 +1,32 @@
+id: stub.send                   # Phase 1 test skill: exercises the confirm card; not a real task
+version: 1
+category: testing
+capabilities:
+  - stub.send
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 10
+risk: sends_or_shares
+examples:
+  - "send {text} to {contact}"
+slots:
+  text:
+    type: text
+    required: true
+    resolve: [named_text]
+  contact:
+    type: contact
+    required: true
+    resolve: [named_contact]
+confirm:
+  text: "Send \"{text}\" to {contact}?"
+steps:
+  - connector: stub_messenger
+    action: send
+    args: { text: "{text}", contact: "{contact}" }
+check:
+  connector: stub_messenger
+  action: last_message_is
+  args: { text: "{text}", contact: "{contact}" }
+undo: none
