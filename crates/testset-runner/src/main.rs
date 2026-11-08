@@ -86,6 +86,7 @@ fn go() -> Result<bool, String> {
             reasons: vec![],
             message: String::new(),
             elapsed_ms: None,
+            time_to_first_action_ms: None,
             peak_mb: None,
             sent_without_confirm: false,
             crashed: false,
@@ -99,6 +100,7 @@ fn go() -> Result<bool, String> {
             row.request = spec.request.clone();
             let r = run::run_case_with(&skills, spec, live, worker.as_ref());
             row.elapsed_ms = Some(r.elapsed_ms);
+            row.time_to_first_action_ms = r.time_to_first_action_ms;
             row.peak_mb = peak_memory_bytes().map(|b| b as f64 / 1_048_576.0);
             row.message = r.message;
             row.sent_without_confirm = r.sent_without_confirm;
