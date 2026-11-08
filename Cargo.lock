@@ -136,11 +136,15 @@ version = "0.1.0"
 [[package]]
 name = "jitmo-connectors"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "jitmo-core"
 version = "0.1.0"
 dependencies = [
+ "jitmo-connectors",
  "jitmo-skills",
  "jitmo-store",
  "thiserror",
