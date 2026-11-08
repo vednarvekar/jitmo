@@ -376,6 +376,99 @@ silently.
                           earlier results         sending failed."
   -----------------------------------------------------------------------
 
+## As built after Phase 1 (8 Nov 2026)
+
+What the code does today, where it differs from the sections above, and what
+is still a stand-in. The code is the source of truth; this list is updated at
+the end of each phase.
+
+**Workspace.** `ipc` (messages), `skills` (loader and validator), `store`
+(tables), `core` (policy, router stub, verifier, flow, service),
+`connectors` (trait, fake, `windows_system`), `adapter-windows` (app lookup,
+process list, memory), `testset-runner`, and `app/` (Tauri + React). Only
+`adapter-windows` and the Windows connector are gated on `cfg(windows)`.
+
+**Skill format.**
+- Every `{placeholder}` must name a declared slot, or the skill is refused at
+  load. This covers the confirm text, step, check and undo arguments, and the
+  examples. `{slot.field}` (like `{file.name}`) is allowed in the confirm text
+  and arguments, not in examples.
+- Examples may hold placeholders (`open {app}`); the router uses them to
+  extract the slot. A slot can also be a fixed value (`app: whatsapp`).
+- `undo` is `none` or a list of steps. Unknown YAML fields are refused.
+- Skill files must be signed (Ed25519, detached). The app's dev build parses
+  its bundled skills without a signature check.
+
+**Flow order.** Route, fill slots, policy, fill every template, confirm, run
+steps, verify, log. Templates are filled once before the confirm, so a send
+that cannot finish (for example one that needs `{file.path}` before the
+resolver exists) is refused before the user is asked, not halfway through.
+Every request ends in exactly one Done or Failed with a one-line message.
+
+**Policy.** Rules 1 to 6 as above, tested for order. Facts the flow supplies:
+- Permanent delete is read from a capability ending in `delete:permanent`.
+- Recipient count is an estimate from the skill's `contact` slots: names split
+  by commas, `&` or "and"; "all", "everyone" and "contacts" mean the whole
+  address book. The real count comes from the contact resolver (Phase 3).
+- A step triggered by content (rule 2) is never set yet, because nothing reads
+  email or messages yet (Phase 3).
+- Blocks are logged immediately. If the log write fails, the block still
+  stands.
+
+**Verifier.** On failure it runs the check once more, never the action: a
+repeated send could send twice. The message names the connector.
+
+**Undo.** Core enforces the 10-second window (`Outcome::RunThenUndo`), so a
+late Undo is refused with "Undo is no longer available." and the token is
+cleared. Undo reverses every step that ran, newest first. If some steps cannot
+be undone it says so ("Undone, except for steps that can't be undone."); if an
+undo step errors it stops and reports. The UI shows a countdown but does not
+decide.
+
+**Action log.** Written for every outcome. A log failure after a verified
+action is shown as a warning on the Done message, never as a failure, and Undo
+still works. For failures, cancels and blocks the real message is kept.
+
+**Router (stub).** Word matching against the skills' examples, no models. A
+full match scores 1.0 (0.9 with a placeholder); anything fuzzy is capped at
+0.7, so the stub never runs a loose guess without a confirm. Captured text
+keeps the user's punctuation so lists of names can be counted. The confidence
+rules (0.80 / 0.50 / 0.60) are in code and match the table above.
+
+**IPC and process split.** Messages: `Submit`, `Confirm`, `Choose`, `Cancel`,
+`Undo` to Core; `Started`, `ConfirmNeeded`, `ChoiceNeeded`, `Done`, `Failed`
+back; `Understand`/`Ping` between Core and the model worker. Framing is one
+JSON message per line. **Today Core runs on a thread inside the app process
+over a channel; the named-pipe transport is not built yet.** The messages are
+the same, so only the transport changes.
+
+**Store.** The four tables, versioned migrations. Plain SQLite by default.
+Encryption needs the `sqlcipher` feature (OpenSSL built from source, needs a
+full Perl such as Strawberry Perl) and is tested, but it is not the default,
+and the key is not yet read from Credential Manager.
+
+**`windows_system` (A1, open an app).** Apps come from the Start-menu list
+(`Get-StartApps`, which includes Microsoft Store apps) and are started by id
+with `explorer shell:AppsFolder\<id>`; the typed text is only used to pick an
+entry. Several matches are reported, not guessed. The check waits up to 8 s
+for a process (then a window title) to appear. First lookup is slow (about a
+second); the list is cached. Only this connector is real; the rest are fakes.
+
+**Command bar.** Global hotkey (default `ctrl+alt+j`, changeable through the
+`hotkey` setting). If it cannot be registered the bar opens at once. The web
+view is destroyed 60 s after the bar is hidden (SP11). Enter cannot confirm a
+card in its first 0.4 s. Esc cancels, or hides when nothing is running.
+
+**Test-set runner.** Reads the 100 tests from doc 04, runs those listed in
+`testset/automated.yaml` from a clean setup each, judges them by the doc's
+rules, and prints the metrics table. Untested tests show as "not built" and
+never count as passes.
+
+**Still stand-ins (Phase 2 and later).** Router and extractor models; the
+resolver (only `{slot}` and `{slot.name}` exist); named-pipe transport;
+Credential Manager key; every connector except `windows_system`; contact
+resolution and recipient counts; reading content for rule 2.
+
 ## Open decisions
 
 The screenshot shows the **Open decisions** heading and the beginning of

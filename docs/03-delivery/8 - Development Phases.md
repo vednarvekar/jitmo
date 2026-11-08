@@ -110,6 +110,8 @@ WebView2 can use more than the ~40MB that 06 budgets for the command bar, and SP
 
 **Done when:** T01 passes through UI, Core, connector, verifier and report. A stub send skill shows its confirm and does nothing on Cancel. Unit tests cover all six policy rules in order. The runner reports pass or fail, time and peak memory. CI is green on Windows. Idle memory of UI plus Core is recorded as the baseline.
 
+**Status (8 Nov 2026):** built; every item above is met except that the first CI run still has to be read on GitHub. Idle baseline: 14.4 MB working set with the bar closed, about 350 MB with it open. Core runs inside the app process for now (named-pipe transport still to do), the database is not encrypted by default, and only the open-app connector is real. Details, findings and open items are in [8.1 Decision Log](8.1%20-%20Decision%20Log.md) and the LLD section "As built after Phase 1".
+
 ## Phase 2 — Offline tasks
 
 **Depends on:** Phase 1, and the SP1, SP2, SP6 and SP7 verdicts.
