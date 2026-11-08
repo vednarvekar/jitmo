@@ -110,3 +110,7 @@ T23: { files: ["Budget 2026.xlsx", "Holiday photo.jpg"], request: "Find the budg
 T25: { needs_model: true, files: ["Resume.docx", "Invoice.pdf"], request: "Open my resume.", expect: ran, skill: files.open, calls: [{ connector: files, action: open, args: { path: "C:/Docs/Resume.docx" } }] }
 T58: { needs_model: true, files: ["Budget 2026.xlsx", "Holiday photo.jpg"], request: "wheres that budget thing", expect: ran, skill: files.find, calls: [{ connector: files, action: reveal, args: { path: "C:/Docs/Budget 2026.xlsx" } }] }
 T69: { needs_model: true, files: ["Q3 deck.pptx", "Sales deck.pptx"], request: "Open the deck.", expect: asks_question }
+
+# Spotify play (fake connector here; the real play path is unverified live, see the Decision Log).
+T02: { request: "Play Arijit Singh on Spotify.", expect: ran, skill: music.play, calls: [{ connector: spotify, action: search, args: { text: "Play Arijit Singh on Spotify." } }] }
+T50: { needs_model: true, request: "put on some arijit", expect: ran, skill: music.play, calls: [{ connector: spotify, action: search, args: { text: "put on some arijit" } }] }
