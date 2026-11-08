@@ -1821,6 +1821,9 @@ dependencies = [
 [[package]]
 name = "jitmo-adapter-windows"
 version = "0.1.0"
+dependencies = [
+ "jitmo-ipc",
+]
 
 [[package]]
 name = "jitmo-app"
