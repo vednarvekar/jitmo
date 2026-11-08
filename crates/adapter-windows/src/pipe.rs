@@ -1,22 +1,17 @@
 //! Per-user named pipe for the Core service (blocking, byte mode).
 //!
-//! Not wired into the app yet. To use it, replace the in-process mpsc channel
-//! in `crates/core/src/service.rs`:
-//! - Core side: `PipeServer::bind(&default_pipe_name())`, then loop on
-//!   `accept()`; for each stream, run the existing request handler with a
-//!   reader doing `read_message::<_, UiRequest>(&mut BufReader)` and events
-//!   sent with `write_message` (use a second handle for the writer half, or a
-//!   mutex), instead of `Receiver<UiRequest>` / `Sender<CoreEvent>`.
-//! - UI side (`app/src-tauri/src/main.rs`): `connect(&default_pipe_name())`
-//!   instead of spawning the service thread with channels; a reader thread
-//!   forwards `CoreEvent`s to the Tauri event emitter, and submit/confirm call
-//!   `write_message`.
+//! Wired into the app: Core side is `PipeServer::bind` + `accept` feeding
+//! `jitmo_core::service::serve_connection` (in `app/src-tauri/src/main.rs`);
+//! UI side is `app/src-tauri/src/core_client.rs` (`connect`, reader thread,
+//! writes from the Tauri commands). Handles are opened overlapped so
+//! [`PipeStream::split`] halves can read and write at the same time.
 //!
 //! The server is created with PIPE_REJECT_REMOTE_CLIENTS and the first
 //! instance uses FILE_FLAG_FIRST_PIPE_INSTANCE so another process cannot
 //! squat the name. The default DACL applies (current user, SYSTEM, admins).
 
 use std::io::{self, Read, Write};
+use std::sync::Arc;
 
 /// `\\.\pipe\jitmo-core-<user>`; characters outside `[A-Za-z0-9_-]` become `_`.
 pub fn pipe_name_for_user(user: &str) -> String {
@@ -43,6 +38,10 @@ const GENERIC_WRITE: u32 = 0x4000_0000;
 const OPEN_EXISTING: u32 = 3;
 const PIPE_ACCESS_DUPLEX: u32 = 3;
 const FILE_FLAG_FIRST_PIPE_INSTANCE: u32 = 0x0008_0000;
+// Overlapped handles let one thread read while another writes. A synchronous
+// handle serialises all calls, so a blocked read would stall every write.
+const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
+const ERROR_IO_PENDING: i32 = 997;
 // Byte type, byte read mode and blocking wait are all zero bits.
 const PIPE_REJECT_REMOTE_CLIENTS: u32 = 8;
 const PIPE_UNLIMITED_INSTANCES: u32 = 255;
@@ -90,6 +89,14 @@ extern "system" {
         written: *mut u32,
         overlapped: *mut core::ffi::c_void,
     ) -> i32;
+    fn CreateEventW(
+        security: *const core::ffi::c_void,
+        manual_reset: i32,
+        initial: i32,
+        name: *const u16,
+    ) -> isize;
+    fn GetOverlappedResult(h: isize, overlapped: *mut Overlapped, read: *mut u32, wait: i32)
+        -> i32;
     fn FlushFileBuffers(h: isize) -> i32;
     fn CloseHandle(h: isize) -> i32;
 }
@@ -98,65 +105,87 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// One end of a connected pipe. Reads see EOF when the peer closes.
-pub struct PipeStream {
+#[repr(C)]
+struct Overlapped {
+    internal: usize,
+    internal_high: usize,
+    offset: u64,
+    event: isize,
+}
+
+/// Start an overlapped call with `start` and wait for it to finish.
+fn overlapped_call(handle: isize, start: impl FnOnce(*mut Overlapped) -> i32) -> io::Result<u32> {
+    // SAFETY: plain FFI; the event is closed on every path below.
+    let event = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
+    if event == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut ov = Overlapped {
+        internal: 0,
+        internal_high: 0,
+        offset: 0,
+        event,
+    };
+    let result = if start(&mut ov) == 0
+        && io::Error::last_os_error().raw_os_error() != Some(ERROR_IO_PENDING)
+    {
+        Err(io::Error::last_os_error())
+    } else {
+        let mut n = 0u32;
+        // SAFETY: `ov` is the structure the call above was started with and is still alive.
+        if unsafe { GetOverlappedResult(handle, &mut ov, &mut n, 1) } == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(n)
+        }
+    };
+    // SAFETY: the event is owned here.
+    unsafe { CloseHandle(event) };
+    result
+}
+
+/// An open pipe handle shared by the reader and writer halves.
+struct Inner {
     handle: isize,
     server: bool,
 }
 
-// SAFETY: a pipe HANDLE can be used from any thread; we only hand out `&mut self` access.
-unsafe impl Send for PipeStream {}
-
-impl Read for PipeStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let mut n = 0u32;
+impl Inner {
+    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
         let len = buf.len().min(u32::MAX as usize) as u32;
-        // SAFETY: `buf` is valid for `len` bytes and `n` for one u32; the handle is open.
-        let ok = unsafe {
-            ReadFile(
-                self.handle,
-                buf.as_mut_ptr(),
-                len,
-                &mut n,
-                std::ptr::null_mut(),
-            )
-        };
-        if ok == 0 {
-            let e = io::Error::last_os_error();
+        let ptr = buf.as_mut_ptr();
+        // SAFETY: `buf` is valid for `len` bytes until the call completes (we wait for it).
+        let r = overlapped_call(self.handle, |ov| unsafe {
+            ReadFile(self.handle, ptr, len, std::ptr::null_mut(), ov.cast())
+        });
+        match r {
+            Ok(n) => Ok(n as usize),
             // The peer closing shows up as "broken pipe", or as "not connected"
             // when the server side called DisconnectNamedPipe.
-            if matches!(
-                e.raw_os_error(),
-                Some(ERROR_BROKEN_PIPE) | Some(ERROR_PIPE_NOT_CONNECTED)
-            ) {
-                return Ok(0);
+            Err(e)
+                if matches!(
+                    e.raw_os_error(),
+                    Some(ERROR_BROKEN_PIPE) | Some(ERROR_PIPE_NOT_CONNECTED)
+                ) =>
+            {
+                Ok(0)
             }
-            return Err(e);
+            Err(e) => Err(e),
         }
-        Ok(n as usize)
     }
-}
 
-impl Write for PipeStream {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut n = 0u32;
+    fn write(&self, buf: &[u8]) -> io::Result<usize> {
         let len = buf.len().min(u32::MAX as usize) as u32;
-        // SAFETY: `buf` is valid for `len` bytes and `n` for one u32; the handle is open.
-        let ok = unsafe { WriteFile(self.handle, buf.as_ptr(), len, &mut n, std::ptr::null_mut()) };
-        if ok == 0 {
-            return Err(io::Error::last_os_error());
-        }
-        Ok(n as usize)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        // WriteFile already hands data to the pipe buffer. Draining it (which
-        // would block until the peer reads) is done once, in Drop.
-        Ok(())
+        let ptr = buf.as_ptr();
+        // SAFETY: `buf` is valid for `len` bytes until the call completes (we wait for it).
+        overlapped_call(self.handle, |ov| unsafe {
+            WriteFile(self.handle, ptr, len, std::ptr::null_mut(), ov.cast())
+        })
+        .map(|n| n as usize)
     }
 }
 
-impl Drop for PipeStream {
+impl Drop for Inner {
     fn drop(&mut self) {
         // SAFETY: the handle is owned by this value and closed exactly once.
         unsafe {
@@ -170,8 +199,72 @@ impl Drop for PipeStream {
     }
 }
 
+/// One end of a connected pipe. Reads see EOF when the peer closes.
+pub struct PipeStream {
+    inner: Arc<Inner>,
+}
+
+/// Read half of a split [`PipeStream`].
+pub struct PipeReader {
+    inner: Arc<Inner>,
+}
+
+/// Write half of a split [`PipeStream`].
+pub struct PipeWriter {
+    inner: Arc<Inner>,
+}
+
+impl PipeStream {
+    /// Split into halves that can be used from different threads at once
+    /// (one blocked in a read while the other writes). The connection closes
+    /// when both halves are dropped.
+    pub fn split(self) -> (PipeReader, PipeWriter) {
+        (
+            PipeReader {
+                inner: self.inner.clone(),
+            },
+            PipeWriter { inner: self.inner },
+        )
+    }
+}
+
+impl Read for PipeStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+impl Write for PipeStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        // WriteFile already hands data to the pipe buffer. Draining it (which
+        // would block until the peer reads) is done once, in Drop.
+        Ok(())
+    }
+}
+
+impl Read for PipeReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+impl Write for PipeWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 fn create_instance(name: &[u16], first: bool) -> io::Result<isize> {
     let open_mode = PIPE_ACCESS_DUPLEX
+        | FILE_FLAG_OVERLAPPED
         | if first {
             FILE_FLAG_FIRST_PIPE_INSTANCE
         } else {
@@ -218,18 +311,21 @@ impl PipeServer {
     pub fn accept(&mut self) -> io::Result<PipeStream> {
         let current = self.pending;
         // SAFETY: `current` is a valid, unconnected pipe instance we own.
-        let ok = unsafe { ConnectNamedPipe(current, std::ptr::null_mut()) };
-        if ok == 0 {
-            let e = io::Error::last_os_error();
+        let r = overlapped_call(current, |ov| unsafe {
+            ConnectNamedPipe(current, ov.cast())
+        });
+        match r {
+            Ok(_) => {}
             // A client that connected before this call is reported as an error code but is fine.
-            if e.raw_os_error() != Some(ERROR_PIPE_CONNECTED) {
-                return Err(e);
-            }
+            Err(e) if e.raw_os_error() == Some(ERROR_PIPE_CONNECTED) => {}
+            Err(e) => return Err(e),
         }
         self.pending = create_instance(&self.name, false)?;
         Ok(PipeStream {
-            handle: current,
-            server: true,
+            inner: Arc::new(Inner {
+                handle: current,
+                server: true,
+            }),
         })
     }
 }
@@ -253,14 +349,16 @@ pub fn connect(name: &str) -> io::Result<PipeStream> {
                 0,
                 std::ptr::null(),
                 OPEN_EXISTING,
-                0,
+                FILE_FLAG_OVERLAPPED,
                 0,
             )
         };
         if h != INVALID_HANDLE {
             return Ok(PipeStream {
-                handle: h,
-                server: false,
+                inner: Arc::new(Inner {
+                    handle: h,
+                    server: false,
+                }),
             });
         }
         let e = io::Error::last_os_error();
