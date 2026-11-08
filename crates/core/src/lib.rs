@@ -3,4 +3,5 @@
 //! No Windows-only code lives here, so it builds and tests anywhere.
 
 pub mod policy;
+pub mod router;
 pub mod verifier;

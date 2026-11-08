@@ -1,0 +1,22 @@
+id: music.pause                 # task A3
+version: 1
+category: apps
+capabilities:
+  - media.control
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 10
+risk: safe
+examples:
+  - "pause the music"
+  - "pause"
+  - "pause spotify"
+slots: {}
+steps:
+  - connector: spotify
+    action: pause
+check:
+  connector: spotify
+  action: is_paused
+undo: none

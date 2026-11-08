@@ -1,0 +1,28 @@
+id: apps.open                   # task A1
+version: 1
+category: apps
+capabilities:
+  - apps.launch
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 10
+risk: safe
+examples:
+  - "open {app}"
+  - "launch {app}"
+  - "start {app}"
+slots:
+  app:
+    type: app
+    required: true
+    resolve: [named_app]
+steps:
+  - connector: windows_system
+    action: open_app
+    args: { app: "{app}" }
+check:
+  connector: windows_system
+  action: app_is_running
+  args: { app: "{app}" }
+undo: none
