@@ -28,3 +28,9 @@ ft_out/
 app/dist/
 app/src-tauri/gen/
 .claude/
+
+# trained router head is small and committed; encoder files are fetched (see models-src/router/README.md)
+!models-src/
+!models-src/**
+models-src/**/*.onnx
+tools/router/.cache/

@@ -1,0 +1,1148 @@
+{
+ "test": {
+  "n": 129,
+  "exact": 112,
+  "single": [
+   102,
+   112
+  ],
+  "chain": [
+   10,
+   17
+  ],
+  "out": [
+   11,
+   14
+  ],
+  "errors": [
+   [
+    "search the web for how to tie a tie",
+    [
+     "A5"
+    ],
+    [
+     "F1"
+    ]
+   ],
+   [
+    "help me write a reply to the vendor, but I'll send it myself",
+    [
+     "E5"
+    ],
+    [
+     "E5",
+     "F5"
+    ]
+   ],
+   [
+    "what is 17 times 23",
+    [
+     "Q4"
+    ],
+    [
+     "OUT"
+    ]
+   ],
+   [
+    "email the budget sheet to Priya",
+    [
+     "F5"
+    ],
+    [
+     "E7"
+    ]
+   ],
+   [
+    "what's on for today and anything urgent in my mail",
+    [
+     "W1"
+    ],
+    [
+     "C1",
+     "E1"
+    ]
+   ],
+   [
+    "find the latest weekly report and email it to Dev",
+    [
+     "W5"
+    ],
+    [
+     "F5",
+     "W5"
+    ]
+   ],
+   [
+    "play my focus playlist and block notifications for an hour",
+    [
+     "W6"
+    ],
+    [
+     "S4",
+     "W6"
+    ]
+   ],
+   [
+    "schedule a slack call with the team",
+    [
+     "OUT"
+    ],
+    [
+     "C6"
+    ]
+   ],
+   [
+    "buy the shoes in my cart",
+    [
+     "OUT"
+    ],
+    [
+     "F1"
+    ]
+   ],
+   [
+    "submit my tax return online",
+    [
+     "OUT"
+    ],
+    [
+     "F4"
+    ]
+   ],
+   [
+    "find the invoice and email it to Karan",
+    [
+     "F1",
+     "F5"
+    ],
+    [
+     "F5"
+    ]
+   ],
+   [
+    "take a screenshot and email it to Sam",
+    [
+     "E7",
+     "S5"
+    ],
+    [
+     "F5"
+    ]
+   ],
+   [
+    "open chrome and search for cheap flights",
+    [
+     "A1",
+     "A5"
+    ],
+    [
+     "A5"
+    ]
+   ],
+   [
+    "turn this email into a meeting and invite Neha",
+    [
+     "C6",
+     "W2"
+    ],
+    [
+     "E7"
+    ]
+   ],
+   [
+    "remind me about the review at 3 and add it to my calendar",
+    [
+     "C4",
+     "R1"
+    ],
+    [
+     "R1"
+    ]
+   ],
+   [
+    "find the contract and send it to Dev on whatsapp",
+    [
+     "F1",
+     "M2"
+    ],
+    [
+     "M2"
+    ]
+   ],
+   [
+    "open the proposal and email it to Karan",
+    [
+     "F3",
+     "F5"
+    ],
+    [
+     "F5"
+    ]
+   ]
+  ]
+ },
+ "test2": {
+  "n": 133,
+  "exact": 115,
+  "single": [
+   106,
+   120
+  ],
+  "chain": [
+   9,
+   13
+  ],
+  "out": [
+   9,
+   12
+  ],
+  "errors": [
+   [
+    "make the volume 20",
+    [
+     "A3"
+    ],
+    [
+     "S1"
+    ]
+   ],
+   [
+    "share that pdf with Tara over whatsapp",
+    [
+     "M2"
+    ],
+    [
+     "W4"
+    ]
+   ],
+   [
+    "give me a quick rundown of the mail from the bank",
+    [
+     "E2"
+    ],
+    [
+     "E3"
+    ]
+   ],
+   [
+    "what did Lakshmi write in her last email",
+    [
+     "E2"
+    ],
+    [
+     "Q3"
+    ]
+   ],
+   [
+    "put together a reply to the vendor, saying we accept",
+    [
+     "E5"
+    ],
+    [
+     "C8",
+     "E5"
+    ]
+   ],
+   [
+    "how much is 250 dollars in rupees",
+    [
+     "Q4"
+    ],
+    [
+     "OUT"
+    ]
+   ],
+   [
+    "bring up the quarterly report",
+    [
+     "F3"
+    ],
+    [
+     "W5"
+    ]
+   ],
+   [
+    "generate a link for the pitch deck",
+    [
+     "F6"
+    ],
+    [
+     "F1"
+    ]
+   ],
+   [
+    "what's the context for my 11 o'clock",
+    [
+     "C3"
+    ],
+    [
+     "R2"
+    ]
+   ],
+   [
+    "move the dentist appointment to next Tuesday",
+    [
+     "C7"
+    ],
+    [
+     "C4"
+    ]
+   ],
+   [
+    "don't let me forget mom's birthday on Sunday",
+    [
+     "R1"
+    ],
+    [
+     "Q5"
+    ]
+   ],
+   [
+    "delete every file in my downloads folder forever",
+    [
+     "OUT"
+    ],
+    [
+     "Q3"
+    ]
+   ],
+   [
+    "what's the stock price of Tesla",
+    [
+     "OUT"
+    ],
+    [
+     "Q3"
+    ]
+   ],
+   [
+    "compose a song about the rain",
+    [
+     "OUT"
+    ],
+    [
+     "Q2"
+    ]
+   ],
+   [
+    "open chrome and go to github",
+    [
+     "A1",
+     "A6"
+    ],
+    [
+     "A6"
+    ]
+   ],
+   [
+    "find last month's invoice and send it to the accountant",
+    [
+     "F1",
+     "F5"
+    ],
+    [
+     "F1"
+    ]
+   ],
+   [
+    "see what's on tomorrow and whatsapp Rahul about it",
+    [
+     "C1",
+     "M1"
+    ],
+    [
+     "M1"
+    ]
+   ],
+   [
+    "take a screenshot and send it to Priya on whatsapp",
+    [
+     "M2",
+     "S5"
+    ],
+    [
+     "M2"
+    ]
+   ]
+  ]
+ },
+ "val": {
+  "n": 122,
+  "exact": 114,
+  "single": [
+   104,
+   107
+  ],
+  "chain": [
+   10,
+   15
+  ],
+  "out": [
+   8,
+   8
+  ],
+  "errors": [
+   [
+    "send an email to my manager with the proposal attached",
+    [
+     "E7"
+    ],
+    [
+     "F5"
+    ]
+   ],
+   [
+    "find a slot for Anita and me this week",
+    [
+     "C2"
+    ],
+    [
+     "C1",
+     "C2"
+    ]
+   ],
+   [
+    "how does my day look, anything urgent",
+    [
+     "W1"
+    ],
+    [
+     "E1",
+     "W1"
+    ]
+   ],
+   [
+    "find the proposal and mail it to Priya",
+    [
+     "F1",
+     "F5"
+    ],
+    [
+     "F5"
+    ]
+   ],
+   [
+    "take a screenshot and email it to Karan",
+    [
+     "E7",
+     "S5"
+    ],
+    [
+     "F5"
+    ]
+   ],
+   [
+    "turn this email into a meeting and invite Sam",
+    [
+     "C6",
+     "W2"
+    ],
+    [
+     "E7"
+    ]
+   ],
+   [
+    "check the weather and whatsapp Neha about it",
+    [
+     "M1",
+     "Q2"
+    ],
+    [
+     "M1"
+    ]
+   ],
+   [
+    "find the sales sheet and send it to Karan on whatsapp",
+    [
+     "F1",
+     "M2"
+    ],
+    [
+     "M2"
+    ]
+   ]
+  ]
+ },
+ "val2": {
+  "n": 119,
+  "exact": 97,
+  "single": [
+   95,
+   112
+  ],
+  "chain": [
+   2,
+   7
+  ],
+  "out": [
+   9,
+   10
+  ],
+  "errors": [
+   [
+    "Could you get Firefox up on the screen",
+    [
+     "A1"
+    ],
+    [
+     "S1"
+    ]
+   ],
+   [
+    "bring up the calculator",
+    [
+     "A1"
+    ],
+    [
+     "Q4"
+    ]
+   ],
+   [
+    "lower the music a little",
+    [
+     "A3"
+    ],
+    [
+     "S1"
+    ]
+   ],
+   [
+    "look up how to tie a tie on youtube",
+    [
+     "A5"
+    ],
+    [
+     "OUT"
+    ]
+   ],
+   [
+    "whatsapp my sister happy birthday",
+    [
+     "M1"
+    ],
+    [
+     "M3"
+    ]
+   ],
+   [
+    "summarise that long thread with finance",
+    [
+     "E2"
+    ],
+    [
+     "W1"
+    ]
+   ],
+   [
+    "mail the signed form to the landlord",
+    [
+     "E7"
+    ],
+    [
+     "F5"
+    ]
+   ],
+   [
+    "convert 3 gallons to litres",
+    [
+     "Q4"
+    ],
+    [
+     "A1"
+    ]
+   ],
+   [
+    "email the report to Sandeep",
+    [
+     "F5"
+    ],
+    [
+     "W5"
+    ]
+   ],
+   [
+    "find a gap that works for me and the CFO",
+    [
+     "C2"
+    ],
+    [
+     "W6"
+    ]
+   ],
+   [
+    "invite Pooja to a 30 minute sync tomorrow",
+    [
+     "C6"
+    ],
+    [
+     "A2"
+    ]
+   ],
+   [
+    "cancel the Friday review",
+    [
+     "C7"
+    ],
+    [
+     "C8"
+    ]
+   ],
+   [
+    "decline tomorrow's all hands",
+    [
+     "C8"
+    ],
+    [
+     "S4"
+    ]
+   ],
+   [
+    "what do I need to know today, including urgent mail",
+    [
+     "W1"
+    ],
+    [
+     "E1",
+     "W1"
+    ]
+   ],
+   [
+    "turn Anita's email into a meeting",
+    [
+     "W2"
+    ],
+    [
+     "E7"
+    ]
+   ],
+   [
+    "find the latest sales report and email it to my boss",
+    [
+     "W5"
+    ],
+    [
+     "F5",
+     "W5"
+    ]
+   ],
+   [
+    "delete all my old emails permanently",
+    [
+     "OUT"
+    ],
+    [
+     "E6"
+    ]
+   ],
+   [
+    "find the invoice and email it to Rahul",
+    [
+     "F1",
+     "F5"
+    ],
+    [
+     "F5"
+    ]
+   ],
+   [
+    "check my calendar for tomorrow and whatsapp Priya what's on",
+    [
+     "C1",
+     "M1"
+    ],
+    [
+     "C1"
+    ]
+   ],
+   [
+    "check urgent mail then add the meeting to my calendar",
+    [
+     "C4",
+     "E1"
+    ],
+    [
+     "W2"
+    ]
+   ],
+   [
+    "open chrome and search for python tutorials",
+    [
+     "A1",
+     "A5"
+    ],
+    [
+     "A5"
+    ]
+   ],
+   [
+    "take a screenshot and email it to Sam",
+    [
+     "E7",
+     "S5"
+    ],
+    [
+     "F5"
+    ]
+   ]
+  ]
+ },
+ "test+test2": {
+  "n": 262,
+  "exact": 227,
+  "single": [
+   208,
+   232
+  ],
+  "chain": [
+   19,
+   30
+  ],
+  "out": [
+   20,
+   26
+  ],
+  "errors": [
+   [
+    "search the web for how to tie a tie",
+    [
+     "A5"
+    ],
+    [
+     "F1"
+    ]
+   ],
+   [
+    "help me write a reply to the vendor, but I'll send it myself",
+    [
+     "E5"
+    ],
+    [
+     "E5",
+     "F5"
+    ]
+   ],
+   [
+    "what is 17 times 23",
+    [
+     "Q4"
+    ],
+    [
+     "OUT"
+    ]
+   ],
+   [
+    "email the budget sheet to Priya",
+    [
+     "F5"
+    ],
+    [
+     "E7"
+    ]
+   ],
+   [
+    "what's on for today and anything urgent in my mail",
+    [
+     "W1"
+    ],
+    [
+     "C1",
+     "E1"
+    ]
+   ],
+   [
+    "find the latest weekly report and email it to Dev",
+    [
+     "W5"
+    ],
+    [
+     "F5",
+     "W5"
+    ]
+   ],
+   [
+    "play my focus playlist and block notifications for an hour",
+    [
+     "W6"
+    ],
+    [
+     "S4",
+     "W6"
+    ]
+   ],
+   [
+    "schedule a slack call with the team",
+    [
+     "OUT"
+    ],
+    [
+     "C6"
+    ]
+   ],
+   [
+    "buy the shoes in my cart",
+    [
+     "OUT"
+    ],
+    [
+     "F1"
+    ]
+   ],
+   [
+    "submit my tax return online",
+    [
+     "OUT"
+    ],
+    [
+     "F4"
+    ]
+   ],
+   [
+    "find the invoice and email it to Karan",
+    [
+     "F1",
+     "F5"
+    ],
+    [
+     "F5"
+    ]
+   ],
+   [
+    "take a screenshot and email it to Sam",
+    [
+     "E7",
+     "S5"
+    ],
+    [
+     "F5"
+    ]
+   ],
+   [
+    "open chrome and search for cheap flights",
+    [
+     "A1",
+     "A5"
+    ],
+    [
+     "A5"
+    ]
+   ],
+   [
+    "turn this email into a meeting and invite Neha",
+    [
+     "C6",
+     "W2"
+    ],
+    [
+     "E7"
+    ]
+   ],
+   [
+    "remind me about the review at 3 and add it to my calendar",
+    [
+     "C4",
+     "R1"
+    ],
+    [
+     "R1"
+    ]
+   ],
+   [
+    "find the contract and send it to Dev on whatsapp",
+    [
+     "F1",
+     "M2"
+    ],
+    [
+     "M2"
+    ]
+   ],
+   [
+    "open the proposal and email it to Karan",
+    [
+     "F3",
+     "F5"
+    ],
+    [
+     "F5"
+    ]
+   ],
+   [
+    "make the volume 20",
+    [
+     "A3"
+    ],
+    [
+     "S1"
+    ]
+   ],
+   [
+    "share that pdf with Tara over whatsapp",
+    [
+     "M2"
+    ],
+    [
+     "W4"
+    ]
+   ],
+   [
+    "give me a quick rundown of the mail from the bank",
+    [
+     "E2"
+    ],
+    [
+     "E3"
+    ]
+   ],
+   [
+    "what did Lakshmi write in her last email",
+    [
+     "E2"
+    ],
+    [
+     "Q3"
+    ]
+   ],
+   [
+    "put together a reply to the vendor, saying we accept",
+    [
+     "E5"
+    ],
+    [
+     "C8",
+     "E5"
+    ]
+   ],
+   [
+    "how much is 250 dollars in rupees",
+    [
+     "Q4"
+    ],
+    [
+     "OUT"
+    ]
+   ],
+   [
+    "bring up the quarterly report",
+    [
+     "F3"
+    ],
+    [
+     "W5"
+    ]
+   ],
+   [
+    "generate a link for the pitch deck",
+    [
+     "F6"
+    ],
+    [
+     "F1"
+    ]
+   ],
+   [
+    "what's the context for my 11 o'clock",
+    [
+     "C3"
+    ],
+    [
+     "R2"
+    ]
+   ],
+   [
+    "move the dentist appointment to next Tuesday",
+    [
+     "C7"
+    ],
+    [
+     "C4"
+    ]
+   ],
+   [
+    "don't let me forget mom's birthday on Sunday",
+    [
+     "R1"
+    ],
+    [
+     "Q5"
+    ]
+   ],
+   [
+    "delete every file in my downloads folder forever",
+    [
+     "OUT"
+    ],
+    [
+     "Q3"
+    ]
+   ],
+   [
+    "what's the stock price of Tesla",
+    [
+     "OUT"
+    ],
+    [
+     "Q3"
+    ]
+   ],
+   [
+    "compose a song about the rain",
+    [
+     "OUT"
+    ],
+    [
+     "Q2"
+    ]
+   ],
+   [
+    "open chrome and go to github",
+    [
+     "A1",
+     "A6"
+    ],
+    [
+     "A6"
+    ]
+   ],
+   [
+    "find last month's invoice and send it to the accountant",
+    [
+     "F1",
+     "F5"
+    ],
+    [
+     "F1"
+    ]
+   ],
+   [
+    "see what's on tomorrow and whatsapp Rahul about it",
+    [
+     "C1",
+     "M1"
+    ],
+    [
+     "M1"
+    ]
+   ],
+   [
+    "take a screenshot and send it to Priya on whatsapp",
+    [
+     "M2",
+     "S5"
+    ],
+    [
+     "M2"
+    ]
+   ]
+  ]
+ },
+ "heldout_phase2": {
+  "n": 122,
+  "exact": 112,
+  "single": [
+   106,
+   114
+  ],
+  "chain": [
+   6,
+   8
+  ],
+  "out": [
+   19,
+   20
+  ],
+  "errors": [
+   [
+    "look up how to fix a leaking tap",
+    [
+     "A5"
+    ],
+    [
+     "OUT"
+    ]
+   ],
+   [
+    "open the Q4 report",
+    [
+     "F3"
+    ],
+    [
+     "W5"
+    ]
+   ],
+   [
+    "pull up the lease document",
+    [
+     "F3"
+    ],
+    [
+     "F1"
+    ]
+   ],
+   [
+    "bring up the budget file",
+    [
+     "F3"
+    ],
+    [
+     "F4"
+    ]
+   ],
+   [
+    "send the quarterly report to Arjun by email",
+    [
+     "F5"
+    ],
+    [
+     "W5"
+    ]
+   ],
+   [
+    "send Meera a message on whatsapp saying happy birthday",
+    [
+     "M1"
+    ],
+    [
+     "M3"
+    ]
+   ],
+   [
+    "unmute my pc",
+    [
+     "S1"
+    ],
+    [
+     "OUT"
+    ]
+   ],
+   [
+    "write me a short poem about autumn",
+    [
+     "OUT"
+    ],
+    [
+     "Q3"
+    ]
+   ],
+   [
+    "open Chrome and search for cheap flights",
+    [
+     "A1",
+     "A5"
+    ],
+    [
+     "A5"
+    ]
+   ],
+   [
+    "check the weather and whatsapp Neha about it",
+    [
+     "M1",
+     "Q2"
+    ],
+    [
+     "M1"
+    ]
+   ]
+  ]
+ }
+}
