@@ -1,0 +1,25 @@
+id: web.weather                # task Q2
+task: Q2
+version: 1
+category: answers
+capabilities:
+  - web.lookup
+network: web_lookup            # only the place name leaves the device (PS3)
+limits:
+  cpu_ms: 200
+  timeout_s: 10
+risk: read_only
+examples:
+  - "will it rain tomorrow"
+  - "gonna rain tmrw?"
+  - "what's the weather in Pune this weekend"
+slots: {}
+steps:
+  - connector: web_lookup
+    action: weather
+    args: { text: "{request}" }
+check:
+  connector: web_lookup
+  action: weather
+  args: { text: "{request}" }
+undo: none
