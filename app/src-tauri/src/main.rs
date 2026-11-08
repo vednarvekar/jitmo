@@ -207,6 +207,9 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/system.screenshot.yaml"),
         include_str!("../../../skills/web.weather.yaml"),
         include_str!("../../../skills/web.fact.yaml"),
+        include_str!("../../../skills/browser.youtube_latest.yaml"),
+        include_str!("../../../skills/browser.search.yaml"),
+        include_str!("../../../skills/browser.site.yaml"),
         include_str!("../../../skills/stub.send.yaml"),
     ]
     .iter()
@@ -283,6 +286,15 @@ fn connectors(db: &std::path::Path) -> HashMap<String, Arc<dyn Connector>> {
         "web_lookup".into(),
         Arc::new(jitmo_connectors::web_lookup::WebLookup::new(default_place)),
     );
+    #[cfg(windows)]
+    map.insert(
+        "browser".into(),
+        Arc::new(jitmo_connectors::browser::Browser::new(Arc::new(
+            jitmo_connectors::system_controls::PowerShell,
+        ))),
+    );
+    #[cfg(not(windows))]
+    map.insert("browser".into(), Arc::new(FakeConnector::new("browser")));
     #[cfg(windows)]
     map.insert(
         "spotify".into(),
