@@ -18,7 +18,7 @@ jobs:
     # Windows-only code (UI Automation, Credential Manager, the Tauri shell)
     # cannot be built or tested anywhere else.
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -51,17 +51,6 @@ jobs:
         working-directory: app
         run: pnpm build
 
-      # The app crate now builds the store with SQLCipher (encrypted database),
-      # and cargo unifies that feature across the workspace. That compiles OpenSSL
-      # from source, which needs a full Perl: Git's own Perl is missing modules, so
-      # put Strawberry Perl first on PATH for every later step in this job.
-      # The first build is slow; rust-cache keeps it afterwards.
-      - name: Put Strawberry Perl first on PATH (OpenSSL build for SQLCipher)
-        shell: pwsh
-        run: |
-          "C:\Strawberry\c\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-
       - name: Rust format
         run: cargo fmt --all --check
 
@@ -81,6 +70,13 @@ jobs:
         run: |
           $env:PATH = "C:\Strawberry\perl\bin;C:\Strawberry\c\bin;$env:PATH"
           cargo test -p jitmo-store --features sqlcipher
+
+      # The release configuration of the app (encrypted database) must at least compile.
+      - name: App compiles with the encrypted database
+        shell: pwsh
+        run: |
+          $env:PATH = "C:\Strawberry\perl\bin;C:\Strawberry\c\bin;$env:PATH"
+          cargo check -p jitmo-app --features encrypted-db
 
       # Phase 1 done-when: the runner reports pass or fail, time and peak memory.
       # Fake connectors only: CI must never open real apps.

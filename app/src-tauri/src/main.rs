@@ -227,9 +227,9 @@ fn load_skills() -> Vec<Skill> {
 /// report success, until their connectors are built in Phase 2.
 /// Every 10 seconds, show the reminders and timers that have come due as
 /// Windows notifications. Runs on its own thread with its own database connection.
-fn start_reminder_scheduler(db: std::path::PathBuf, key: jitmo_store::Key) {
+fn start_reminder_scheduler(db: std::path::PathBuf, key: Option<jitmo_store::Key>) {
     std::thread::spawn(move || {
-        let store = match open_store(&db, &key) {
+        let store = match open_store(&db, key.as_ref()) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("reminders: could not open the database: {e}");
@@ -259,19 +259,27 @@ fn start_reminder_scheduler(db: std::path::PathBuf, key: jitmo_store::Key) {
 /// (and backed up) the first time.
 fn open_store(
     db: &std::path::Path,
-    key: &jitmo_store::Key,
+    key: Option<&jitmo_store::Key>,
 ) -> Result<Store, jitmo_store::StoreError> {
-    Store::open_encrypted_migrating(db, key)
+    match key {
+        Some(key) => Store::open_encrypted_migrating(db, key),
+        // Development builds (no `encrypted-db` feature) keep a plain file.
+        None => Store::open(db, None),
+    }
 }
 
 /// Read (or create) the database key. There is deliberately no fallback to an
 /// unencrypted file: if the key cannot be had, the app does not start.
-fn database_key() -> Result<jitmo_store::Key, String> {
-    #[cfg(windows)]
+fn database_key() -> Result<Option<jitmo_store::Key>, String> {
+    #[cfg(not(feature = "encrypted-db"))]
     {
-        jitmo_adapter_windows::credentials::get_or_create_db_key("jitmo")
+        Ok(None)
     }
-    #[cfg(not(windows))]
+    #[cfg(all(feature = "encrypted-db", windows))]
+    {
+        jitmo_adapter_windows::credentials::get_or_create_db_key("jitmo").map(Some)
+    }
+    #[cfg(all(feature = "encrypted-db", not(windows)))]
     {
         Err("the database key is kept in Windows Credential Manager".to_string())
     }
@@ -300,7 +308,10 @@ fn downloads_dir() -> std::path::PathBuf {
         .join("Downloads")
 }
 
-fn connectors(db: &std::path::Path, key: &jitmo_store::Key) -> HashMap<String, Arc<dyn Connector>> {
+fn connectors(
+    db: &std::path::Path,
+    key: Option<&jitmo_store::Key>,
+) -> HashMap<String, Arc<dyn Connector>> {
     let mut map: HashMap<String, Arc<dyn Connector>> = ["stub_messenger"]
         .iter()
         .map(|id| {
@@ -355,7 +366,10 @@ fn connectors(db: &std::path::Path, key: &jitmo_store::Key) -> HashMap<String, A
     );
     map.insert(
         "reminders".into(),
-        Arc::new(jitmo_connectors::reminders::Reminders::new(db.to_path_buf()).with_key(*key)),
+        Arc::new(match key {
+            Some(k) => jitmo_connectors::reminders::Reminders::new(db.to_path_buf()).with_key(*k),
+            None => jitmo_connectors::reminders::Reminders::new(db.to_path_buf()),
+        }),
     );
     map.insert(
         "files".into(),
@@ -408,7 +422,7 @@ fn main() {
                 eprintln!("{msg}");
                 msg
             })?;
-            let store = open_store(&db_path, &key).map_err(|e| {
+            let store = open_store(&db_path, key.as_ref()).map_err(|e| {
                 let msg = format!(
                     "jitmo cannot start: the database could not be opened ({e}). \
                      The file was not changed."
@@ -422,7 +436,7 @@ fn main() {
                 .unwrap_or_else(|| DEFAULT_HOTKEY.to_string());
 
             let selection = SelectionSnapshot::default();
-            let flow = Flow::new(router(), store, connectors(&db_path, &key))
+            let flow = Flow::new(router(), store, connectors(&db_path, key.as_ref()))
                 .with_context(FsContext::for_current_user(selection.clone()));
             let handle = app.handle().clone();
             std::thread::Builder::new()

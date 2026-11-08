@@ -9,7 +9,11 @@ publish.workspace = true
 [features]
 # Embed the built UI instead of loading the dev server. `tauri build` turns this on;
 # plain `cargo build --release -p jitmo-app --features custom-protocol` does the same.
-custom-protocol = ["tauri/custom-protocol"]
+custom-protocol = ["tauri/custom-protocol", "encrypted-db"]
+# Encrypt the database (key in Credential Manager). Needs a full Perl to build the
+# OpenSSL under SQLCipher, and the first build is slow (tens of minutes), so
+# development builds leave it off. Release builds (custom-protocol) always turn it on.
+encrypted-db = ["jitmo-store/sqlcipher"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -22,7 +26,6 @@ jitmo-adapter-windows = { path = "../../crates/adapter-windows" }
 jitmo-model-worker = { path = "../../crates/model-worker", default-features = false }
 jitmo-ipc = { path = "../../crates/ipc" }
 jitmo-skills = { path = "../../crates/skills" }
-# Real encryption; building it needs a full Perl on PATH (see CI).
-jitmo-store = { path = "../../crates/store", features = ["sqlcipher"] }
+jitmo-store = { path = "../../crates/store" }
 tauri = { version = "2", features = [] }
 tauri-plugin-global-shortcut = "2"
