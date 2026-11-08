@@ -6,6 +6,9 @@
 //! everywhere.
 
 pub mod apps;
+pub mod credentials;
 pub mod explorer;
 pub mod memory;
+#[cfg(windows)]
+pub mod pipe;
 pub mod toast;
