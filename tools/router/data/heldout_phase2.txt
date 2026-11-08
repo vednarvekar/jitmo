@@ -1,0 +1,122 @@
+A1|fire up Notepad for me
+A1|close Chrome
+A1|can you get Excel running
+A1|shut Teams
+A1|launch calculator
+A1|I need Word open
+A2|play some Floyd
+A2|put on Pink Floyd on spotify
+A2|queue up Sultans of Swing
+A2|I'm in the mood for some AR Rahman
+A2|play Humble by Kendrick Lamar
+A2|spotify, play my discover weekly
+A3|next track please
+A3|go back to the previous song
+A3|stop the music for now
+A3|nah, skip this one
+A3|unpause it
+A4|show me Veritasium's most recent upload
+A4|what's the latest from Mark Rober
+A4|new Fireship video
+A5|search youtube for sourdough bread tutorials
+A5|google best budget phones
+A5|look up how to fix a leaking tap
+A5|find guitar lessons on youtube
+A6|go to github
+A6|open netflix.com
+A6|take me to the Wikipedia site
+A6|pull up reddit in the browser
+Q1|when does the sun set today
+Q1|is tonight a full moon
+Q1|what time is sunrise tomorrow
+Q2|weather in Mumbai
+Q2|is it gonna be hot on Saturday
+Q2|how cold is it outside
+Q3|who wrote the Odyssey
+Q3|what's the population of Brazil
+Q3|how tall is the Eiffel Tower
+Q3|who invented the light bulb
+Q3|what is the capital of Canada
+Q4|what's 15 percent of 800
+Q4|convert 30 miles to kilometres
+Q4|square root of 144
+Q4|450 divided by 9
+Q4|how many ounces in a litre
+Q5|what time is it in Tokyo
+Q5|what's the date today
+Q5|how many days till Christmas
+Q5|time in Singapore
+F1|where is my cv
+F1|find the pdf about solar panels
+F1|search my files for the rent agreement
+F1|locate the spreadsheet I made last week
+F2|what did I download this morning
+F2|recently opened files
+F3|open the Q4 report
+F3|open my cv
+F3|pull up the lease document
+F3|bring up the budget file
+F4|move these files to the Archive folder
+F4|copy the invoice into Receipts
+F4|rename this file to final draft
+F4|put the selected pdfs in the Taxes folder
+F5|email the contract to Meera
+F5|send the quarterly report to Arjun by email
+F5|attach the photos and mail them to my sister
+E5|reply to Kavita's email saying thanks
+E5|draft a reply declining the offer
+E5|write back to the recruiter, I'm not interested
+E5|respond to this email with a yes
+E7|email Rohan about the delay
+E7|send a mail to HR about my leave
+E7|write an email to the landlord
+E7|compose a new email to Tanvi
+M1|whatsapp Aditya I'm on my way
+M1|send Meera a message on whatsapp saying happy birthday
+M1|tell mom on whatsapp I reached
+R1|remind me to submit the form at 5
+R1|remind me tomorrow morning to call the bank
+R1|set a reminder to water the plants
+R2|set a 20 minute timer
+R2|alarm for 6:30
+R2|wake me up at 7
+R2|timer 5 minutes
+S1|turn it down a notch
+S1|volume 35
+S1|set the volume to 60 percent
+S1|unmute my pc
+S1|set brightness to 40
+S1|the screen is too bright
+S1|I can't hear this, make it louder
+S1|bring the brightness up
+S2|I'm leaving my desk, lock the screen
+S3|switch off wi-fi
+S4|do not disturb for 2 hours
+OUT|dim the bedroom lights
+OUT|turn off the lights
+OUT|stock price of Netflix
+OUT|how is Tesla stock doing today
+OUT|set up a zoom meeting with the design team
+OUT|start a google meet call
+OUT|call my dad
+OUT|video call Priya
+OUT|turn on the AC
+OUT|order a burger on swiggy
+OUT|book a cab to the airport
+OUT|restart my laptop
+OUT|post a story on instagram
+OUT|send an sms to Rahul
+OUT|translate this paragraph into german
+OUT|write me a short poem about autumn
+OUT|pay my phone bill
+OUT|what's my bank balance
+OUT|set the thermostat to 24
+OUT|delete my old photos forever
+A3+S1|skip this song and make it louder
+S1+S4|louder and dnd on
+S3+A2|wifi off then play some jazz
+A1+A5|open Chrome and search for cheap flights
+Q2+M1|check the weather and whatsapp Neha about it
+R2+S4|set a 25 minute timer and turn on do not disturb
+S2+S3|lock the screen and turn off bluetooth
+A2+S1|play some Coldplay and turn it up

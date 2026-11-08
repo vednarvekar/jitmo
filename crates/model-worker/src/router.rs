@@ -260,16 +260,19 @@ mod tests {
 mod eval {
     use super::*;
 
-    /// Re-scores the SP1 held-out sets in Rust. Run with:
+    /// Re-scores the SP1 held-out sets and the Phase 2 held-out set in Rust. Run with:
     /// `cargo test -p jitmo-model-worker --release eval_sp1 -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn eval_sp1_sets() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let mut e = RouterEngine::load(&root.join("models/router")).expect("load");
-        for file in ["test.txt", "test2.txt"] {
-            let text = std::fs::read_to_string(root.join("spikes/sp1-router/data").join(file))
-                .expect("sp1 data");
+        for file in [
+            "spikes/sp1-router/data/test.txt",
+            "spikes/sp1-router/data/test2.txt",
+            "tools/router/data/heldout_phase2.txt",
+        ] {
+            let text = std::fs::read_to_string(root.join(file)).expect("router eval data");
             let (mut ok, mut n, mut single_ok, mut single_n) = (0, 0, 0, 0);
             let mut ms = Vec::new();
             for line in text.lines().filter(|l| l.contains('|')) {

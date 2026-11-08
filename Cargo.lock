@@ -1837,6 +1837,7 @@ dependencies = [
  "jitmo-model-worker",
  "jitmo-skills",
  "jitmo-store",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-global-shortcut",

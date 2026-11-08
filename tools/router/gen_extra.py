@@ -226,6 +226,8 @@ ADD = {
         "backup my phone", "set an alarm on my phone", "turn on the hotspot on my phone", "take a photo", "record a video of me",
         "record my screen", "start screen recording", "make a voice memo", "open a new tab on my phone",
         "delete {file} forever", "wipe my disk", "clear my browser history", "reset my router", "change the wallpaper",
-        "turn on night light", "enable airplane mode on my phone",
+        "enable airplane mode on my phone",
+        "fill out this visa application", "fill in the registration form", "complete my college application online",
+        "fill out this survey", "apply for this job for me", "submit the online application", "sign up for this newsletter website",
     ],
 }
