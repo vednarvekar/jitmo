@@ -1,7 +1,19 @@
 [package]
 name = "jitmo-model-worker"
-description = "Separate model process (no network)."
+description = "Separate model process (no network) and the client Core uses to talk to it."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[lib]
+name = "jitmo_model_worker"
+
+[[bin]]
+name = "jitmo-model-worker"
+path = "src/main.rs"
+
+[dependencies]
+jitmo-ipc = { path = "../ipc" }
+thiserror.workspace = true
+tracing.workspace = true
