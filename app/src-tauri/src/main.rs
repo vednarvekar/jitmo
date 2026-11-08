@@ -94,6 +94,22 @@ fn undo(state: State<AppState>, id: u64) {
     state.core.send(UiRequest::Undo { id });
 }
 
+/// The page has drawn its first frame: now it is safe to show the window.
+#[tauri::command]
+fn bar_ready(app: AppHandle) {
+    show_when_ready(&app);
+}
+
+fn show_when_ready(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(BAR) {
+        if !w.is_visible().unwrap_or(false) {
+            place_bar(app, &w);
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    }
+}
+
 #[tauri::command]
 fn hide_bar(app: AppHandle) {
     hide(&app);
@@ -246,8 +262,13 @@ fn create_bar(app: &AppHandle) {
         Ok(w) => {
             place_bar(app, &w);
             watch_bar(app, &w);
-            let _ = w.show();
-            let _ = w.set_focus();
+            // Stay hidden until the page says it has drawn, so a blank rectangle
+            // never flashes. If the page never answers, show anyway after 3 s.
+            let app = app.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(3));
+                show_when_ready(&app);
+            });
         }
         Err(e) => eprintln!("could not open the command bar: {e}"),
     }
@@ -537,7 +558,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
-            submit, confirm, choose, cancel, undo, hide_bar, resize_bar
+            submit, confirm, choose, cancel, undo, hide_bar, resize_bar, bar_ready
         ])
         .setup(|app| {
             // Own the per-user Core pipe first. If another jitmo already does,

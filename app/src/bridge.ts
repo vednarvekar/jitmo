@@ -19,3 +19,6 @@ export const onBarShown = (cb: () => void): Promise<UnlistenFn> => listen("bar-s
 
 /** The bar window lost focus (the user clicked elsewhere). */
 export const onBarBlurred = (cb: () => void): Promise<UnlistenFn> => listen("bar-blurred", () => cb());
+
+/** The page has drawn; the window may be shown now (it is created hidden). */
+export const barReady = () => invoke<void>("bar_ready");

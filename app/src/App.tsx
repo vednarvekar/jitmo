@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as bridge from "./bridge";
+import Mark from "./Mark";
 import {
   UNDO_WINDOW_MS,
   autoHideMs,
@@ -41,6 +42,12 @@ export default function App() {
     setUndoUntil(0);
     historyAt.current = -1;
     inputRef.current?.focus();
+  }, []);
+
+  // The window is created hidden; show it once the first frame is on screen.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => bridge.barReady()));
+    return () => cancelAnimationFrame(id);
   }, []);
 
   // Core events and the "bar shown / lost focus" signals.
@@ -117,6 +124,18 @@ export default function App() {
         } else {
           bridge.hideBar();
         }
+      } else if (
+        (s.phase === "done" || s.phase === "failed") &&
+        e.key.length === 1 &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.metaKey
+      ) {
+        // The result replaced the input line; the first key typed brings it back.
+        e.preventDefault();
+        dispatch({ type: "reset" });
+        setText(e.key);
+        setTimeout(() => inputRef.current?.focus(), 0);
       } else if (e.key === "Enter" && s.phase === "confirm") {
         e.preventDefault();
         if (canConfirmNow(s, Date.now())) bridge.confirm(s.id, true);
@@ -149,6 +168,11 @@ export default function App() {
     }
   };
 
+  // While a request runs or has finished, its status takes the place of the
+  // input line, so the bar keeps its height. Only a confirm or choice card
+  // makes it taller.
+  const showStatus = state.phase === "working" || state.phase === "done" || state.phase === "failed";
+
   return (
     <div className="shell" ref={rootRef}>
       <div
@@ -161,26 +185,68 @@ export default function App() {
       >
         {/* Any empty part of the pill drags it; the input and buttons do not. */}
         <div className="row" data-tauri-drag-region>
-          <span className="mark" data-tauri-drag-region aria-hidden="true">
-            ✦
-          </span>
-          <input
-            ref={inputRef}
-            className="input"
-            autoFocus
-            spellCheck={false}
-            aria-label="Ask jitmo"
-            placeholder="Ask jitmo…"
-            value={text}
-            disabled={!typing}
-            onChange={(e) => {
-              setText(e.target.value);
-              historyAt.current = -1;
-              // Typing a new request clears the last result so the bar shrinks back.
-              if (state.phase === "done" || state.phase === "failed") dispatch({ type: "reset" });
-            }}
-            onKeyDown={onInputKey}
-          />
+          <Mark />
+
+          {showStatus ? (
+            <div
+              className={`status ${state.phase}`}
+              role="status"
+              aria-live="polite"
+              title={state.phase === "working" ? undefined : "Type to ask something else"}
+              onClick={() => state.phase !== "working" && resetBar()}
+            >
+              {state.phase === "working" && (
+                <>
+                  <span className="spinner" aria-hidden="true" />
+                  <span className="message muted">Working…</span>
+                </>
+              )}
+              {state.phase === "done" && (
+                <>
+                  <span className="icon" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span className="message">{state.message}</span>
+                  {showUndo && (
+                    <button
+                      className="undo"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        bridge.undo(state.id);
+                      }}
+                    >
+                      Undo ({undoLeft})
+                    </button>
+                  )}
+                </>
+              )}
+              {state.phase === "failed" && (
+                <>
+                  <span className="icon" aria-hidden="true">
+                    !
+                  </span>
+                  <span className="message">{state.message}</span>
+                </>
+              )}
+            </div>
+          ) : (
+            <input
+              ref={inputRef}
+              className="input"
+              autoFocus
+              spellCheck={false}
+              aria-label="Ask jitmo"
+              placeholder="Ask jitmo…"
+              value={text}
+              disabled={!typing}
+              onChange={(e) => {
+                setText(e.target.value);
+                historyAt.current = -1;
+              }}
+              onKeyDown={onInputKey}
+            />
+          )}
+
           <button
             className="go"
             aria-label="Run"
@@ -195,63 +261,36 @@ export default function App() {
           </button>
         </div>
 
-        <div className="result" role="status" aria-live="polite" data-tauri-drag-region>
-          {state.phase === "working" && (
-            <div className="line muted">
-              <span className="spinner" aria-hidden="true" /> Working…
-            </div>
-          )}
-
-          {state.phase === "confirm" && (
-            <div className="card">
-              <div className="line">{state.text}</div>
-              <div className="buttons">
-                <button className="primary" onClick={() => bridge.confirm(state.id, true)}>
-                  Confirm <kbd>Enter</kbd>
-                </button>
-                <button onClick={() => bridge.confirm(state.id, false)}>
-                  Cancel <kbd>Esc</kbd>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {state.phase === "choice" && (
-            <div className="card">
-              <div className="line">{state.question}</div>
-              <div className="buttons column">
-                {state.choices.map((c, i) => (
-                  <button key={c.id} onClick={() => bridge.choose(state.id, c.id)}>
-                    <kbd>{i + 1}</kbd> {c.label}
+        {(state.phase === "confirm" || state.phase === "choice") && (
+          <div className="result" role="status" aria-live="polite" data-tauri-drag-region>
+            {state.phase === "confirm" && (
+              <div className="card">
+                <div className="line">{state.text}</div>
+                <div className="buttons">
+                  <button className="primary" onClick={() => bridge.confirm(state.id, true)}>
+                    Confirm <kbd>Enter</kbd>
                   </button>
-                ))}
+                  <button onClick={() => bridge.confirm(state.id, false)}>
+                    Cancel <kbd>Esc</kbd>
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {state.phase === "done" && (
-            <div className="line ok">
-              <span className="icon" aria-hidden="true">
-                ✓
-              </span>
-              <span className="message">{state.message}</span>
-              {showUndo && (
-                <button className="undo" onClick={() => bridge.undo(state.id)}>
-                  Undo ({undoLeft})
-                </button>
-              )}
-            </div>
-          )}
-
-          {state.phase === "failed" && (
-            <div className="line error">
-              <span className="icon" aria-hidden="true">
-                !
-              </span>
-              <span className="message">{state.message}</span>
-            </div>
-          )}
-        </div>
+            {state.phase === "choice" && (
+              <div className="card">
+                <div className="line">{state.question}</div>
+                <div className="buttons column">
+                  {state.choices.map((c, i) => (
+                    <button key={c.id} onClick={() => bridge.choose(state.id, c.id)}>
+                      <kbd>{i + 1}</kbd> {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
