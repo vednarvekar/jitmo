@@ -22,6 +22,7 @@ jitmo-adapter-windows = { path = "../../crates/adapter-windows" }
 jitmo-model-worker = { path = "../../crates/model-worker", default-features = false }
 jitmo-ipc = { path = "../../crates/ipc" }
 jitmo-skills = { path = "../../crates/skills" }
-jitmo-store = { path = "../../crates/store" }
+# Real encryption; building it needs a full Perl on PATH (see CI).
+jitmo-store = { path = "../../crates/store", features = ["sqlcipher"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-global-shortcut = "2"

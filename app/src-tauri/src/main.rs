@@ -227,11 +227,14 @@ fn load_skills() -> Vec<Skill> {
 /// report success, until their connectors are built in Phase 2.
 /// Every 10 seconds, show the reminders and timers that have come due as
 /// Windows notifications. Runs on its own thread with its own database connection.
-fn start_reminder_scheduler(db: std::path::PathBuf) {
+fn start_reminder_scheduler(db: std::path::PathBuf, key: jitmo_store::Key) {
     std::thread::spawn(move || {
-        let Ok(store) = Store::open(&db, None) else {
-            eprintln!("reminders: could not open the database");
-            return;
+        let store = match open_store(&db, &key) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("reminders: could not open the database: {e}");
+                return;
+            }
         };
         loop {
             let now = chrono_utc_now();
@@ -249,6 +252,29 @@ fn start_reminder_scheduler(db: std::path::PathBuf) {
             std::thread::sleep(std::time::Duration::from_secs(10));
         }
     });
+}
+
+/// The one place the app opens its database: encrypted with the key from
+/// Credential Manager. A plain database from an earlier version is converted
+/// (and backed up) the first time.
+fn open_store(
+    db: &std::path::Path,
+    key: &jitmo_store::Key,
+) -> Result<Store, jitmo_store::StoreError> {
+    Store::open_encrypted_migrating(db, key)
+}
+
+/// Read (or create) the database key. There is deliberately no fallback to an
+/// unencrypted file: if the key cannot be had, the app does not start.
+fn database_key() -> Result<jitmo_store::Key, String> {
+    #[cfg(windows)]
+    {
+        jitmo_adapter_windows::credentials::get_or_create_db_key("jitmo")
+    }
+    #[cfg(not(windows))]
+    {
+        Err("the database key is kept in Windows Credential Manager".to_string())
+    }
 }
 
 /// Now as `YYYY-MM-DDTHH:MM:SSZ`, the format reminders are stored in.
@@ -274,7 +300,7 @@ fn downloads_dir() -> std::path::PathBuf {
         .join("Downloads")
 }
 
-fn connectors(db: &std::path::Path) -> HashMap<String, Arc<dyn Connector>> {
+fn connectors(db: &std::path::Path, key: &jitmo_store::Key) -> HashMap<String, Arc<dyn Connector>> {
     let mut map: HashMap<String, Arc<dyn Connector>> = ["stub_messenger"]
         .iter()
         .map(|id| {
@@ -285,7 +311,7 @@ fn connectors(db: &std::path::Path) -> HashMap<String, Arc<dyn Connector>> {
         })
         .collect();
     // The place for "will it rain tomorrow" when none is said (setting `default_place`).
-    let default_place = Store::open(db, None)
+    let default_place = open_store(db, key)
         .ok()
         .and_then(|s| s.get_setting("default_place").ok().flatten());
     map.insert(
@@ -329,9 +355,7 @@ fn connectors(db: &std::path::Path) -> HashMap<String, Arc<dyn Connector>> {
     );
     map.insert(
         "reminders".into(),
-        Arc::new(jitmo_connectors::reminders::Reminders::new(
-            db.to_path_buf(),
-        )),
+        Arc::new(jitmo_connectors::reminders::Reminders::new(db.to_path_buf()).with_key(*key)),
     );
     map.insert(
         "files".into(),
@@ -376,14 +400,29 @@ fn main() {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let db_path = dir.join("jitmo.db");
-            let store = Store::open(&dir.join("jitmo.db"), None)?;
-            start_reminder_scheduler(db_path.clone());
+            let key = database_key().map_err(|e| {
+                let msg = format!(
+                    "jitmo cannot start: the database key could not be read ({e}). \
+                     Nothing was opened or changed."
+                );
+                eprintln!("{msg}");
+                msg
+            })?;
+            let store = open_store(&db_path, &key).map_err(|e| {
+                let msg = format!(
+                    "jitmo cannot start: the database could not be opened ({e}). \
+                     The file was not changed."
+                );
+                eprintln!("{msg}");
+                msg
+            })?;
+            start_reminder_scheduler(db_path.clone(), key);
             let hotkey = store
                 .get_setting("hotkey")?
                 .unwrap_or_else(|| DEFAULT_HOTKEY.to_string());
 
             let selection = SelectionSnapshot::default();
-            let flow = Flow::new(router(), store, connectors(&db_path))
+            let flow = Flow::new(router(), store, connectors(&db_path, &key))
                 .with_context(FsContext::for_current_user(selection.clone()));
             let handle = app.handle().clone();
             std::thread::Builder::new()

@@ -51,6 +51,17 @@ jobs:
         working-directory: app
         run: pnpm build
 
+      # The app crate now builds the store with SQLCipher (encrypted database),
+      # and cargo unifies that feature across the workspace. That compiles OpenSSL
+      # from source, which needs a full Perl: Git's own Perl is missing modules, so
+      # put Strawberry Perl first on PATH for every later step in this job.
+      # The first build is slow; rust-cache keeps it afterwards.
+      - name: Put Strawberry Perl first on PATH (OpenSSL build for SQLCipher)
+        shell: pwsh
+        run: |
+          "C:\Strawberry\c\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - name: Rust format
         run: cargo fmt --all --check
 
