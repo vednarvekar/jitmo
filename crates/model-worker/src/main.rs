@@ -1,11 +1,60 @@
 //! Separate model process (no network). Speaks `WorkerRequest`/`WorkerReply` on stdin/stdout.
 //!
-//! Options: `--idle-secs N` exit after N seconds without a request (default 300,
-//! 0 = never); `--engine test` use the crash/hang test engine.
+//! Options:
+//! - `--idle-secs N`  exit after N seconds without a request (default 300, 0 = never)
+//! - `--models DIR`   folder with the router files (else `JITMO_MODELS`, else
+//!   `models/router` next to the program, else `./models/router`)
+//! - `--engine test`  the crash/hang test engine (for process tests)
+//!
+//! If the models cannot be loaded the process exits with code 2 and Core falls
+//! back to its rule-based router.
 
-use jitmo_model_worker::{serve, Exit, TestEngine, UnbuiltEngine};
+use jitmo_model_worker::{serve, Engine, Exit, TestEngine};
 use std::io::{stdin, stdout, BufReader};
+use std::path::PathBuf;
 use std::time::Duration;
+
+fn models_dir(arg: Option<String>) -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    candidates.extend(arg.map(PathBuf::from));
+    candidates.extend(std::env::var_os("JITMO_MODELS").map(PathBuf::from));
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("models").join("router"));
+        }
+    }
+    candidates.push(PathBuf::from("models/router"));
+    candidates
+        .into_iter()
+        .find(|d| d.join("model_int8.onnx").exists())
+}
+
+fn real_engine(models: Option<String>) -> Result<Box<dyn Engine + Send>, String> {
+    #[cfg(feature = "models")]
+    {
+        let dir = models_dir(models).ok_or("no model folder found")?;
+        Ok(Box::new(jitmo_model_worker::router::RouterEngine::load(
+            &dir,
+        )?))
+    }
+    #[cfg(not(feature = "models"))]
+    {
+        let _ = (models, models_dir(None));
+        Err("built without models".to_string())
+    }
+}
+
+struct Boxed(Box<dyn Engine + Send>);
+
+impl Engine for Boxed {
+    fn understand(
+        &mut self,
+        text: &str,
+        context: &jitmo_ipc::ContextNote,
+    ) -> Result<jitmo_ipc::Understanding, String> {
+        self.0.understand(text, context)
+    }
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -23,7 +72,13 @@ fn main() {
     let result = if value("--engine").as_deref() == Some("test") {
         serve(input, stdout(), &mut TestEngine, idle)
     } else {
-        serve(input, stdout(), &mut UnbuiltEngine, idle)
+        match real_engine(value("--models")) {
+            Ok(engine) => serve(input, stdout(), &mut Boxed(engine), idle),
+            Err(e) => {
+                eprintln!("model worker cannot start: {e}");
+                std::process::exit(2);
+            }
+        }
     };
     match result {
         Ok(Exit::Closed | Exit::Idle) => {}

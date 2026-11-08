@@ -6,15 +6,16 @@ use crate::spec::{CallSpec, Expect, Spec};
 use jitmo_connectors::fake::{Call, FakeConnector};
 use jitmo_connectors::Connector;
 use jitmo_core::flow::{Flow, Prompter};
-use jitmo_core::router::StubRouter;
+use jitmo_core::router::Router;
 use jitmo_ipc::{Choice, CoreEvent};
+use jitmo_model_worker::{WorkerClient, WorkerLauncher};
 use jitmo_skills::{Risk, Skill};
 use jitmo_store::Store;
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 pub struct RunResult {
@@ -81,6 +82,16 @@ fn one_line(s: &str) -> bool {
 
 /// Run one test from a clean state.
 pub fn run_case(skills: &[Skill], spec: &Spec, live: bool) -> RunResult {
+    run_case_with(skills, spec, live, None)
+}
+
+/// Like [`run_case`], with the real model worker doing the routing when given.
+pub fn run_case_with(
+    skills: &[Skill],
+    spec: &Spec,
+    live: bool,
+    worker: Option<&WorkerLauncher>,
+) -> RunResult {
     let started = Instant::now();
 
     // Fresh connectors: fakes, except those the test asks to be real in --live mode.
@@ -104,7 +115,11 @@ pub fn run_case(skills: &[Skill], spec: &Spec, live: bool) -> RunResult {
     }
 
     let store = Store::open_in_memory().expect("in-memory store");
-    let mut flow = Flow::new(StubRouter::new(skills.to_vec()), store, map);
+    let mut router = Router::new(skills.to_vec());
+    if let Some(launcher) = worker {
+        router = router.with_worker(WorkerClient::new(launcher.clone(), Duration::from_secs(10)));
+    }
+    let mut flow = Flow::new(router, store, map);
     let mut user = Recorder {
         answers: spec.confirm_answers.iter().copied().collect(),
         confirms: Vec::new(),

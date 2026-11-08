@@ -13,3 +13,6 @@ pub mod server;
 pub use client::{WorkerClient, WorkerError, WorkerLauncher};
 pub use engine::{Engine, TestEngine, UnbuiltEngine};
 pub use server::{serve, Exit};
+
+#[cfg(feature = "models")]
+pub mod router;

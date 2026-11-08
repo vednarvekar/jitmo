@@ -1,9 +1,10 @@
-//! Usage: jitmo-testset-runner [--live] [--strict] [--only T01,T03] [--json out.json]
+//! Usage: jitmo-testset-runner [--live] [--worker PATH] [--strict] [--only T01,T03] [--json out.json]
 //!
 //! Run from anywhere inside the repo. Default mode uses fake connectors, so it
 //! is safe and repeatable. `--live` uses real connectors for tests that allow
 //! it (today: T01 opens the real Spotify).
 
+use jitmo_model_worker::WorkerLauncher;
 use jitmo_testset_runner::report::{self, Row, Status, Verdict};
 use jitmo_testset_runner::{doc, peak_memory_bytes, run, spec};
 use std::path::PathBuf;
@@ -27,11 +28,21 @@ fn go() -> Result<bool, String> {
     let mut only: Option<Vec<String>> = None;
     let mut json: Option<PathBuf> = None;
     let mut strict = false;
+    let mut worker: Option<WorkerLauncher> = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--live" => live = true,
             "--strict" => strict = true,
+            "--worker" => {
+                worker = Some(WorkerLauncher {
+                    program: args
+                        .next()
+                        .ok_or("--worker needs the worker program")?
+                        .into(),
+                    args: vec!["--idle-secs".into(), "0".into()],
+                })
+            }
             "--only" => {
                 only = Some(
                     args.next()
@@ -81,7 +92,7 @@ fn go() -> Result<bool, String> {
         };
         if let (true, Some(spec)) = (selected, specs.get(&case.id)) {
             row.request = spec.request.clone();
-            let r = run::run_case(&skills, spec, live);
+            let r = run::run_case_with(&skills, spec, live, worker.as_ref());
             row.elapsed_ms = Some(r.elapsed_ms);
             row.peak_mb = peak_memory_bytes().map(|b| b as f64 / 1_048_576.0);
             row.message = r.message;

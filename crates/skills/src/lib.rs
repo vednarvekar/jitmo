@@ -85,6 +85,9 @@ pub enum Undo {
 #[serde(deny_unknown_fields)]
 pub struct Skill {
     pub id: String,
+    /// The task label from the task list (A1, M2, ...) that the model router predicts.
+    #[serde(default)]
+    pub task: Option<String>,
     pub version: u32,
     pub category: String,
     pub capabilities: Vec<String>,

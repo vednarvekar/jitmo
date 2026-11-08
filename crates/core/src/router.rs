@@ -11,9 +11,11 @@
 //! - Anything else scores by word overlap, capped at 0.7. So the stub never
 //!   reaches the 0.8 "run directly" line on a fuzzy match, which keeps it safe.
 
-use jitmo_ipc::{Span, TaskScore, Understanding};
+use jitmo_ipc::{ContextNote, Span, TaskScore, Understanding};
+use jitmo_model_worker::WorkerClient;
 use jitmo_skills::{Skill, Slot};
 use std::collections::BTreeSet;
+use std::sync::Mutex;
 
 /// Thresholds from LLD 07, tuned in SP1.
 pub const RUN_DIRECTLY: f32 = 0.80;
@@ -61,9 +63,12 @@ pub fn decide(u: &Understanding) -> RouteDecision {
     }
 }
 
-/// Router over a fixed set of skills.
-pub struct StubRouter {
+/// Router over a fixed set of skills. With a model worker attached it scores
+/// tasks with the Tier 0 encoder; without one (or when the worker is down) it
+/// falls back to the rule-based example matching.
+pub struct Router {
     skills: Vec<Skill>,
+    worker: Option<Mutex<WorkerClient>>,
 }
 
 /// One example, split into words. A word like `{app}` is a placeholder.
@@ -72,9 +77,19 @@ struct Example<'a> {
     skill: &'a Skill,
 }
 
-impl StubRouter {
+impl Router {
     pub fn new(skills: Vec<Skill>) -> Self {
-        StubRouter { skills }
+        Router {
+            skills,
+            worker: None,
+        }
+    }
+
+    /// Use the model worker for task scoring. Spans still come from the example
+    /// patterns until the resolver and extractor arrive.
+    pub fn with_worker(mut self, worker: WorkerClient) -> Self {
+        self.worker = Some(Mutex::new(worker));
+        self
     }
 
     pub fn skills(&self) -> &[Skill] {
@@ -87,6 +102,74 @@ impl StubRouter {
 
     /// Route one request.
     pub fn route(&self, text: &str) -> Understanding {
+        let stub = self.route_by_examples(text);
+        let Some(worker) = &self.worker else {
+            return stub;
+        };
+        let reply = worker
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .understand(text, &ContextNote::default());
+        match reply {
+            Ok(u) => self.map_worker_result(u, stub),
+            Err(e) => {
+                tracing::warn!("model worker unavailable, using the rule-based router: {e}");
+                stub
+            }
+        }
+    }
+
+    /// Turn task labels (A1, M2, ...) into skill ids.
+    fn map_worker_result(&self, u: Understanding, stub: Understanding) -> Understanding {
+        // A skill with no task label (a dev or test skill) cannot be predicted by the
+        // model, so an exact example match on one still wins.
+        if let Some(top) = stub.tasks.first() {
+            let unlabeled = self.skill(&top.id).is_some_and(|s| s.task.is_none());
+            if unlabeled && top.score >= 0.9 {
+                return stub;
+            }
+        }
+        let skill_for = |label: &str| {
+            self.skills
+                .iter()
+                .find(|s| s.task.as_deref() == Some(label))
+        };
+        // The best task has no skill built yet: say "can't do that" rather than
+        // running a lesser match.
+        if let Some(top) = u.tasks.first() {
+            if !u.chained && skill_for(&top.id).is_none() && top.score > u.out_of_scope {
+                return Understanding {
+                    tasks: Vec::new(),
+                    out_of_scope: 1.0,
+                    chained: false,
+                    spans: Vec::new(),
+                };
+            }
+        }
+        let tasks: Vec<TaskScore> = u
+            .tasks
+            .iter()
+            .filter_map(|t| {
+                skill_for(&t.id).map(|s| TaskScore {
+                    id: s.id.clone(),
+                    score: t.score,
+                })
+            })
+            .collect();
+        // Slot spans come from the example patterns, and only if they agree on the task.
+        let spans = match (tasks.first(), stub.tasks.first()) {
+            (Some(a), Some(b)) if a.id == b.id => stub.spans,
+            _ => Vec::new(),
+        };
+        Understanding {
+            tasks,
+            out_of_scope: u.out_of_scope,
+            chained: u.chained,
+            spans,
+        }
+    }
+
+    fn route_by_examples(&self, text: &str) -> Understanding {
         let request = tokens(text);
         let chained = looks_chained(&request);
 
@@ -247,7 +330,55 @@ fn slot_type(skill: &Skill, name: &str) -> String {
 mod tests {
     use super::*;
 
-    fn router() -> StubRouter {
+    fn model(tasks: &[(&str, f32)], out: f32) -> Understanding {
+        Understanding {
+            tasks: tasks
+                .iter()
+                .map(|(id, score)| TaskScore {
+                    id: id.to_string(),
+                    score: *score,
+                })
+                .collect(),
+            out_of_scope: out,
+            chained: false,
+            spans: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn model_labels_become_skill_ids_and_keep_example_spans() {
+        let r = router();
+        let u = r.map_worker_result(
+            model(&[("A1", 0.95), ("A3", 0.02)], 0.01),
+            r.route_by_examples("open spotify"),
+        );
+        assert_eq!(u.tasks[0].id, "apps.open");
+        assert_eq!(u.tasks[0].score, 0.95);
+        assert_eq!(u.spans[0].text.to_lowercase(), "spotify");
+    }
+
+    #[test]
+    fn a_task_with_no_skill_is_declined_not_swapped_for_a_lesser_one() {
+        let r = router();
+        // A2 (play a song) has no skill yet; A1 is a weak second.
+        let u = r.map_worker_result(
+            model(&[("A2", 0.9), ("A1", 0.05)], 0.02),
+            r.route_by_examples("play jazz"),
+        );
+        assert_eq!(decide(&u), RouteDecision::Decline);
+    }
+
+    #[test]
+    fn model_out_of_scope_declines() {
+        let r = router();
+        let u = r.map_worker_result(
+            model(&[("A1", 0.2)], 0.8),
+            r.route_by_examples("dim the lights"),
+        );
+        assert_eq!(decide(&u), RouteDecision::Decline);
+    }
+
+    fn router() -> Router {
         let skills = [
             include_str!("../../../skills/apps.open.yaml"),
             include_str!("../../../skills/music.pause.yaml"),
@@ -256,7 +387,7 @@ mod tests {
         .iter()
         .map(|y| Skill::parse(y).unwrap())
         .collect();
-        StubRouter::new(skills)
+        Router::new(skills)
     }
 
     #[test]

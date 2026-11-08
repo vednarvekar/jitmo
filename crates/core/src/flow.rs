@@ -12,7 +12,7 @@
 //! [`Prompter`], which the service layer implements over the UI pipe.
 
 use crate::policy::{self, Outcome, StepFacts};
-use crate::router::{decide, RouteDecision, StubRouter};
+use crate::router::{decide, RouteDecision, Router};
 use crate::verifier::{verify, Verdict};
 use jitmo_connectors::{Args, ConnError, Connector, Health, Output};
 use jitmo_ipc::{Choice, CoreEvent, RequestId, Span};
@@ -53,7 +53,7 @@ struct SlotValue {
 type Slots = BTreeMap<String, SlotValue>;
 
 pub struct Flow {
-    router: StubRouter,
+    router: Router,
     store: Store,
     connectors: HashMap<String, Arc<dyn Connector>>,
     clock: Box<dyn Fn() -> String + Send>,
@@ -64,7 +64,7 @@ pub struct Flow {
 
 impl Flow {
     pub fn new(
-        router: StubRouter,
+        router: Router,
         store: Store,
         connectors: HashMap<String, Arc<dyn Connector>>,
     ) -> Self {
@@ -589,12 +589,8 @@ mod tests {
             .into_iter()
             .map(|(k, v)| (k.to_string(), v as Arc<dyn Connector>))
             .collect();
-        Flow::new(
-            StubRouter::new(skills),
-            Store::open_in_memory().unwrap(),
-            map,
-        )
-        .with_clock(|| "2026-11-08T12:00:00Z".into())
+        Flow::new(Router::new(skills), Store::open_in_memory().unwrap(), map)
+            .with_clock(|| "2026-11-08T12:00:00Z".into())
     }
 
     fn log_decisions(f: &Flow) -> Vec<String> {

@@ -16,9 +16,10 @@
 
 use jitmo_connectors::{fake::FakeConnector, Connector};
 use jitmo_core::flow::Flow;
-use jitmo_core::router::StubRouter;
+use jitmo_core::router::Router;
 use jitmo_core::service::CoreService;
 use jitmo_ipc::UiRequest;
+use jitmo_model_worker::{WorkerClient, WorkerLauncher};
 use jitmo_skills::Skill;
 use jitmo_store::Store;
 use std::collections::HashMap;
@@ -144,6 +145,25 @@ fn hide(app: &AppHandle) {
 // --- startup --------------------------------------------------------------------
 
 /// Skills shipped with the app. Dev build: parsed without signature checks.
+/// Rule-based routing, plus the model worker when its program sits next to the app.
+fn router() -> Router {
+    let router = Router::new(load_skills());
+    let worker = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join("jitmo-model-worker.exe")))
+        .filter(|p| p.exists());
+    match worker {
+        Some(program) => router.with_worker(WorkerClient::new(
+            WorkerLauncher {
+                program,
+                args: Vec::new(),
+            },
+            std::time::Duration::from_secs(10),
+        )),
+        None => router,
+    }
+}
+
 fn load_skills() -> Vec<Skill> {
     [
         include_str!("../../../skills/apps.open.yaml"),
@@ -195,7 +215,7 @@ fn main() {
                 .get_setting("hotkey")?
                 .unwrap_or_else(|| DEFAULT_HOTKEY.to_string());
 
-            let flow = Flow::new(StubRouter::new(load_skills()), store, connectors());
+            let flow = Flow::new(router(), store, connectors());
             let handle = app.handle().clone();
             let core = CoreService::spawn(flow, move |event| {
                 let _ = handle.emit("core-event", &event);

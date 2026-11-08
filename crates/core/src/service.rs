@@ -120,7 +120,7 @@ impl<E: Fn(CoreEvent)> Prompter for ChannelPrompter<'_, E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::router::StubRouter;
+    use crate::router::Router;
     use jitmo_connectors::fake::FakeConnector;
     use jitmo_connectors::Connector;
     use jitmo_skills::Skill;
@@ -147,11 +147,7 @@ mod tests {
         let mut conns: HashMap<String, Arc<dyn Connector>> = HashMap::new();
         conns.insert("windows_system".into(), sys.clone());
         conns.insert("stub_messenger".into(), msg.clone());
-        let flow = Flow::new(
-            StubRouter::new(skills),
-            Store::open_in_memory().unwrap(),
-            conns,
-        );
+        let flow = Flow::new(Router::new(skills), Store::open_in_memory().unwrap(), conns);
         let (etx, erx) = mpsc::channel();
         let etx = std::sync::Mutex::new(etx);
         let svc = CoreService::spawn(flow, move |e| {

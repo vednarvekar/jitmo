@@ -12,6 +12,7 @@ jitmo-core = { path = "../core" }
 jitmo-ipc = { path = "../ipc" }
 jitmo-skills = { path = "../skills" }
 jitmo-store = { path = "../store" }
+jitmo-model-worker = { path = "../model-worker", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng = "0.10"

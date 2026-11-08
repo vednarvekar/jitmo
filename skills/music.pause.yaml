@@ -1,4 +1,5 @@
 id: music.pause                 # task A3
+task: A3
 version: 1
 category: apps
 capabilities:

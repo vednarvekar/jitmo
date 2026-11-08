@@ -1,4 +1,5 @@
 id: apps.open                   # task A1
+task: A1
 version: 1
 category: apps
 capabilities:

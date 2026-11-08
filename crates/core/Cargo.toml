@@ -12,3 +12,5 @@ jitmo-ipc = { path = "../ipc" }
 jitmo-skills = { path = "../skills" }
 jitmo-store = { path = "../store" }
 thiserror.workspace = true
+jitmo-model-worker = { path = "../model-worker", default-features = false }
+tracing.workspace = true

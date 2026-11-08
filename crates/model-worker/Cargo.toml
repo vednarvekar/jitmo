@@ -17,3 +17,12 @@ path = "src/main.rs"
 jitmo-ipc = { path = "../ipc" }
 thiserror.workspace = true
 tracing.workspace = true
+ort = { version = "=2.0.0-rc.15", optional = true }
+regex = { version = "1", optional = true }
+serde.workspace = true
+serde_json.workspace = true
+tokenizers = { version = "0.21", optional = true, default-features = false, features = ["onig"] }
+
+[features]
+default = ["models"]
+models = ["dep:ort", "dep:tokenizers", "dep:regex"]
