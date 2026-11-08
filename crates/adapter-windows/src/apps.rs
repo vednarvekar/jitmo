@@ -370,10 +370,41 @@ mod os {
         if verbose {
             cmd.arg("/V");
         }
-        match cmd.creation_flags(CREATE_NO_WINDOW).output() {
-            Ok(out) => parse_tasklist(&String::from_utf8_lossy(&out.stdout)),
-            Err(_) => Vec::new(),
+        // The verbose listing can take over a minute on a busy PC. A check must not
+        // hold up the answer that long, so give up after a limit.
+        let limit = Duration::from_secs(if verbose { 10 } else { 5 });
+        let spawned = cmd
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        let Ok(mut child) = spawned else {
+            return Vec::new();
+        };
+        let Some(mut stdout) = child.stdout.take() else {
+            return Vec::new();
+        };
+        let reader = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stdout, &mut bytes);
+            bytes
+        });
+        let started = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if started.elapsed() < limit => {
+                    std::thread::sleep(Duration::from_millis(40))
+                }
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+            }
         }
+        let bytes = reader.join().unwrap_or_default();
+        parse_tasklist(&String::from_utf8_lossy(&bytes))
     }
 
     /// Is a process or window for this app running right now?

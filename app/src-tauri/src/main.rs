@@ -592,6 +592,9 @@ fn main() {
                 eprintln!("{msg}");
                 msg
             })?;
+            // Build the installed-apps list now, so "open <app>" never waits for it.
+            #[cfg(windows)]
+            jitmo_adapter_windows::apps::warm_up();
             start_reminder_scheduler(db_path.clone(), key);
             let hotkey = store
                 .get_setting("hotkey")?
