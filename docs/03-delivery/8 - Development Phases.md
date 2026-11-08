@@ -120,6 +120,14 @@ WebView2 can use more than the ~40MB that 06 budgets for the command bar, and SP
 
 **Goal:** Every task that needs no sign-in works, with the real router and extractor. This is the first internal alpha.
 
+**Architecture rules for Phase 2 (decided 8 Nov, see HLD "Resource and cloud rules" and 8.1 D26 to D28).** Every change below ships only if it beats the current numbers on the same test set; otherwise it is dropped.
+
+1. **Fix the weakest measured numbers first:** extractor 63% on a fresh set, router 81% on a fresh set, chains 60%. Use the user's real contacts, apps and files at runtime (gazetteers) and real labelled requests, never synthetic text alone (it gained only 2 points in SP2). Gate: fresh-set accuracy rises.
+2. **Cheapest-first ladder:** exact-match cache, rules and gazetteers, router, extractor, planner. Report the percentage of requests answered with no model (the model-free rate). Gate: end-to-end accuracy is no worse than before.
+3. **On-demand model worker:** a separate process that exits when idle, with EcoQoS, low CPU and memory priority, one thread and a Job Object cap. Keep the router warm and the extractor loaded for about 60 s after use, because a cold extractor takes 0.85 s against the 0.5 s target. Gate: known tasks start in under 0.5 s.
+4. **Self-compiling rules (unproven):** a model result becomes a rule only after the user has confirmed it several times, and is replay-tested on logged requests first. Gate: replay accuracy does not drop.
+5. **SP12, one-pass action prediction (unproven):** a 0.5B planner with small adapters picks from the closed skill list. Pass: 85% or better on chains, under 5 s, under 1 GB. If it fails, chains stay on fixed templates.
+
 **Work**
 
 - **Model worker.** Tier 0 encoder on ONNX Runtime, as a separate process with no network. Router with the 07 confidence rules (tuned in SP1), extractor, and out-of-scope decline. Core restarts it if it crashes.

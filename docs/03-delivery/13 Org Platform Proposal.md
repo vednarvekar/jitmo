@@ -1,6 +1,21 @@
 # 13 Org Platform Proposal: from personal assistant to company-wide assistant
 
-8 Nov 2026 · prepared for Ved Narvekar · status: **proposal for your review, nothing in other docs has been changed**
+8 Nov 2026 · prepared for Ved Narvekar · status: **reviewed, partly accepted (see below)**
+
+> ## Status after review (8 Nov 2026): read this first
+> The rest of this file is the original proposal, kept as written. Decisions made since (see 8.1, D26 to D34, and the HLD section "Resource and cloud rules"):
+>
+> | Item in this proposal | Decision |
+> |---|---|
+> | Device agent with small footprint, work on demand, polite background process | **Accepted** and measured (HLD, D27, D28) |
+> | Cloud only for integrations and for low-confidence assist, local result when offline | **Accepted** (D26). Replaces "hybrid is the default" in 5.4: local stays the core, cloud is an extra |
+> | Local-only mode and an admin off switch for cloud assist | **Accepted** |
+> | Signing route, SmartScreen, Azure Artifact Signing not available in India | **Accepted** as an open task (D30) |
+> | Ask-a-colleague as the hero feature | **Dropped for now.** No evidence of demand (see section 10, risk 1) |
+> | Org control plane, relay, SCIM, phone to laptop | **Deferred** until buyer conversations confirm demand (D29) |
+> | Pricing and first customer | **Open.** Pick one niche and interview 10 people first (D29, D31) |
+>
+> Still true and useful from this file: sections 3.1 to 3.3 (identity, transport and Windows deployment facts), 7 (threats), 12 (cheap experiments E1 to E9) and 15 (what was not verified).
 
 ## How to read this document
 
