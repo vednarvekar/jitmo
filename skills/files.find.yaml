@@ -1,0 +1,30 @@
+id: files.find                  # task F1
+task: F1
+version: 1
+category: files
+capabilities:
+  - files.read:folders
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 10
+risk: read_only
+examples:
+  - "find {file}"
+  - "where is {file}"
+  - "wheres {file}"
+  - "look for {file}"
+slots:
+  file:
+    type: file_ref
+    required: true
+    resolve: [named_file]
+steps:
+  - connector: files
+    action: reveal
+    args: { path: "{file.path}" }
+check:
+  connector: files
+  action: reveal
+  args: { path: "{file.path}" }
+undo: none

@@ -194,6 +194,10 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/calc.math.yaml"),
         include_str!("../../../skills/calc.moon.yaml"),
         include_str!("../../../skills/calc.time_in.yaml"),
+        include_str!("../../../skills/files.find.yaml"),
+        include_str!("../../../skills/files.recent.yaml"),
+        include_str!("../../../skills/files.open.yaml"),
+        include_str!("../../../skills/files.move.yaml"),
         include_str!("../../../skills/stub.send.yaml"),
     ]
     .iter()
@@ -203,6 +207,15 @@ fn load_skills() -> Vec<Skill> {
 
 /// `windows_system` is real (it opens apps). The rest are still fakes that
 /// report success, until their connectors are built in Phase 2.
+/// The current user's Downloads folder.
+fn downloads_dir() -> std::path::PathBuf {
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default()
+        .join("Downloads")
+}
+
 fn connectors() -> HashMap<String, Arc<dyn Connector>> {
     let mut map: HashMap<String, Arc<dyn Connector>> = ["spotify", "stub_messenger"]
         .iter()
@@ -213,6 +226,10 @@ fn connectors() -> HashMap<String, Arc<dyn Connector>> {
             )
         })
         .collect();
+    map.insert(
+        "files".into(),
+        Arc::new(jitmo_connectors::files::Files::new(downloads_dir())),
+    );
     map.insert(
         "local_calc".into(),
         Arc::new(jitmo_connectors::local_calc::LocalCalc::new()),

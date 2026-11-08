@@ -1,0 +1,28 @@
+id: files.open                  # task F3
+task: F3
+version: 1
+category: files
+capabilities:
+  - files.open
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 10
+risk: safe
+examples:
+  - "open {file}"
+  - "open up {file}"
+slots:
+  file:
+    type: file_ref
+    required: true
+    resolve: [selected_file, named_file]
+steps:
+  - connector: files
+    action: open
+    args: { path: "{file.path}" }
+check:
+  connector: files
+  action: open
+  args: { path: "{file.path}" }
+undo: none

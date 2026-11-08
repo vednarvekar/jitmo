@@ -1,0 +1,24 @@
+id: files.recent                # task F2
+task: F2
+version: 1
+category: files
+capabilities:
+  - files.read:downloads
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 10
+risk: read_only
+examples:
+  - "what did I download today"
+  - "show my recent downloads"
+slots: {}
+steps:
+  - connector: files
+    action: recent
+    args: { text: "{request}" }
+check:
+  connector: files
+  action: recent
+  args: { text: "{request}" }
+undo: none

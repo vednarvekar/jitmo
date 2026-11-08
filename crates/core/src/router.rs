@@ -21,6 +21,9 @@ use std::sync::Mutex;
 pub const RUN_DIRECTLY: f32 = 0.80;
 pub const ASK_TO_CONFIRM: f32 = 0.50;
 pub const DECLINE_AT: f32 = 0.60;
+/// Below this the best guess is too weak to even ask about (V1 has no planner to
+/// hand it to), so the request is declined instead of showing three random options.
+pub const TOO_WEAK_TO_ASK: f32 = 0.30;
 
 /// What the flow should do after routing (LLD 07, "Confidence rules").
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +46,9 @@ pub fn decide(u: &Understanding) -> RouteDecision {
         return RouteDecision::Decline;
     };
     if u.out_of_scope >= DECLINE_AT {
+        return RouteDecision::Decline;
+    }
+    if top.score < TOO_WEAK_TO_ASK && !u.chained {
         return RouteDecision::Decline;
     }
     if u.chained {
@@ -111,7 +117,7 @@ impl Router {
             .unwrap_or_else(|e| e.into_inner())
             .understand(text, &ContextNote::default());
         match reply {
-            Ok(u) => self.map_worker_result(u, stub),
+            Ok(u) => self.map_worker_result(u, text),
             Err(e) => {
                 tracing::warn!("model worker unavailable, using the rule-based router: {e}");
                 stub
@@ -120,7 +126,8 @@ impl Router {
     }
 
     /// Turn task labels (A1, M2, ...) into skill ids.
-    fn map_worker_result(&self, u: Understanding, stub: Understanding) -> Understanding {
+    fn map_worker_result(&self, u: Understanding, text: &str) -> Understanding {
+        let stub = self.route_by_examples(text);
         // A skill with no task label (a dev or test skill) cannot be predicted by the
         // model, so an exact example match on one still wins.
         if let Some(top) = stub.tasks.first() {
@@ -156,11 +163,12 @@ impl Router {
                 })
             })
             .collect();
-        // Slot spans come from the example patterns, and only if they agree on the task.
-        let spans = match (tasks.first(), stub.tasks.first()) {
-            (Some(a), Some(b)) if a.id == b.id => stub.spans,
-            _ => Vec::new(),
-        };
+        // Slot spans come from the chosen skill's own example patterns.
+        let spans = tasks
+            .first()
+            .and_then(|t| self.skill(&t.id))
+            .map(|s| best_for(s, &tokens(text)).1)
+            .unwrap_or_default();
         Understanding {
             tasks,
             out_of_scope: u.out_of_scope,
@@ -175,16 +183,7 @@ impl Router {
 
         let mut scored: Vec<(f32, &Skill, Vec<Span>)> = Vec::new();
         for skill in &self.skills {
-            let mut best = (0.0f32, Vec::new());
-            for ex in skill.examples.iter().map(|e| Example {
-                words: words(e),
-                skill,
-            }) {
-                let (score, spans) = score_example(&ex, &request);
-                if score > best.0 {
-                    best = (score, spans);
-                }
-            }
+            let best = best_for(skill, &request);
             scored.push((best.0, skill, best.1));
         }
         scored.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -251,6 +250,21 @@ fn captured_text(toks: &[Tok]) -> String {
     joined
         .trim_matches(|c: char| !c.is_alphanumeric())
         .to_string()
+}
+
+/// The best-scoring example of one skill, with the spans it captured.
+fn best_for(skill: &Skill, request: &[Tok]) -> (f32, Vec<Span>) {
+    let mut best = (0.0f32, Vec::new());
+    for ex in skill.examples.iter().map(|e| Example {
+        words: words(e),
+        skill,
+    }) {
+        let (score, spans) = score_example(&ex, request);
+        if score > best.0 {
+            best = (score, spans);
+        }
+    }
+    best
 }
 
 fn is_placeholder(w: &str) -> bool {
@@ -348,10 +362,7 @@ mod tests {
     #[test]
     fn model_labels_become_skill_ids_and_keep_example_spans() {
         let r = router();
-        let u = r.map_worker_result(
-            model(&[("A1", 0.95), ("A3", 0.02)], 0.01),
-            r.route_by_examples("open spotify"),
-        );
+        let u = r.map_worker_result(model(&[("A1", 0.95), ("A3", 0.02)], 0.01), "open spotify");
         assert_eq!(u.tasks[0].id, "apps.open");
         assert_eq!(u.tasks[0].score, 0.95);
         assert_eq!(u.spans[0].text.to_lowercase(), "spotify");
@@ -361,20 +372,14 @@ mod tests {
     fn a_task_with_no_skill_is_declined_not_swapped_for_a_lesser_one() {
         let r = router();
         // A2 (play a song) has no skill yet; A1 is a weak second.
-        let u = r.map_worker_result(
-            model(&[("A2", 0.9), ("A1", 0.05)], 0.02),
-            r.route_by_examples("play jazz"),
-        );
+        let u = r.map_worker_result(model(&[("A2", 0.9), ("A1", 0.05)], 0.02), "play jazz");
         assert_eq!(decide(&u), RouteDecision::Decline);
     }
 
     #[test]
     fn model_out_of_scope_declines() {
         let r = router();
-        let u = r.map_worker_result(
-            model(&[("A1", 0.2)], 0.8),
-            r.route_by_examples("dim the lights"),
-        );
+        let u = r.map_worker_result(model(&[("A1", 0.2)], 0.8), "dim the lights");
         assert_eq!(decide(&u), RouteDecision::Decline);
     }
 

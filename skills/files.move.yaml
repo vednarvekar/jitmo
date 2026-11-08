@@ -1,0 +1,36 @@
+id: files.move                  # task F4
+task: F4
+version: 1
+category: files
+capabilities:
+  - files.move
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 15
+risk: changes_data
+examples:
+  - "move {file} to the {folder} folder"
+  - "move {file} to {folder}"
+  - "move {file} into {folder}"
+  - "put {file} in {folder}"
+slots:
+  file:
+    type: file_ref
+    required: true
+    resolve: [selected_file, named_file]
+  folder:
+    type: folder
+    required: true
+    resolve: [named_folder]
+steps:
+  - connector: files
+    action: move
+    args: { path: "{file.path}", dir: "{folder.path}" }
+check:
+  connector: files
+  action: move
+  args: { path: "{file.path}", dir: "{folder.path}" }
+undo:
+  - connector: files
+    action: move

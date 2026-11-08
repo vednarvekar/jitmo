@@ -113,6 +113,31 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<FileRef>) {
     }
 }
 
+fn walk_dirs(dir: &Path, depth: usize, out: &mut Vec<FileRef>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if out.len() >= MAX_FILES {
+            return;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
+        if !is_dir || name.starts_with('.') || SKIP_DIRS.contains(&name.as_str()) {
+            continue;
+        }
+        let path = entry.path();
+        out.push(FileRef {
+            name,
+            path: path.to_string_lossy().into_owned(),
+            modified: 0,
+        });
+        if depth < MAX_DEPTH {
+            walk_dirs(&path, depth + 1, out);
+        }
+    }
+}
+
 impl ContextSource for FsContext {
     fn selected_file(&self) -> Option<FileRef> {
         self.selection.get().and_then(|p| file_ref(&p))
@@ -132,6 +157,14 @@ impl ContextSource for FsContext {
             walk(root, 0, &mut files);
         }
         files
+    }
+
+    fn searchable_folders(&self) -> Vec<FileRef> {
+        let mut dirs = Vec::new();
+        for root in &self.roots {
+            walk_dirs(root, 0, &mut dirs);
+        }
+        dirs
     }
 }
 

@@ -50,3 +50,11 @@ T22: { request: "What time is it in New York?", expect: ran, skill: calc.time_in
 T55: { needs_model: true, request: "full moon when", expect: ran, skill: calc.moon, message_contains: "full moon" }
 T64: { request: "whats 15 percent tip on 1200", expect: ran, skill: calc.math, message_contains: "180" }
 T98: { request: "When is the next full moon?", expect: ran, skill: calc.moon, message_contains: "full moon" }
+
+# Files (fake connector here; the real one is covered by its own tests).
+T24:
+  request: "What did I download today?"
+  expect: ran
+  skill: files.recent
+  calls:
+    - { connector: files, action: recent, args: { text: "What did I download today?" } }

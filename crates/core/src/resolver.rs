@@ -64,6 +64,10 @@ pub trait ContextSource: Send {
     fn recent_downloads(&self, limit: usize) -> Vec<FileRef>;
     /// Every file that `named_file` may match against.
     fn searchable_files(&self) -> Vec<FileRef>;
+    /// Every folder that `named_folder` may match against (default: none).
+    fn searchable_folders(&self) -> Vec<FileRef> {
+        Vec::new()
+    }
 }
 
 /// No context at all (default until the app supplies one).
@@ -118,6 +122,13 @@ pub fn resolve(
                     return Resolution::Found(SlotValue::from_file(&f));
                 }
             }
+            "named_folder" => {
+                if let (Some(words), false) = (said, deictic) {
+                    if let Some(r) = match_named_file(words, &ctx.searchable_folders()) {
+                        return r;
+                    }
+                }
+            }
             "named_file" => {
                 if let (Some(words), false, false) = (said, deictic, recency) {
                     if let Some(r) = match_named_file(words, &ctx.searchable_files()) {
@@ -130,7 +141,7 @@ pub fn resolve(
                     return Resolution::Found(SlotValue::from_file(f));
                 }
             }
-            s if s.starts_with("named_") && s != "named_file" => {
+            s if s.starts_with("named_") && s != "named_file" && s != "named_folder" => {
                 if let Some(words) = said {
                     return Resolution::Found(SlotValue::from_text(words));
                 }
@@ -175,11 +186,21 @@ fn match_named_file(words: &str, files: &[FileRef]) -> Option<Resolution> {
     })
 }
 
-/// "this", "this file", "that one", "selected", "it".
+/// "this", "this file", "that one", "selected", "it": only pointing words and
+/// generic nouns, nothing that names the file. "that budget thing" names it.
 fn is_deictic(words: &str) -> bool {
     let w = words.to_lowercase();
-    let first = w.split_whitespace().next().unwrap_or("");
-    matches!(first, "this" | "that" | "it" | "selected" | "current")
+    let mut any_pointer = false;
+    for t in tokens(&w) {
+        match t.as_str() {
+            "this" | "that" | "it" | "these" | "those" | "selected" | "current" => {
+                any_pointer = true
+            }
+            "file" | "files" | "document" | "doc" | "one" | "ones" | "thing" | "the" => {}
+            _ => return false,
+        }
+    }
+    any_pointer
 }
 
 /// "the latest download", "my newest file", "the last one I downloaded".
@@ -196,7 +217,46 @@ fn is_recency(words: &str) -> bool {
     .any(|k| w.contains(k))
 }
 
-const STOPWORDS: [&str; 6] = ["the", "my", "a", "an", "of", "file"];
+/// Words that say nothing about which file is meant.
+const STOPWORDS: [&str; 20] = [
+    "the",
+    "my",
+    "a",
+    "an",
+    "of",
+    "file",
+    "files",
+    "from",
+    "last",
+    "week",
+    "yesterday",
+    "today",
+    "that",
+    "thing",
+    "one",
+    "new",
+    "old",
+    "latest",
+    "wheres",
+    "where",
+];
+
+/// "sheet" means a spreadsheet, "deck" means slides, and so on: they match the
+/// file type instead of the name.
+fn type_extensions(word: &str) -> Option<&'static [&'static str]> {
+    Some(match word {
+        "sheet" | "spreadsheet" | "excel" => &["xlsx", "xls", "csv", "ods"],
+        "deck" | "slides" | "presentation" | "powerpoint" => &["pptx", "ppt", "odp", "key"],
+        "doc" | "document" | "word" => &["docx", "doc", "odt", "rtf"],
+        "pdf" => &["pdf"],
+        "photo" | "picture" | "pic" | "image" | "screenshot" => {
+            &["jpg", "jpeg", "png", "heic", "gif", "webp"]
+        }
+        "video" | "vid" | "movie" => &["mp4", "mov", "mkv", "avi", "webm"],
+        "song" | "music" | "audio" => &["mp3", "wav", "flac", "m4a"],
+        _ => return None,
+    })
+}
 
 fn tokens(s: &str) -> Vec<String> {
     s.to_lowercase()
@@ -220,9 +280,28 @@ pub fn score(wanted: &str, file_name: &str) -> f32 {
     if want.is_empty() || have.is_empty() {
         return 0.0;
     }
+    let ext = file_name
+        .rsplit_once('.')
+        .map(|(_, e)| e.to_lowercase())
+        .unwrap_or_default();
     let total: f32 = want
         .iter()
-        .map(|w| have.iter().map(|h| word_score(w, h)).fold(0.0f32, f32::max))
+        .map(|w| {
+            // "pdfs" is "pdf"; a file-type word matches the extension.
+            let w = if w.len() > 3 && w.ends_with('s') {
+                &w[..w.len() - 1]
+            } else {
+                w.as_str()
+            };
+            if let Some(exts) = type_extensions(w) {
+                return if exts.contains(&ext.as_str()) {
+                    1.0
+                } else {
+                    0.0
+                };
+            }
+            have.iter().map(|h| word_score(w, h)).fold(0.0f32, f32::max)
+        })
         .sum();
     let base = total / want.len() as f32;
     let extra = (want.len() as f32 / have.len() as f32).min(1.0);
@@ -434,6 +513,67 @@ mod tests {
         assert!(matches!(
             resolve(&s, None, &NoContext, None),
             Resolution::NotFound(None)
+        ));
+    }
+
+    #[test]
+    fn file_type_words_match_the_extension_and_time_words_are_ignored() {
+        let mut c = ctx();
+        c.files.push(file("Budget 2026.xlsx", 400));
+        c.files.push(file("Budget notes.docx", 10));
+        let v = found(resolve(
+            &file_slot(),
+            Some("the budget sheet from last week"),
+            &c,
+            None,
+        ));
+        assert_eq!(v.text, "Budget 2026.xlsx");
+        // Two budget files and no type word: a question, not a guess.
+        assert!(matches!(
+            resolve(&file_slot(), Some("that budget thing"), &c, None),
+            Resolution::Choose { .. }
+        ));
+    }
+
+    #[test]
+    fn that_thing_alone_is_a_pointer_but_a_named_thing_is_not() {
+        assert!(is_deictic("this file"));
+        assert!(is_deictic("that one"));
+        assert!(is_deictic("these"));
+        assert!(!is_deictic("that budget thing"));
+        assert!(!is_deictic("the invoice"));
+    }
+
+    #[test]
+    fn plural_type_words_still_match() {
+        assert!(score("pdfs", "Invoice March.pdf") >= 0.9);
+    }
+
+    #[test]
+    fn a_folder_is_found_by_name() {
+        struct Dirs;
+        impl ContextSource for Dirs {
+            fn selected_file(&self) -> Option<FileRef> {
+                None
+            }
+            fn recent_downloads(&self, _: usize) -> Vec<FileRef> {
+                Vec::new()
+            }
+            fn searchable_files(&self) -> Vec<FileRef> {
+                Vec::new()
+            }
+            fn searchable_folders(&self) -> Vec<FileRef> {
+                vec![file("Invoices", 0), file("Receipts", 0)]
+            }
+        }
+        let s = strategies(&["named_folder"]);
+        assert_eq!(
+            found(resolve(&s, Some("invoices"), &Dirs, None)).text,
+            "Invoices"
+        );
+        assert!(matches!(
+            resolve(&s, Some("taxes"), &Dirs, None),
+            Resolution::NotFound(_)
         ));
     }
 

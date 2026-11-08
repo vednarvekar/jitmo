@@ -930,6 +930,67 @@ mod tests {
         (flow, wa)
     }
 
+    const MOVE: &str = include_str!("../../../skills/files.move.yaml");
+
+    struct WithFolders(Files, Vec<crate::resolver::FileRef>);
+
+    impl ContextSource for WithFolders {
+        fn selected_file(&self) -> Option<crate::resolver::FileRef> {
+            self.0.selected_file()
+        }
+        fn recent_downloads(&self, n: usize) -> Vec<crate::resolver::FileRef> {
+            self.0.recent_downloads(n)
+        }
+        fn searchable_files(&self) -> Vec<crate::resolver::FileRef> {
+            self.0.searchable_files()
+        }
+        fn searchable_folders(&self) -> Vec<crate::resolver::FileRef> {
+            self.1.clone()
+        }
+    }
+
+    fn move_flow(folders: Vec<crate::resolver::FileRef>) -> (Flow, Arc<FakeConnector>) {
+        let files = Arc::new(FakeConnector::new("files").undoable());
+        let ctx = WithFolders(
+            Files {
+                selected: None,
+                files: vec![file_ref("report.pdf")],
+            },
+            folders,
+        );
+        let flow = flow_with(&[MOVE], vec![("files", files.clone())]).with_context(ctx);
+        (flow, files)
+    }
+
+    #[test]
+    fn moving_a_file_into_a_named_folder_runs_then_offers_undo() {
+        let (mut flow, files) = move_flow(vec![file_ref("Invoices")]);
+        let mut u = user(&[]);
+        let ev = flow.handle(40, "move report.pdf to the Invoices folder", &mut u);
+        assert!(
+            u.shown.is_empty(),
+            "a move runs and offers Undo; it does not ask first"
+        );
+        assert_eq!(done(&ev), ("Done.", true));
+        let moved = files.calls().into_iter().any(|c| {
+            matches!(&c, Call::Execute { action, args }
+                if action == "move"
+                    && args.get("path").map(String::as_str) == Some("C:/Docs/report.pdf")
+                    && args.get("dir").map(String::as_str) == Some("C:/Docs/Invoices"))
+        });
+        assert!(moved);
+        assert_eq!(flow.undo(), "Undone.");
+    }
+
+    #[test]
+    fn a_folder_that_does_not_exist_is_not_guessed() {
+        let (mut flow, files) = move_flow(vec![file_ref("Receipts")]);
+        let mut u = user(&[]);
+        let ev = flow.handle(41, "move report.pdf to the Invoices folder", &mut u);
+        assert_eq!(failed(&ev), "I couldn't find invoices.");
+        assert!(files.calls().is_empty());
+    }
+
     #[test]
     fn a_named_file_is_found_and_its_path_reaches_the_connector() {
         let (mut flow, wa) = whatsapp_flow(Files {

@@ -6,6 +6,7 @@
 //! `adapter-windows`.
 
 pub mod fake;
+pub mod files;
 pub mod local_calc;
 #[cfg(windows)]
 pub mod windows_system;
