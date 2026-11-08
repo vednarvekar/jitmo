@@ -1,0 +1,7 @@
+[package]
+name = "jitmo-connectors"
+description = "Connector trait and the app connectors."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
