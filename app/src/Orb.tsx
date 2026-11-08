@@ -574,7 +574,7 @@ const GlOrb = ({
 };
 
 /** The bar's orb: the React Bits ring, a bit livelier while a request runs. */
-export default function Orb({ working = false, size = 50 }: { working?: boolean; size?: number }) {
+export default function Orb({ working = false, size = 32 }: { working?: boolean; size?: number }) {
   const [fallback, setFallback] = useState(false);
   if (fallback) {
     return <span className={`orb${working ? " working" : ""}`} data-tauri-drag-region aria-hidden="true" />;
@@ -583,8 +583,9 @@ export default function Orb({ working = false, size = 50 }: { working?: boolean;
     <div className="orb-slot" style={{ width: size, height: size }} data-tauri-drag-region>
       <GlOrb
         intro={false}
-        glow={2.4}
-        bleed={1.4}
+        backgroundColor="#f2f3fb"
+        glow={1.6}
+        bleed={1.2}
         clickPulse={false}
         speed={working ? 3 : 1}
         hoverIntensity={working ? 1.4 : 1}

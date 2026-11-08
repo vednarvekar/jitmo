@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as bridge from "./bridge";
-import LiquidDefs from "./LiquidDefs";
 import Orb from "./Orb";
 import {
   UNDO_WINDOW_MS,
@@ -199,7 +198,6 @@ export default function App() {
 
   return (
     <div className="shell" ref={rootRef} data-anim={anim}>
-      <LiquidDefs />
       <div
         className="bar"
         data-phase={state.phase}
@@ -208,6 +206,7 @@ export default function App() {
         onMouseLeave={() => (hover.current = false)}
         onMouseDown={() => (dragUntil.current = Date.now() + 2_000)}
       >
+        <span className="glint" aria-hidden="true" />
         {/* Any empty part of the pill drags it; the input and buttons do not. */}
         <div className="row" data-tauri-drag-region>
           <Orb working={state.phase === "working"} />
