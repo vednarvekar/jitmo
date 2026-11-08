@@ -1,0 +1,26 @@
+id: system.dnd                    # task S4
+task: S4
+version: 1
+category: system
+capabilities:
+  - system.dnd
+network: none
+limits:
+  cpu_ms: 500
+  timeout_s: 30
+risk: changes_data
+examples:
+  - "don't disturb me for an hour"
+  - "shut notifications up for 1 hr"
+slots: {}
+steps:
+  - connector: dnd
+    action: set
+    args: { text: "{request}" }
+check:
+  connector: dnd
+  action: set
+  args: { text: "{request}" }
+undo:
+  - connector: dnd
+    action: set
