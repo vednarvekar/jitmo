@@ -1,5 +1,7 @@
 # SP7 - Toggle Do Not Disturb on Win11
 
+**UPDATE 8 Nov: FAIL.** Live test with DND off: with NOC_GLOBAL_SETTING_TOASTS_ENABLED=0 the test toast still popped up, and the real Do Not Disturb button did not change. That key is the "Get notifications from apps" master switch, not the DND button, and it was not honored live. Win+N then UIA found no DND element (152 elements). Win11 has no documented DND API; undocumented WNF/CloudStore methods are build-fragile and untested. Decision: V1 does not promise to toggle DND. Fallback: per-app notification mute, or open the Windows notification settings page for the user. Revisit WNF later.
+
 **Verdict: PASS WITH CAVEAT - registry toggle works 10/10 on write/readback; actual toast suppression NOT visually verified.**
 
 ## Evidence (Win11 25H2 build 26200)
