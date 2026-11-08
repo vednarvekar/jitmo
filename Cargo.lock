@@ -1848,7 +1848,9 @@ dependencies = [
  "jitmo-adapter-windows",
  "jitmo-store",
  "regex",
+ "serde_json",
  "thiserror 2.0.21",
+ "ureq",
 ]
 
 [[package]]

@@ -1,0 +1,25 @@
+id: web.fact                   # task Q3
+task: Q3
+version: 1
+category: answers
+capabilities:
+  - web.lookup
+network: web_lookup            # only the search terms leave the device (PS3)
+limits:
+  cpu_ms: 200
+  timeout_s: 10
+risk: read_only
+examples:
+  - "what's the capital of Australia"
+  - "who wrote Pride and Prejudice"
+  - "how tall is Mount Everest"
+slots: {}
+steps:
+  - connector: web_lookup
+    action: fact
+    args: { text: "{request}" }
+check:
+  connector: web_lookup
+  action: fact
+  args: { text: "{request}" }
+undo: none

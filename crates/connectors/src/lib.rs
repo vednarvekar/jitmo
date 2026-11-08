@@ -11,6 +11,7 @@ pub mod local_calc;
 pub mod reminders;
 pub mod spotify;
 pub mod system_controls;
+pub mod web_lookup;
 #[cfg(windows)]
 pub mod windows_system;
 
