@@ -57,7 +57,7 @@ body {
     inset -6px 6px 1px -6px rgba(255, 255, 255, 0.55),
     inset 0 0 2px rgba(0, 0, 0, 0.8),
     0 4px 8px rgba(0, 0, 0, 0.2);
-  background: rgba(200, 202, 212, 0.42);
+  background: rgba(200, 202, 212, 0.62);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
   filter: brightness(0.9);
@@ -140,7 +140,7 @@ body {
   z-index: 600;
 }
 .closer:hover {
-  background: rgba(206, 208, 218, 0.5);
+  background: rgba(206, 208, 218, 0.7);
   transform: translateY(-3px);
 }
 .closer:active {
@@ -1009,4 +1009,11 @@ kbd {
   .grey-orb {
     animation: none !important;
   }
+}
+
+/* Smooth pop-up: promote the sliding layers so the slide runs on the compositor. */
+.dock,
+.chips {
+  will-change: transform;
+  backface-visibility: hidden;
 }

@@ -94,6 +94,17 @@ fn undo(state: State<AppState>, id: u64) {
     state.core.send(UiRequest::Undo { id });
 }
 
+/// Tell the page it is on screen so it can play the pop-up animation. Wait a moment
+/// first: right after the window appears the web view is still painting its first
+/// frame, and an animation that starts at that instant stutters.
+fn announce_shown(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(70));
+        let _ = app.emit("bar-shown", ());
+    });
+}
+
 /// The page has drawn its first frame: now it is safe to show the window.
 #[tauri::command]
 fn bar_ready(app: AppHandle) {
@@ -106,7 +117,7 @@ fn show_when_ready(app: &AppHandle) {
             place_bar(app, &w);
             let _ = w.show();
             let _ = w.set_focus();
-            let _ = app.emit("bar-shown", ()); // starts the pop-up animation
+            announce_shown(app);
         }
     }
 }
@@ -305,7 +316,7 @@ fn toggle(app: &AppHandle) {
             place_bar(app, &w);
             let _ = w.show();
             let _ = w.set_focus();
-            let _ = app.emit("bar-shown", ());
+            announce_shown(app);
         }
         None => create_bar(app),
     }

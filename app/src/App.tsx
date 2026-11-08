@@ -48,7 +48,8 @@ export default function App() {
   const playIn = useCallback(() => {
     closing.current = false;
     setAnim("idle");
-    requestAnimationFrame(() => setAnim("in"));
+    // Two frames at the hidden position first, so the slide starts from a painted state.
+    requestAnimationFrame(() => requestAnimationFrame(() => setAnim("in")));
   }, []);
   const closeBar = useCallback(() => {
     if (closing.current) return;
