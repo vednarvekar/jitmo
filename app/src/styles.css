@@ -1,21 +1,29 @@
-/* Frosted white "liquid glass" command bar.
+/* Dark monochrome "liquid glass" command bar: black and grey glass, soft ambient
+   light, glossy rim. Layout: a wide pill (plus, input, voice icons) and a
+   separate round close button.
 
    The window is transparent. `.shell` is its 14 px margin, which holds the
-   shadow; `.bar` is the glass. The glass is built from layers because a web view
-   cannot blur the desktop behind it: a milky white tint, light from above, a
-   bright rim, fine grain, and a glint that sweeps across now and then. */
+   shadows. The glass is built from layers because a web view cannot blur the
+   desktop behind it. */
 :root {
-  color-scheme: light;
-  --ink: #1d1e2c;
-  --muted: rgba(29, 30, 44, 0.52);
-  --accent: #6a4dff;
-  --ok: #178a4f;
-  --error: #c42b2b;
-  --chip: rgba(255, 255, 255, 0.55);
-  --chip-hover: rgba(255, 255, 255, 0.85);
-  --field: rgba(255, 255, 255, 0.5);
-  --edge: rgba(120, 130, 190, 0.22);
-  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.6  0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  color-scheme: dark;
+  --ink: rgba(255, 255, 255, 0.94);
+  --muted: rgba(255, 255, 255, 0.56);
+  --ok: #7fe3a8;
+  --error: #ff9a9a;
+  --rim: rgba(255, 255, 255, 0.14);
+  --field: rgba(255, 255, 255, 0.07);
+  --glass:
+    linear-gradient(180deg, rgba(62, 62, 68, 0.97) 0%, rgba(20, 20, 24, 0.99) 44%, rgba(9, 9, 11, 1) 100%);
+  --glass-shadow:
+    0 18px 38px rgba(0, 0, 0, 0.55),
+    0 3px 8px rgba(0, 0, 0, 0.4),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.1),
+    inset 1px 0 0 rgba(255, 255, 255, 0.13),
+    inset -1px 0 0 rgba(255, 255, 255, 0.09),
+    inset 0 0 28px rgba(255, 255, 255, 0.05);
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.2 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
 html,
@@ -33,131 +41,162 @@ body {
   box-sizing: border-box;
 }
 
-/* ---------- the glass ---------- */
-.bar {
+.dock {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* ---------- glass: the pill and the close button ---------- */
+.bar,
+.closer {
   position: relative;
   overflow: hidden;
   isolation: isolate;
   box-sizing: border-box;
-  padding: 7px 10px 7px 9px;
+  background: var(--glass);
+  box-shadow: var(--glass-shadow);
+}
+.bar {
+  flex: 1;
+  min-width: 0;
   border-radius: 999px;
   display: flex;
   flex-direction: column;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.93) 0%, rgba(250, 251, 255, 0.78) 100%),
-    rgba(232, 236, 252, 0.55);
-  box-shadow:
-    0 20px 46px rgba(40, 52, 120, 0.3),
-    0 3px 10px rgba(40, 52, 120, 0.16),
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.98),
-    inset 0 -1.5px 1px rgba(255, 255, 255, 0.55),
-    inset 1.5px 0 1px rgba(255, 255, 255, 0.6),
-    inset -1.5px 0 1px rgba(255, 255, 255, 0.4),
-    inset 0 0 26px rgba(255, 255, 255, 0.6);
+  padding: 0 14px 0 14px;
 }
 .bar[data-phase="confirm"],
 .bar[data-phase="choice"] {
-  border-radius: 28px;
+  border-radius: 30px;
+  padding-bottom: 12px;
 }
-/* Soft light: bright at the top-left, a faint second glow at the bottom-right, and grain. */
-.bar::before {
+/* Ambient light: a bright edge at the top-left and a soft glow in the middle. */
+.bar::before,
+.closer::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
   background:
-    radial-gradient(60% 120% at 12% -20%, rgba(255, 255, 255, 0.95), transparent 60%),
-    radial-gradient(45% 90% at 96% 130%, rgba(190, 205, 255, 0.55), transparent 65%),
+    radial-gradient(55% 110% at 8% -25%, rgba(255, 255, 255, 0.2), transparent 60%),
+    radial-gradient(34% 90% at 50% 105%, rgba(255, 255, 255, 0.11), transparent 70%),
     var(--grain);
-  opacity: 0.9;
+  opacity: 0.55;
   pointer-events: none;
 }
-/* Rim: a thin bright edge that fades to a cool tint on the far side. */
-.bar::after {
+/* Glossy rim: bright on the upper left, fading, catching light again at the far side. */
+.bar::after,
+.closer::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  padding: 1.4px;
-  background: linear-gradient(135deg, #fff, rgba(150, 165, 230, 0.35) 38%, rgba(255, 255, 255, 0.4) 62%, #fff);
+  padding: 1.3px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.06) 40%, rgba(255, 255, 255, 0.04) 62%, rgba(255, 255, 255, 0.26));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
 }
-/* A glint that sweeps over the glass every few seconds. */
+/* A slow glint that crosses the glass now and then. */
 .glint {
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.85) 50%, transparent 60%) 170% 0 / 260% 100% no-repeat;
-  mix-blend-mode: soft-light;
-  animation: glint 8s ease-in-out 1s infinite;
+  background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.22) 50%, transparent 60%) 170% 0 / 260% 100% no-repeat;
+  animation: glint 9s ease-in-out 1.2s infinite;
   pointer-events: none;
 }
 @keyframes glint {
   0%,
-  58% {
+  60% {
     background-position: 170% 0;
   }
-  86%,
+  88%,
   100% {
     background-position: -70% 0;
   }
 }
 
+.closer {
+  flex-shrink: 0;
+  width: 58px;
+  height: 58px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  cursor: pointer;
+}
+.closer:hover {
+  filter: brightness(1.25);
+}
+
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  min-height: 58px;
 }
 
-/* ---------- orb (React Bits ring) ---------- */
-.orb-slot {
+/* ---------- buttons inside the pill ---------- */
+.plus,
+.tool,
+.go {
   flex-shrink: 0;
-  position: relative;
-  margin: -3px -3px -3px -4px;
-  cursor: grab;
-}
-.orb-container {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.orb-slot .orb-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-/* Fallback when WebGL is missing. */
-.orb {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fff, #b9a2ff 55%, #6a4dff);
-  box-shadow: 0 0 12px rgba(120, 90, 255, 0.5);
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  box-shadow: none;
+}
+.plus:hover,
+.plus.on {
+  background: rgba(255, 255, 255, 0.1);
+}
+.tool {
+  cursor: default;
+  opacity: 0.92;
+}
+.tool:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.go {
+  color: #101014;
+  background: linear-gradient(180deg, #ffffff, #d9dae2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  animation: go-in 0.18s ease-out both;
+}
+@keyframes go-in {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
 }
 
-/* ---------- input ---------- */
+/* ---------- input and status ---------- */
 .input,
 .status {
   flex: 1;
   min-width: 0;
   box-sizing: border-box;
-  min-height: 34px;
-  padding: 6px 4px;
+  min-height: 38px;
+  padding: 6px 2px;
   font: inherit;
-  font-size: 16px;
+  font-size: 17px;
   color: var(--ink);
   background: transparent;
   border: 0;
-  border-radius: 999px;
   outline: none;
   user-select: text;
 }
@@ -167,7 +206,6 @@ body {
 .input:disabled {
   opacity: 0.6;
 }
-
 .status {
   display: flex;
   align-items: center;
@@ -188,92 +226,28 @@ body {
 .status .message.muted {
   color: var(--muted);
 }
-.status .icon {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
+.status.done .message {
+  color: var(--ink);
 }
-.status.done .icon {
-  color: var(--ok);
-  background: rgba(23, 138, 79, 0.14);
-}
-.status.failed {
+.status.failed .message {
   color: var(--error);
 }
-.status.failed .icon {
-  background: rgba(196, 43, 43, 0.14);
-}
-
-.spinner {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 2px solid rgba(106, 77, 255, 0.2);
-  border-top-color: var(--accent);
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* ---------- right end: Send (when typing) or an Esc hint ---------- */
-.go {
+.undo {
   flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: linear-gradient(135deg, #4d8bff, #7a4dff);
-  box-shadow:
-    0 3px 10px rgba(90, 80, 255, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  cursor: pointer;
-  animation: go-in 0.18s ease-out both;
-}
-.go:hover {
-  filter: brightness(1.08);
-}
-@keyframes go-in {
-  from {
-    transform: scale(0.6);
-    opacity: 0;
-  }
-}
-.esc-hint {
-  flex-shrink: 0;
-  padding: 2px 7px;
-  font: 11px "Segoe UI", sans-serif;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.6);
-  box-shadow: inset 0 0 0 1px var(--edge);
 }
 
 /* ---------- confirm and choice cards ---------- */
 .result {
-  margin-top: 8px;
-  padding: 0 4px 4px;
+  padding: 0 2px;
 }
 .card {
   background: var(--field);
-  border-radius: 18px;
+  border-radius: 20px;
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  box-shadow: inset 0 0 0 1px var(--edge);
+  box-shadow: inset 0 0 0 1px var(--rim);
 }
 .line {
   user-select: text;
@@ -285,32 +259,32 @@ body {
 .buttons.column {
   flex-direction: column;
 }
-button {
+.result button,
+.undo,
+.chip {
   font: inherit;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.09);
   border: 0;
   border-radius: 14px;
   padding: 5px 12px;
   cursor: pointer;
   text-align: left;
-  box-shadow: inset 0 0 0 1px var(--edge);
+  box-shadow: inset 0 0 0 1px var(--rim);
 }
-button:hover {
-  background: #fff;
+.result button:hover,
+.undo:hover,
+.chip:hover {
+  background: rgba(255, 255, 255, 0.17);
+}
+.result button.primary {
+  color: #101014;
+  background: linear-gradient(180deg, #ffffff, #d9dae2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid rgba(255, 255, 255, 0.7);
   outline-offset: 2px;
-}
-button.primary {
-  color: #fff;
-  background: linear-gradient(135deg, #4d8bff, #7a4dff);
-  box-shadow: 0 2px 8px rgba(90, 80, 255, 0.35);
-}
-.undo {
-  flex-shrink: 0;
-  padding: 3px 10px;
 }
 kbd {
   font: 12px "Segoe UI", sans-serif;
@@ -318,13 +292,13 @@ kbd {
   margin-left: 6px;
 }
 
-/* ---------- suggestions: small, one line ---------- */
+/* ---------- suggestions (opened with the plus): small, one line ---------- */
 .chips {
   display: flex;
   flex-wrap: nowrap;
   overflow: hidden;
   gap: 6px;
-  padding: 9px 6px 0;
+  padding: 10px 6px 0;
 }
 .chip {
   flex-shrink: 0;
@@ -333,37 +307,182 @@ kbd {
   font-size: 12px;
   line-height: 1.5;
   border-radius: 999px;
-  background: var(--chip);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.8),
-    0 3px 10px rgba(40, 52, 120, 0.18);
-}
-.chip:hover {
-  background: var(--chip-hover);
+  background: var(--glass);
+  box-shadow: var(--glass-shadow);
 }
 
-/* ---------- pop up (grows out of the orb) and pop down (folds back into it) ---------- */
-.shell[data-anim="in"] .bar {
+/* ---------- AI orb: drifting colour with eyes that change with its mood ---------- */
+.ai-orb {
+  position: relative;
+  flex-shrink: 0;
+  display: block;
+  border-radius: 50%;
+  overflow: hidden;
+  isolation: isolate;
+  background: #c9dcff;
+  box-shadow:
+    0 0 16px rgba(120, 150, 255, 0.45),
+    inset 0 -5px 9px rgba(40, 50, 170, 0.4),
+    inset 0 3px 6px rgba(255, 255, 255, 0.75);
+}
+.ai-orb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 38%);
+  pointer-events: none;
+}
+.ai-orb .blob {
+  position: absolute;
+  width: 95%;
+  height: 95%;
+  border-radius: 50%;
+  filter: blur(7px);
+  z-index: -1;
+}
+.ai-orb .b1 {
+  background: #2f6bff;
+  left: -22%;
+  top: -18%;
+  animation: drift-a 6s ease-in-out infinite alternate;
+}
+.ai-orb .b2 {
+  background: #ff5fd2;
+  right: -28%;
+  bottom: -22%;
+  animation: drift-b 7.5s ease-in-out infinite alternate;
+}
+.ai-orb .b3 {
+  background: #55f0c8;
+  left: 8%;
+  bottom: -34%;
+  animation: drift-c 5.2s ease-in-out infinite alternate;
+}
+.ai-orb.working .blob {
+  animation-duration: 1.6s;
+}
+@keyframes drift-a {
+  to {
+    transform: translate(38%, 30%) scale(1.15);
+  }
+}
+@keyframes drift-b {
+  to {
+    transform: translate(-42%, -26%) scale(0.9);
+  }
+}
+@keyframes drift-c {
+  to {
+    transform: translate(26%, -44%) scale(1.2);
+  }
+}
+.ai-orb .eyes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 36%;
+  display: flex;
+  justify-content: center;
+  gap: 24%;
+  z-index: 1;
+}
+.ai-orb .eye {
+  display: block;
+  width: 10%;
+  height: 27%;
+  min-width: 3px;
+  min-height: 7px;
+  border-radius: 3px;
+  background: #15183a;
+  animation: blink 4.6s infinite;
+  transform-origin: center;
+}
+.ai-orb .eye:nth-child(2) {
+  animation-delay: 0.05s;
+}
+@keyframes blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.1);
+  }
+}
+/* thinking: narrowed, slanted eyes */
+.ai-orb.working .eye {
+  height: 3px;
+  width: 30%;
+  min-width: 8px;
+  animation: none;
+}
+.ai-orb.working .eye:first-child {
+  transform: rotate(14deg);
+}
+.ai-orb.working .eye:last-child {
+  transform: rotate(-14deg);
+}
+/* done: happy arcs */
+.ai-orb.done .eye {
+  background: transparent;
+  height: 22%;
+  width: 24%;
+  border-radius: 99px 99px 0 0;
+  border: 2.4px solid #15183a;
+  border-bottom: 0;
+  animation: none;
+}
+/* failed: crossed eyes */
+.ai-orb.failed .eye {
+  background: transparent;
+  width: 24%;
+  height: 24%;
+  position: relative;
+  animation: none;
+}
+.ai-orb.failed .eye::before,
+.ai-orb.failed .eye::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2.4px;
+  margin-top: -1.2px;
+  background: #15183a;
+  border-radius: 2px;
+}
+.ai-orb.failed .eye::before {
+  transform: rotate(45deg);
+}
+.ai-orb.failed .eye::after {
+  transform: rotate(-45deg);
+}
+
+/* ---------- pop up (grows out of the left end) and pop down (folds back) ---------- */
+.shell[data-anim="in"] .dock {
   animation: pop-in 0.46s cubic-bezier(0.22, 1.18, 0.36, 1) backwards;
 }
 .shell[data-anim="in"] .chips {
   animation: chips-in 0.34s ease-out 0.22s backwards;
 }
-.shell[data-anim="out"] .bar {
+.shell[data-anim="out"] .dock {
   animation: pop-out 0.17s cubic-bezier(0.5, 0, 0.9, 0.5) both;
 }
 .shell[data-anim="out"] .chips {
   animation: chips-out 0.1s ease-in both;
 }
-.shell[data-anim="idle"] .bar,
+.shell[data-anim="idle"] .dock,
 .shell[data-anim="idle"] .chips {
   opacity: 0;
 }
 @keyframes pop-in {
   0% {
     opacity: 0;
-    clip-path: inset(0 calc(100% - 52px) 0 0 round 999px);
-    transform: translateY(16px) scale(0.92);
+    clip-path: inset(0 calc(100% - 58px) 0 0 round 999px);
+    transform: translateY(16px) scale(0.93);
     filter: blur(5px);
   }
   35% {
@@ -371,14 +490,14 @@ kbd {
     filter: blur(0);
   }
   100% {
-    clip-path: inset(0 0 0 0 round 999px);
+    clip-path: inset(-20px -20px -40px -20px round 999px);
     transform: translateY(0) scale(1);
   }
 }
 @keyframes pop-out {
   to {
     opacity: 0;
-    clip-path: inset(0 calc(100% - 52px) 0 0 round 999px);
+    clip-path: inset(0 calc(100% - 58px) 0 0 round 999px);
     transform: translateY(10px) scale(0.95);
     filter: blur(4px);
   }
@@ -395,12 +514,14 @@ kbd {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .shell[data-anim] .bar,
+  .shell[data-anim] .dock,
   .shell[data-anim] .chips {
     animation-duration: 0.01s;
     animation-delay: 0s;
   }
-  .glint {
+  .glint,
+  .ai-orb .blob,
+  .ai-orb .eye {
     animation: none;
   }
 }
