@@ -7,6 +7,7 @@
 //! The action reads the user's whole request (`text`) and works out the time
 //! and what to be reminded of with [`parse`].
 
+use crate::repeat::{find_clock, find_repeat, next_after, with_clock, Repeat};
 use crate::{ActionSpec, Args, ConnError, Connector, Health, Output};
 use chrono::{DateTime, Datelike, Duration, Local, NaiveTime, TimeZone, Utc, Weekday};
 use jitmo_store::Store;
@@ -20,6 +21,7 @@ pub struct Parsed {
     /// What to say when it fires.
     pub what: String,
     pub timer: bool,
+    pub repeat: Option<Repeat>,
 }
 
 const ASK_WHEN: &str = "When should I remind you? Try “remind me to call mom at 6pm”.";
@@ -79,6 +81,12 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
     let is_timer = lower.contains("timer");
     let mut cut: Vec<(usize, usize)> = Vec::new();
 
+    if !is_timer {
+        if let Some(p) = parse_repeating(text, now)? {
+            return Ok(p);
+        }
+    }
+
     // Relative: "timer for 10 minutes", "in 20 minutes", "a 10-minute timer".
     if let Some((total, spans)) = durations(text) {
         let relative = is_timer || lower.contains(" in ") || lower.starts_with("in ");
@@ -95,6 +103,7 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
                     clean(text, &cut)
                 },
                 timer: is_timer,
+                repeat: None,
             });
         }
     }
@@ -226,7 +235,35 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
         due,
         what: clean(text, &cut),
         timer: false,
+        repeat: None,
     })
+}
+
+/// "every day at 9am", "every Monday at 10", "every 2 hours": `Ok(None)` if the request does not repeat.
+fn parse_repeating(text: &str, now: DateTime<Local>) -> Result<Option<Parsed>, String> {
+    let Some(found) = find_repeat(text)? else {
+        return Ok(None);
+    };
+    // Blank out the repeat words (same length, so offsets stay valid).
+    let (start, end) = found.span;
+    let mut masked = text.to_string();
+    masked.replace_range(start..end, &" ".repeat(end - start));
+    let mut cut = vec![found.span];
+    let rule = match find_clock(&masked, &mut cut).or(found.preset) {
+        Some((h, m)) => with_clock(found.rule, h, m),
+        None => found.rule,
+    };
+    let now_utc = now.with_timezone(&Utc);
+    let due = match rule {
+        Repeat::Every(n) => now_utc + Duration::minutes(i64::from(n)),
+        _ => next_after(rule, now_utc, now_utc, &Local).ok_or("That time doesn't exist.")?,
+    };
+    Ok(Some(Parsed {
+        due: due.with_timezone(&Local),
+        what: clean(text, &cut),
+        timer: false,
+        repeat: Some(rule),
+    }))
 }
 
 /// Remove the time words and "remind me to", leaving what to remember.
@@ -246,6 +283,11 @@ fn clean(text: &str, cut: &[(usize, usize)]) -> String {
     let lead = Regex::new(r"(?i)^\s*(?:please\s+)?(?:can you\s+)?(?:remind me|reminder|set a reminder)\s*(?:to|about|abt|that|of)?\s*")
         .expect("regex");
     let s = lead.replace(&out, "").to_string();
+    // "every Monday at 10 to send the report" leaves a dangling "to".
+    let s = Regex::new(r"(?i)^\s*to\s+")
+        .expect("regex")
+        .replace(&s, "")
+        .to_string();
     let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
     let s = s.trim_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace());
     if s.is_empty() {
@@ -352,9 +394,20 @@ impl Connector for Reminders {
         let p = parse(text, now).map_err(ConnError::Failed)?;
         let id = self
             .store()?
-            .add_reminder(&utc_text(p.due), &p.what)
+            .add_reminder_repeating(
+                &utc_text(p.due),
+                &p.what,
+                p.repeat.map(Repeat::to_rule).as_deref(),
+            )
             .map_err(|e| ConnError::Failed(format!("I couldn't save the reminder: {e}")))?;
-        let message = if p.timer {
+        let message = if let Some(r) = p.repeat {
+            format!(
+                "Reminder set for {}: {}. Repeats {}.",
+                describe_when(p.due, now),
+                p.what,
+                r.describe()
+            )
+        } else if p.timer {
             format!("Timer set for {}.", describe_length(p.due - now))
         } else {
             format!(
@@ -556,6 +609,66 @@ mod tests {
         assert_eq!(out.0["message"], "Timer set for 10 minutes.");
         let due = Store::open(&db, None).unwrap().pending_reminders().unwrap();
         assert_eq!(due[0].due_at, utc_text(now() + Duration::minutes(10)));
+        let _ = std::fs::remove_dir_all(db.parent().unwrap());
+    }
+
+    #[test]
+    fn repeating_reminders_parse_with_their_rule() {
+        // now(): Sunday 8 Nov 2026, 14:00 local.
+        let r = p("remind me every day at 9am to take vitamins");
+        assert_eq!(r.repeat, Some(Repeat::Daily(9, 0)));
+        assert_eq!(r.what, "Take vitamins");
+        assert_eq!(hm(r.due), (9, 9, 0), "9am today has passed: tomorrow");
+
+        let r = p("every Monday at 10 to send the report");
+        assert_eq!(r.repeat, Some(Repeat::Weekly(Weekday::Mon, 10, 0)));
+        assert_eq!(r.what, "Send the report");
+        assert_eq!(hm(r.due), (9, 10, 0), "Monday 9 Nov");
+
+        let r = p("remind me every 2 hours to drink water");
+        assert_eq!(r.repeat, Some(Repeat::Every(120)));
+        assert_eq!(r.due, now() + Duration::hours(2));
+        assert_eq!(r.what, "Drink water");
+
+        let r = p("remind me to stand up every weekday at 8:30am");
+        assert_eq!(r.repeat, Some(Repeat::Weekdays(8, 30)));
+        assert_eq!(r.what, "Stand up");
+
+        let r = p("remind me to stretch every evening");
+        assert_eq!(r.repeat, Some(Repeat::Daily(18, 0)));
+    }
+
+    #[test]
+    fn a_repeat_under_five_minutes_is_refused() {
+        let e = parse("remind me every 3 minutes to blink", now()).unwrap_err();
+        assert!(e.contains("at least 5 minutes"), "{e}");
+    }
+
+    #[test]
+    fn plain_reminders_do_not_repeat() {
+        assert_eq!(p("Remind me to call mom at 6pm.").repeat, None);
+        assert_eq!(p("Set a 10-minute timer.").repeat, None);
+    }
+
+    #[test]
+    fn repeating_set_stores_the_rule_says_so_and_undo_deletes_the_series() {
+        let db = temp_db("repeat");
+        let c = Reminders::new(db.clone()).with_now(now);
+        let out = c
+            .execute("set", &args("remind me every day at 9am to take vitamins"))
+            .unwrap();
+        assert_eq!(
+            out.0["message"],
+            "Reminder set for 9:00 AM tomorrow: Take vitamins. Repeats every day at 9:00 AM."
+        );
+        let s = Store::open(&db, None).unwrap();
+        let pending = s.pending_reminders().unwrap();
+        assert_eq!(pending[0].repeat.as_deref(), Some("daily 09:00"));
+        // The scheduler re-arms by keeping the same id, so Undo removes the series.
+        s.reschedule_reminder(pending[0].id, "2099-01-01T09:00:00Z")
+            .unwrap();
+        c.undo("set", &out).unwrap().unwrap();
+        assert!(s.pending_reminders().unwrap().is_empty());
         let _ = std::fs::remove_dir_all(db.parent().unwrap());
     }
 

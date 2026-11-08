@@ -104,6 +104,8 @@ pub struct Reminder {
     pub id: i64,
     pub due_at: String,
     pub text: String,
+    /// Repeat rule (for example `daily 09:00`), or `None` for a one-off reminder.
+    pub repeat: Option<String>,
 }
 
 /// True if `path` reads as an ordinary (unencrypted) SQLite database.
@@ -318,6 +320,12 @@ impl Store {
         Ok(())
     }
 
+    pub fn delete_setting(&self, key: &str) -> Result<(), StoreError> {
+        self.conn
+            .execute("DELETE FROM settings WHERE key = ?1", [key])?;
+        Ok(())
+    }
+
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, StoreError> {
         Ok(self
             .conn
@@ -428,17 +436,37 @@ impl Store {
 
     /// Add a reminder. `due_at` is UTC as `YYYY-MM-DDTHH:MM:SSZ`, so text order is time order.
     pub fn add_reminder(&self, due_at: &str, text: &str) -> Result<i64, StoreError> {
+        self.add_reminder_repeating(due_at, text, None)
+    }
+
+    /// Like [`Store::add_reminder`], with an optional repeat rule kept in the `repeat` column.
+    pub fn add_reminder_repeating(
+        &self,
+        due_at: &str,
+        text: &str,
+        repeat: Option<&str>,
+    ) -> Result<i64, StoreError> {
         self.conn.execute(
-            "INSERT INTO reminders(due_at, text) VALUES(?1, ?2)",
-            params![due_at, text],
+            "INSERT INTO reminders(due_at, text, repeat) VALUES(?1, ?2, ?3)",
+            params![due_at, text, repeat],
         )?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Move a repeating reminder to its next time. It keeps its id, so Undo
+    /// (which deletes that id) removes the whole series.
+    pub fn reschedule_reminder(&self, id: i64, due_at: &str) -> Result<(), StoreError> {
+        self.conn.execute(
+            "UPDATE reminders SET due_at = ?2, done = 0 WHERE id = ?1",
+            params![id, due_at],
+        )?;
+        Ok(())
     }
 
     /// Reminders not yet shown whose time has come, oldest first.
     pub fn due_reminders(&self, now: &str) -> Result<Vec<Reminder>, StoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, due_at, text FROM reminders
+            "SELECT id, due_at, text, repeat FROM reminders
              WHERE done = 0 AND due_at <= ?1 ORDER BY due_at, id",
         )?;
         let rows = stmt.query_map([now], |r| {
@@ -446,6 +474,7 @@ impl Store {
                 id: r.get(0)?,
                 due_at: r.get(1)?,
                 text: r.get(2)?,
+                repeat: r.get(3)?,
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
@@ -453,14 +482,15 @@ impl Store {
 
     /// Reminders still waiting (not shown, not deleted), soonest first.
     pub fn pending_reminders(&self) -> Result<Vec<Reminder>, StoreError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id, due_at, text FROM reminders WHERE done = 0 ORDER BY due_at, id")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT id, due_at, text, repeat FROM reminders WHERE done = 0 ORDER BY due_at, id",
+        )?;
         let rows = stmt.query_map([], |r| {
             Ok(Reminder {
                 id: r.get(0)?,
                 due_at: r.get(1)?,
                 text: r.get(2)?,
+                repeat: r.get(3)?,
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)

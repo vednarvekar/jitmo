@@ -12,6 +12,8 @@ risk: changes_data
 examples:
   - "remind me to call mom at 6pm"
   - "remind me tomorrow at 9am to send the report"
+  - "remind me every day at 9am to take vitamins"
+  - "every Monday at 10 remind me to send the report"
 slots: {}
 steps:
   - connector: reminders

@@ -1,0 +1,33 @@
+id: settings.place             # no task label: an exact example match is enough
+version: 1
+category: settings
+capabilities:
+  - settings.write
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 5
+risk: changes_data
+examples:
+  - "set my city to {place}"
+  - "set my location to {place}"
+  - "my location is {place}"
+  - "my city is {place}"
+  - "i live in {place}"
+  - "change my city to {place}"
+slots:
+  place:
+    type: place
+    required: true
+    resolve: [named_place]
+steps:
+  - connector: settings
+    action: set_place
+    args: { place: "{place}" }
+check:
+  connector: settings
+  action: set_place
+  args: { place: "{place}" }
+undo:
+  - connector: settings
+    action: set_place

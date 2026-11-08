@@ -11,7 +11,10 @@ pub mod fake;
 pub mod files;
 pub mod local_calc;
 pub mod reminders;
+pub mod repeat;
+pub mod settings;
 pub mod spotify;
+pub mod sun;
 pub mod system_controls;
 pub mod web_lookup;
 #[cfg(windows)]

@@ -1587,4 +1587,45 @@ mod tests {
         assert_eq!(iso_from_secs(1_000_000_000), "2001-09-09T01:46:40Z");
         assert_eq!(iso_from_secs(1_782_000_000), "2026-06-21T00:00:00Z");
     }
+
+    #[test]
+    fn set_my_city_saves_the_place_and_undo_restores_it() {
+        let dir = std::env::temp_dir().join(format!("jitmo-flow-place-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("jitmo.db");
+        let skills =
+            vec![Skill::parse(include_str!("../../../skills/settings.place.yaml")).unwrap()];
+        let map: HashMap<String, Arc<dyn Connector>> = HashMap::from([(
+            "settings".to_string(),
+            Arc::new(jitmo_connectors::settings::Settings::new(db.clone())) as Arc<dyn Connector>,
+        )]);
+        let mut flow = Flow::new(Router::new(skills), Store::open_in_memory().unwrap(), map)
+            .with_clock(|| "2026-11-08T12:00:00Z".into());
+        let saved = || {
+            jitmo_store::Store::open(&db, None)
+                .unwrap()
+                .get_setting("default_place")
+                .unwrap()
+        };
+        for (said, want) in [
+            ("set my city to Pune", "Pune"),
+            ("My location is Mumbai", "Mumbai"),
+            ("I live in Delhi", "Delhi"),
+        ] {
+            let ev = flow.handle(1, said, &mut user(&[]));
+            assert_eq!(
+                done(&ev),
+                (format!("Saved {want} as your place.").as_str(), true)
+            );
+            assert_eq!(saved().as_deref(), Some(want));
+        }
+        flow.undo();
+        assert_eq!(
+            saved().as_deref(),
+            Some("Mumbai"),
+            "undo restores the previous place"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -1,21 +1,26 @@
 //! `local_calc`: answers that need no internet and no other app (tasks Q1, Q4, Q5).
 //!
 //! - `math`    percentages, tips, arithmetic and unit conversions (Q4)
+//! - `almanac` Q1: reads the sentence and answers `moon` or `sun`
 //! - `moon`    the next full or new moon, from the Meeus formulas (Q1)
+//! - `sun`     sunrise and sunset for a city or the saved place (Q1)
 //! - `time_in` the time in a city, or here (Q5)
 //!
 //! Each action reads the user's whole request from the `text` argument and
 //! returns the answer in `message`. `check` runs the same parser again and
 //! passes when it still produces an answer. Nothing is changed.
 
+use crate::sun;
 use crate::{ActionSpec, Args, ConnError, Connector, Health, Output};
-use chrono::{DateTime, Datelike, Local, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, Local, TimeZone, Utc};
 use chrono_tz::Tz;
 use regex::Regex;
 
 pub struct LocalCalc {
     /// The current time; replaced in tests.
     now: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
+    /// The saved place (setting `default_place`) for "when does the sun set" with no city.
+    place: Box<dyn Fn() -> Option<String> + Send + Sync>,
 }
 
 impl Default for LocalCalc {
@@ -28,17 +33,40 @@ impl LocalCalc {
     pub fn new() -> Self {
         LocalCalc {
             now: Box::new(Utc::now),
+            place: Box::new(|| None),
         }
     }
 
     pub fn with_now(now: impl Fn() -> DateTime<Utc> + Send + Sync + 'static) -> Self {
-        LocalCalc { now: Box::new(now) }
+        LocalCalc {
+            now: Box::new(now),
+            place: Box::new(|| None),
+        }
+    }
+
+    /// The saved place, fixed when the connector is built (like `WebLookup`).
+    pub fn with_default_place(mut self, place: Option<String>) -> Self {
+        let place = place.filter(|p| !p.trim().is_empty());
+        self.place = Box::new(move || place.clone());
+        self
+    }
+
+    /// The saved place, read each time it is needed (so "set my city" takes
+    /// effect without a restart).
+    pub fn with_place_source(
+        mut self,
+        place: impl Fn() -> Option<String> + Send + Sync + 'static,
+    ) -> Self {
+        self.place = Box::new(place);
+        self
     }
 
     fn answer(&self, action: &str, text: &str) -> Result<Option<String>, ConnError> {
         Ok(match action {
             "math" => math(text),
             "moon" => Some(moon_answer(text, (self.now)())),
+            "almanac" => almanac(text, (self.now)(), (self.place)().as_deref()),
+            "sun" => Some(sun_answer(text, (self.now)(), (self.place)().as_deref())),
             "time_in" => time_in(text, (self.now)()),
             other => return Err(ConnError::UnknownAction(other.to_string())),
         })
@@ -51,7 +79,7 @@ impl Connector for LocalCalc {
     }
 
     fn actions(&self) -> Vec<ActionSpec> {
-        ["math", "moon", "time_in"]
+        ["math", "moon", "sun", "almanac", "time_in"]
             .iter()
             .map(|a| ActionSpec {
                 name: a.to_string(),
@@ -452,6 +480,147 @@ fn moon_answer(text: &str, now: DateTime<Utc>) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Almanac: moon or sun, decided from the sentence (task Q1)
+// ---------------------------------------------------------------------------
+
+/// True when the sentence is about the sun (sunrise, sunset, "the sun sets").
+fn mentions_sun(t: &str) -> bool {
+    Regex::new(r"\b(?:sun\s?rises?|sun\s?sets?|sundown|sunup|sun)\b").is_ok_and(|r| r.is_match(t))
+}
+
+pub fn almanac(text: &str, now: DateTime<Utc>, default_place: Option<&str>) -> Option<String> {
+    let t = text.to_lowercase();
+    if t.contains("moon") {
+        Some(moon_answer(text, now))
+    } else if mentions_sun(&t) {
+        Some(sun_answer(text, now, default_place))
+    } else {
+        None
+    }
+}
+
+/// The longest known place name in `t`.
+fn find_place(t: &str) -> Option<&'static (&'static str, f64, f64, &'static str)> {
+    sun::PLACES
+        .iter()
+        .filter(|p| {
+            Regex::new(&format!(r"\b{}\b", regex::escape(p.0))).is_ok_and(|r| r.is_match(t))
+        })
+        .max_by_key(|p| p.0.len())
+}
+
+const NO_PLACE: &str = "Which city? Try “sunset in Pune”, or save one with “set my city to Pune”.";
+
+pub fn sun_answer(text: &str, now: DateTime<Utc>, default_place: Option<&str>) -> String {
+    let t = text.to_lowercase();
+    let wants_set = Regex::new(r"sun\s?sets?|sundown|sun goes down").is_ok_and(|r| r.is_match(&t));
+    let wants_rise = Regex::new(r"sun\s?rises?|sunup|sun comes up").is_ok_and(|r| r.is_match(&t));
+    let (rise, set) = match (wants_rise, wants_set) {
+        (true, false) => (true, false),
+        (false, true) => (false, true),
+        _ => (true, true),
+    };
+    let (offset, day_word) = if t.contains("day after tomorrow") {
+        (2, "the day after tomorrow")
+    } else if t.contains("tomorrow") {
+        (1, "tomorrow")
+    } else if t.contains("yesterday") {
+        (-1, "yesterday")
+    } else {
+        (0, "today")
+    };
+
+    // A place said in the sentence wins, then the saved place.
+    let said_unknown = Regex::new(
+        r"\b(?:in|at|for)\s+(?:the\s+)?([a-z][a-z .'-]*?)(?:\s+(?:today|tomorrow|tonight|yesterday|please)\b|[?.!,]|$)",
+    )
+    .ok()
+    .and_then(|r| r.captures(&t).map(|c| c[1].trim().to_string()))
+    .filter(|w| {
+        !w.is_empty()
+            && !matches!(
+                w.as_str(),
+                "the evening" | "evening" | "morning" | "the morning" | "my city" | "my place" | "here"
+            )
+    });
+    let spot = match find_place(&t) {
+        Some(p) => p,
+        None => match said_unknown {
+            Some(name) if default_place.is_none_or(|d| !d.to_lowercase().contains(&name)) => {
+                return format!(
+                    "I don't know where {} is yet. Try a bigger city nearby.",
+                    title(&name)
+                );
+            }
+            _ => {
+                let Some(d) = default_place else {
+                    return NO_PLACE.to_string();
+                };
+                let key = d.split(',').next().unwrap_or(d).trim().to_lowercase();
+                match sun::place(&key) {
+                    Some(p) => p,
+                    None => {
+                        return format!(
+                            "I don't know where {} is yet. Say a bigger city nearby, like “sunset in Pune”.",
+                            d.trim()
+                        )
+                    }
+                }
+            }
+        },
+    };
+    let (name, lat, lon, zone) = *spot;
+    let Ok(tz) = zone.parse::<Tz>() else {
+        return NO_PLACE.to_string();
+    };
+    let Some(date) = now
+        .with_timezone(&tz)
+        .date_naive()
+        .checked_add_signed(Duration::days(offset))
+    else {
+        return NO_PLACE.to_string();
+    };
+
+    let mut parts: Vec<String> = Vec::new();
+    for (wanted, is_rise, noun) in [(rise, true, "Sunrise"), (set, false, "Sunset")] {
+        if !wanted {
+            continue;
+        }
+        let part = match sun::sun_event(date, lat, lon, tz, is_rise) {
+            sun::SunEvent::At(when) => {
+                // Round to the nearest minute, as published tables do.
+                let rounded = when + Duration::seconds(30);
+                let verb = if when <= now { "was" } else { "is" };
+                format!(
+                    "{} {} at {}",
+                    noun.to_lowercase(),
+                    verb,
+                    rounded.with_timezone(&tz).format("%-I:%M %p")
+                )
+            }
+            sun::SunEvent::PolarNight => {
+                return format!(
+                    "There is no sunrise or sunset in {} {day_word}: the sun stays below the horizon all day (polar night).",
+                    title(name)
+                )
+            }
+            sun::SunEvent::PolarDay => {
+                return format!(
+                    "There is no sunrise or sunset in {} {day_word}: the sun stays up all day (midnight sun).",
+                    title(name)
+                )
+            }
+            sun::SunEvent::NoneToday => {
+                format!("there is no {} {day_word}", noun.to_lowercase())
+            }
+        };
+        parts.push(part);
+    }
+    let body = parts.join("; ");
+    format!("In {} {day_word}: {body}.", title(name))
+}
+
+// ---------------------------------------------------------------------------
 // Time zones
 // ---------------------------------------------------------------------------
 
@@ -526,6 +695,8 @@ fn time_in(text: &str, now: DateTime<Utc>) -> Option<String> {
     // The longest city name found in the request wins ("new york" over "york").
     let hit = CITIES
         .iter()
+        .copied()
+        .chain(sun::PLACES.iter().map(|p| (p.0, p.3)))
         .filter(|(name, _)| {
             let re = Regex::new(&format!(r"\b{}\b", regex::escape(name))).ok();
             re.is_some_and(|r| r.is_match(&t))
@@ -664,6 +835,115 @@ mod tests {
             moon_answer("when is the next full moon", at(2026, 1, 1, 0, 0)).contains("full moon")
         );
         assert!(moon_answer("next new moon", at(2026, 1, 1, 0, 0)).contains("new moon"));
+    }
+
+    // --- sun and almanac ---
+
+    #[test]
+    fn sunset_in_a_named_city_uses_that_citys_zone() {
+        // 9 Nov 2026 03:00 UTC = 08:30 IST. Published Mumbai sunset 18:01:59, sunrise 06:42:35.
+        let a = sun_answer("sunrise tomorrow in Mumbai", at(2026, 11, 9, 3, 0), None);
+        assert!(
+            a.starts_with("In Mumbai tomorrow: sunrise is at 6:4"),
+            "{a}"
+        );
+        let b = sun_answer(
+            "when does the sun set in Mumbai",
+            at(2026, 11, 9, 3, 0),
+            None,
+        );
+        assert_eq!(b, "In Mumbai today: sunset is at 6:02 PM.");
+    }
+
+    #[test]
+    fn past_events_use_was_and_both_are_given_for_sun_times() {
+        let a = sun_answer("sun times in Mumbai", at(2026, 11, 9, 14, 0), None);
+        assert_eq!(
+            a,
+            "In Mumbai today: sunrise was at 6:43 AM; sunset was at 6:02 PM."
+        );
+    }
+
+    #[test]
+    fn no_place_uses_the_saved_place_or_asks() {
+        let now = at(2026, 11, 9, 3, 0);
+        let a = sun_answer("when does the sun set today", now, Some("Pune"));
+        assert!(a.starts_with("In Pune today: sunset is at "), "{a}");
+        let b = sun_answer("when does the sun set today", now, Some("Pune, India"));
+        assert_eq!(a, b);
+        let ask = sun_answer("when does the sun set today", now, None);
+        assert!(ask.starts_with("Which city?"), "{ask}");
+        let unknown = sun_answer("when does the sun set today", now, Some("Atlantis"));
+        assert!(
+            unknown.contains("don't know where Atlantis is"),
+            "{unknown}"
+        );
+    }
+
+    #[test]
+    fn an_unknown_said_place_is_not_swapped_for_the_saved_one() {
+        let a = sun_answer("sunset in Atlantis", at(2026, 11, 9, 3, 0), Some("Pune"));
+        assert!(a.contains("don't know where Atlantis is"), "{a}");
+    }
+
+    #[test]
+    fn polar_night_and_midnight_sun_give_a_plain_message() {
+        let a = sun_answer("sunrise in Tromso", at(2026, 12, 21, 12, 0), None);
+        assert!(a.contains("polar night"), "{a}");
+        let b = sun_answer("sunset in Tromso", at(2026, 6, 21, 12, 0), None);
+        assert!(b.contains("midnight sun"), "{b}");
+    }
+
+    #[test]
+    fn almanac_picks_moon_or_sun_from_the_sentence() {
+        let now = at(2026, 1, 1, 0, 0);
+        assert!(almanac("When is the next full moon?", now, None)
+            .unwrap()
+            .contains("full moon"));
+        assert!(almanac("full moon when", now, None)
+            .unwrap()
+            .contains("full moon"));
+        assert!(almanac("sunrise in Delhi", now, None)
+            .unwrap()
+            .contains("Delhi"));
+        assert!(almanac("what is the capital of France", now, None).is_none());
+        assert!(
+            almanac("remind me on sunday", now, None).is_none(),
+            "sunday is not the sun"
+        );
+    }
+
+    #[test]
+    fn the_old_moon_action_and_the_new_ones_work_through_the_connector() {
+        let c =
+            LocalCalc::with_now(|| at(2026, 11, 9, 3, 0)).with_default_place(Some("Pune".into()));
+        let a: Args = [("text".to_string(), "when is the next full moon".to_string())].into();
+        assert!(c.execute("moon", &a).unwrap().0["message"].contains("full moon"));
+        assert!(c.execute("almanac", &a).unwrap().0["message"].contains("full moon"));
+        let s: Args = [("text".to_string(), "sunset today".to_string())].into();
+        assert!(c.execute("almanac", &s).unwrap().0["message"].starts_with("In Pune today"));
+        assert!(c.check("almanac", &s).unwrap());
+        let bad: Args = [("text".to_string(), "hello".to_string())].into();
+        assert!(!c.check("almanac", &bad).unwrap());
+    }
+
+    #[test]
+    fn the_place_can_be_read_live() {
+        use std::sync::{Arc, Mutex};
+        let saved = Arc::new(Mutex::new(Some("Delhi".to_string())));
+        let s2 = saved.clone();
+        let c = LocalCalc::with_now(|| at(2026, 11, 9, 3, 0))
+            .with_place_source(move || s2.lock().unwrap().clone());
+        let a: Args = [("text".to_string(), "sunset".to_string())].into();
+        assert!(c.execute("almanac", &a).unwrap().0["message"].starts_with("In Delhi"));
+        *saved.lock().unwrap() = Some("Pune".into());
+        assert!(c.execute("almanac", &a).unwrap().0["message"].starts_with("In Pune"));
+    }
+
+    #[test]
+    fn new_cities_also_work_for_time_in() {
+        let a = time_in("time in Pune", at(2026, 1, 1, 0, 0)).unwrap();
+        assert!(a.starts_with("It's 5:30 AM in Pune"), "{a}");
     }
 
     // --- zones ---

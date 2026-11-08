@@ -55,10 +55,29 @@ fn parse_utc(s: &str) -> Option<i64> {
 
 /// Show every due reminder with `notify` (which returns whether it worked) and
 /// mark it done. Returns how many were handled.
+///
+/// A repeating reminder is moved to its next time instead (same row, so Undo
+/// still removes the whole series). The next time is always after `now_utc`,
+/// so a computer that was off for several periods shows one notice, not a burst.
 pub fn fire_due(
     store: &Store,
     now_utc: &str,
     notify: &mut dyn FnMut(&Notice) -> bool,
+) -> Result<usize, StoreError> {
+    fire_due_with(
+        store,
+        now_utc,
+        notify,
+        &jitmo_connectors::repeat::next_due_local,
+    )
+}
+
+/// [`fire_due`] with the next-time rule given: `next(rule, due_at, now_utc)`.
+pub fn fire_due_with(
+    store: &Store,
+    now_utc: &str,
+    notify: &mut dyn FnMut(&Notice) -> bool,
+    next: &dyn Fn(&str, &str, &str) -> Option<String>,
 ) -> Result<usize, StoreError> {
     let now = parse_utc(now_utc);
     let due = store.due_reminders(now_utc)?;
@@ -70,7 +89,16 @@ pub fn fire_due(
         if !notify(&notice_for(r, late)) {
             eprintln!("could not show the notification for reminder {}", r.id);
         }
-        store.mark_reminder_done(r.id)?;
+        let following = r
+            .repeat
+            .as_deref()
+            .and_then(|rule| next(rule, &r.due_at, now_utc))
+            // A rule that cannot move forward ends the reminder, never loops it.
+            .filter(|t| t.as_str() > now_utc);
+        match following {
+            Some(t) => store.reschedule_reminder(r.id, &t)?,
+            None => store.mark_reminder_done(r.id)?,
+        }
     }
     Ok(due.len())
 }
@@ -140,6 +168,101 @@ mod tests {
             fire_due(&s, "2026-11-08T12:00:02Z", &mut |_| false).unwrap(),
             0
         );
+    }
+
+    fn london(rule: &str, due: &str, now: &str) -> Option<String> {
+        jitmo_connectors::repeat::next_due_in_zone(rule, due, now, "Europe/London")
+    }
+
+    fn new_york(rule: &str, due: &str, now: &str) -> Option<String> {
+        jitmo_connectors::repeat::next_due_in_zone(rule, due, now, "America/New_York")
+    }
+
+    #[test]
+    fn a_repeating_reminder_is_rearmed_not_finished() {
+        let s = Store::open_in_memory().unwrap();
+        let id = s
+            .add_reminder_repeating("2027-01-10T09:00:00Z", "Take vitamins", Some("daily 09:00"))
+            .unwrap();
+        let mut n = 0;
+        fire_due_with(
+            &s,
+            "2027-01-10T09:00:03Z",
+            &mut |_| {
+                n += 1;
+                true
+            },
+            &london,
+        )
+        .unwrap();
+        assert_eq!(n, 1);
+        let pending = s.pending_reminders().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, id);
+        assert_eq!(pending[0].due_at, "2027-01-11T09:00:00Z");
+        // Not due again until tomorrow.
+        assert_eq!(
+            fire_due_with(&s, "2027-01-10T09:00:10Z", &mut |_| true, &london).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn closed_for_many_periods_fires_once_and_schedules_a_future_time() {
+        let s = Store::open_in_memory().unwrap();
+        s.add_reminder_repeating("2027-01-10T09:00:00Z", "Water", Some("every 120m"))
+            .unwrap();
+        let mut shown = 0;
+        let now = "2027-01-13T09:30:00Z";
+        let fired = fire_due_with(
+            &s,
+            now,
+            &mut |_| {
+                shown += 1;
+                true
+            },
+            &london,
+        )
+        .unwrap();
+        assert_eq!((fired, shown), (1, 1));
+        let next = s.pending_reminders().unwrap()[0].due_at.clone();
+        assert_eq!(next, "2027-01-13T11:00:00Z");
+        assert!(next.as_str() > now);
+        assert_eq!(fire_due_with(&s, now, &mut |_| true, &london).unwrap(), 0);
+
+        let d = Store::open_in_memory().unwrap();
+        d.add_reminder_repeating("2027-01-01T09:00:00Z", "Vitamins", Some("daily 09:00"))
+            .unwrap();
+        fire_due_with(&d, "2027-01-20T15:00:00Z", &mut |_| true, &london).unwrap();
+        assert_eq!(
+            d.pending_reminders().unwrap()[0].due_at,
+            "2027-01-21T09:00:00Z"
+        );
+    }
+
+    #[test]
+    fn daily_rearm_keeps_wall_clock_across_daylight_saving() {
+        let s = Store::open_in_memory().unwrap();
+        // 9:00 EST on Saturday 13 March 2027; clocks go forward the next day.
+        s.add_reminder_repeating("2027-03-13T14:00:00Z", "Vitamins", Some("daily 09:00"))
+            .unwrap();
+        fire_due_with(&s, "2027-03-13T14:00:02Z", &mut |_| true, &new_york).unwrap();
+        assert_eq!(
+            s.pending_reminders().unwrap()[0].due_at,
+            "2027-03-14T13:00:00Z"
+        );
+    }
+
+    #[test]
+    fn a_broken_rule_ends_the_reminder_instead_of_looping() {
+        let s = Store::open_in_memory().unwrap();
+        s.add_reminder_repeating("2027-01-10T09:00:00Z", "x", Some("garbage"))
+            .unwrap();
+        assert_eq!(
+            fire_due_with(&s, "2027-01-10T09:00:03Z", &mut |_| true, &london).unwrap(),
+            1
+        );
+        assert!(s.pending_reminders().unwrap().is_empty());
     }
 
     #[test]

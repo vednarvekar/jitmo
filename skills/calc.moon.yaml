@@ -1,6 +1,6 @@
-id: calc.moon                  # task Q1
+id: calc.moon                  # task Q1 (moon, sunrise, sunset: the connector reads the sentence)
 task: Q1
-version: 1
+version: 2
 category: answers
 capabilities:
   - calc.local
@@ -12,13 +12,17 @@ risk: read_only
 examples:
   - "when is the next full moon"
   - "next new moon"
+  - "when does the sun set today"
+  - "when is sunset"
+  - "sunrise tomorrow in Mumbai"
+  - "what time is sunrise"
 slots: {}
 steps:
   - connector: local_calc
-    action: moon
+    action: almanac
     args: { text: "{request}" }
 check:
   connector: local_calc
-  action: moon
+  action: almanac
   args: { text: "{request}" }
 undo: none
