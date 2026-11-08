@@ -543,3 +543,264 @@ kbd {
     animation: none;
   }
 }
+
+/* ===== Smaller bar ===== */
+.shell {
+  padding: 16px;
+}
+.fx-layer {
+  gap: 10px;
+}
+.bar {
+  padding: 0 10px 0 8px;
+}
+.row {
+  min-height: 46px;
+  gap: 8px;
+}
+.closer {
+  width: 48px;
+  height: 48px;
+}
+.closer svg {
+  width: 18px;
+  height: 18px;
+}
+.tool {
+  width: 32px;
+  height: 32px;
+}
+.tool svg {
+  width: 19px;
+  height: 19px;
+}
+.go {
+  width: 34px;
+  height: 34px;
+}
+.input,
+.status {
+  font-size: 16px;
+  min-height: 34px;
+}
+.chips {
+  padding-top: 8px;
+}
+
+/* ===== Grey orb (replaces the plus) ===== */
+.orb-btn {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: none;
+  transition: transform 0.25s;
+}
+.orb-btn:hover {
+  background: transparent;
+  transform: scale(1.07);
+}
+.orb-btn:active {
+  transform: scale(0.94);
+}
+.grey-orb {
+  position: relative;
+  display: block;
+  border-radius: 50%;
+  overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(circle at 32% 26%, #cfcfd4, #8e8e95 62%, #77777e);
+  box-shadow:
+    inset 0 -3px 6px rgba(0, 0, 0, 0.18),
+    inset 0 2px 4px rgba(255, 255, 255, 0.6),
+    0 1px 3px rgba(0, 0, 0, 0.25);
+}
+/* Light drifting across the sphere. */
+.grey-orb .gl {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(5px);
+  z-index: -1;
+}
+.grey-orb .gl1 {
+  width: 70%;
+  height: 70%;
+  left: -18%;
+  top: -18%;
+  background: rgba(255, 255, 255, 0.85);
+  animation: gl-a 3.4s ease-in-out infinite alternate;
+}
+.grey-orb .gl2 {
+  width: 62%;
+  height: 62%;
+  right: -22%;
+  bottom: -20%;
+  background: rgba(60, 60, 70, 0.45);
+  animation: gl-b 3.4s ease-in-out infinite alternate;
+}
+@keyframes gl-a {
+  to {
+    transform: translate(70%, 55%);
+  }
+}
+@keyframes gl-b {
+  to {
+    transform: translate(-75%, -55%);
+  }
+}
+/* The two white pill eyes morph on a 3.4 s loop: a tall one and a short one,
+   both shifting, then a matching tall pair, as in the reference animation. */
+.grey-orb .geyes {
+  position: absolute;
+  inset: 0;
+}
+.grey-orb .geye {
+  position: absolute;
+  background: #fff;
+  border-radius: 99px;
+  box-shadow: 0 0 3px rgba(255, 255, 255, 0.7);
+  animation: eye-l 3.4s ease-in-out infinite;
+}
+.grey-orb .geye.r {
+  animation-name: eye-r;
+}
+@keyframes eye-l {
+  0%,
+  22% {
+    left: 31%;
+    top: 24%;
+    width: 11%;
+    height: 40%;
+  }
+  30%,
+  46% {
+    left: 25%;
+    top: 40%;
+    width: 11%;
+    height: 17%;
+  }
+  58%,
+  100% {
+    left: 30%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+}
+@keyframes eye-r {
+  0%,
+  22% {
+    left: 55%;
+    top: 40%;
+    width: 22%;
+    height: 14%;
+  }
+  30%,
+  46% {
+    left: 55%;
+    top: 46%;
+    width: 18%;
+    height: 6%;
+  }
+  58%,
+  100% {
+    left: 59%;
+    top: 29%;
+    width: 11%;
+    height: 34%;
+  }
+}
+.grey-orb.working .gl,
+.grey-orb.working .geye {
+  animation-duration: 1.4s;
+}
+.grey-orb.done .geye {
+  animation: none;
+  width: 16%;
+  height: 9%;
+  top: 38%;
+  background: transparent;
+  box-shadow: none;
+  border: 2.4px solid #fff;
+  border-bottom: 0;
+  border-radius: 99px 99px 0 0;
+}
+.grey-orb.done .geye.l {
+  left: 26%;
+}
+.grey-orb.done .geye.r {
+  left: 58%;
+}
+.grey-orb.failed .geye {
+  animation: none;
+  width: 15%;
+  height: 15%;
+  top: 38%;
+  border-radius: 3px;
+  transform: rotate(45deg) scale(0.4, 1.3);
+}
+.grey-orb.failed .geye.l {
+  left: 28%;
+}
+.grey-orb.failed .geye.r {
+  left: 57%;
+}
+
+/* ===== Pop up from behind the taskbar, and back down behind it ===== */
+/* The window sits right on the taskbar's top edge, so sliding the bar down past the
+   bottom of the window makes it vanish behind the taskbar. */
+.shell[data-anim="idle"] .dock,
+.shell[data-anim="idle"] .chips {
+  opacity: 1;
+  transform: translateY(190%);
+}
+.shell[data-anim="in"] .dock {
+  animation: rise 0.72s cubic-bezier(0.2, 1.1, 0.3, 1) backwards;
+}
+.shell[data-anim="in"] .chips {
+  animation: rise 0.72s cubic-bezier(0.2, 1.1, 0.3, 1) 0.08s backwards;
+}
+.shell[data-anim="out"] .dock {
+  animation: sink 0.26s cubic-bezier(0.55, 0, 0.9, 0.5) both;
+}
+.shell[data-anim="out"] .chips {
+  animation: sink 0.2s cubic-bezier(0.55, 0, 0.9, 0.5) both;
+}
+@keyframes rise {
+  0% {
+    transform: translateY(190%);
+    opacity: 1;
+    filter: none;
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+@keyframes sink {
+  to {
+    transform: translateY(190%);
+    opacity: 1;
+    filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-anim="idle"] .dock,
+  .shell[data-anim="idle"] .chips {
+    transform: none;
+    opacity: 0;
+  }
+  .grey-orb .gl,
+  .grey-orb .geye {
+    animation: none;
+  }
+}
+
+/* The glass wrapper triples contrast to sharpen its highlights. Undo that for the
+   orb alone, so it keeps the soft greys of the reference animation. */
+.grey-orb {
+  filter: contrast(0.3333);
+}

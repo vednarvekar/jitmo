@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as bridge from "./bridge";
-import AiOrb, { type Mood } from "./AiOrb";
+import GreyOrb from "./GreyOrb";
+import type { Mood } from "./AiOrb";
 // The React Bits ring orb is kept in ./Orb.tsx; the bar uses AiOrb for now.
 import {
   UNDO_WINDOW_MS,
@@ -21,7 +22,7 @@ const HOVER_GRACE_MS = 2_500;
 /** How many past requests Up/Down can step through. */
 const HISTORY_SIZE = 30;
 /** How long the pop-down animation runs before the window is hidden (see styles.css). */
-const POP_DOWN_MS = 170;
+const POP_DOWN_MS = 260;
 /** One-tap ideas shown under an empty bar. */
 const SUGGESTIONS = ["Open Spotify", "10-minute timer", "Pause music", "18% of 2,450"];
 
@@ -216,21 +217,16 @@ export default function App() {
           <div className="circle-overlay" aria-hidden="true" />
           {/* Any empty part of the pill drags it; the input and buttons do not. */}
           <div className="row" data-tauri-drag-region>
-            {showStatus ? (
-              <AiOrb mood={mood} size={30} />
-            ) : (
-              <button
-                className={`plus${showChips ? " on" : ""}`}
-                aria-label="Suggestions"
-                aria-pressed={showChips}
-                title="Suggestions"
-                onClick={() => setShowChips((v) => !v)}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                </svg>
-              </button>
-            )}
+            {/* The orb stands where the plus was. Clicking it opens the suggestions. */}
+            <button
+              className="orb-btn"
+              aria-label="Suggestions"
+              aria-pressed={showChips}
+              title="Suggestions"
+              onClick={() => setShowChips((v) => !v)}
+            >
+              <GreyOrb mood={mood} size={34} />
+            </button>
 
             {showStatus ? (
               <div
