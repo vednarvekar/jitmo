@@ -21,3 +21,6 @@
 
 ## Decision
 Use the UIA Settings switch for T-tasks that turn DND on/off (S-tasks), verified by read-back. Fallback: open `ms-settings:notifications` and tell the user to flip it.
+
+## UX note (from user testing)
+The Settings window visibly opens and closes (~3-5 s), which looks like a glitch. For Phase 2: minimize or move the window off-screen right after launch (untested), and show "Turning on Do Not Disturb..." then a result line in the command bar. Keep the read-back check.
