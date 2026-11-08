@@ -41,8 +41,8 @@ use core_client::CoreClient;
 const BAR: &str = "bar";
 /// Window size in logical pixels. The window is larger than the pill: the extra
 /// 14 px on every side is transparent and holds the pill's shadow (see `.shell` in styles.css).
-const BAR_WIDTH: f64 = 640.0;
-const BAR_START_HEIGHT: f64 = 88.0;
+const BAR_WIDTH: f64 = 648.0;
+const BAR_START_HEIGHT: f64 = 96.0;
 /// Gap between the pill's shadow margin and the taskbar, in logical pixels.
 const TASKBAR_GAP: f64 = 0.0;
 /// Ignore "moved" events this long after the app moved the window itself.

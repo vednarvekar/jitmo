@@ -1,29 +1,20 @@
-/* Dark monochrome "liquid glass" command bar: black and grey glass, soft ambient
-   light, glossy rim. Layout: a wide pill (plus, input, voice icons) and a
-   separate round close button.
+/* Light "liquid glass" command bar.
 
-   The window is transparent. `.shell` is its 14 px margin, which holds the
-   shadows. The glass is built from layers because a web view cannot blur the
-   desktop behind it. */
+   The glass recipe (double border, layered inset highlights, a blurred dark
+   ring below, blurred white corner highlights, all sharpened by
+   `filter: contrast(3)` on the wrapper) comes from the liquid-glass button the
+   project owner supplied. It is adapted so it stretches to any width: the
+   original sized its effect layers with fixed --w/--h values, here they use
+   `inset`. The page is transparent; `.shell` is its margin, which holds the
+   blur and shadow. */
 :root {
-  color-scheme: dark;
-  --ink: rgba(255, 255, 255, 0.94);
-  --muted: rgba(255, 255, 255, 0.56);
-  --ok: #7fe3a8;
-  --error: #ff9a9a;
-  --rim: rgba(255, 255, 255, 0.14);
-  --field: rgba(255, 255, 255, 0.07);
-  --glass:
-    linear-gradient(180deg, rgba(62, 62, 68, 0.97) 0%, rgba(20, 20, 24, 0.99) 44%, rgba(9, 9, 11, 1) 100%);
-  --glass-shadow:
-    0 18px 38px rgba(0, 0, 0, 0.55),
-    0 3px 8px rgba(0, 0, 0, 0.4),
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.45),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.1),
-    inset 1px 0 0 rgba(255, 255, 255, 0.13),
-    inset -1px 0 0 rgba(255, 255, 255, 0.09),
-    inset 0 0 28px rgba(255, 255, 255, 0.05);
-  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.2 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  color-scheme: light;
+  --ink: #3e3e3e;
+  --muted: rgba(62, 62, 62, 0.55);
+  --ok: #1d7a49;
+  --error: #b52a2a;
+  --rim: rgba(51, 51, 51, 0.1);
+  --field: rgba(255, 255, 255, 0.55);
 }
 
 html,
@@ -31,109 +22,129 @@ body {
   margin: 0;
   background: transparent;
   color: var(--ink);
-  font: 14px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 14px "Segoe UI Variable Text", system-ui, -apple-system, "Segoe UI", sans-serif;
   overflow: hidden;
   user-select: none;
 }
 
 .shell {
-  padding: 14px;
+  padding: 18px;
   box-sizing: border-box;
 }
 
 .dock {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  display: block;
 }
 
-/* ---------- glass: the pill and the close button ---------- */
-.bar,
-.closer {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  box-sizing: border-box;
-  background: var(--glass);
-  box-shadow: var(--glass-shadow);
+/* The wrapper that makes the blurred highlight layers crisp. */
+.fx-layer {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  filter: contrast(3);
 }
+
+/* ---------- the glass box (pill and close button) ---------- */
+.box {
+  position: relative;
+  z-index: 500;
+  box-sizing: border-box;
+  border: 1px double rgba(51, 51, 51, 0.08);
+  box-shadow:
+    inset 2px -2px 1px -1px rgba(255, 255, 255, 0.9),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.9),
+    inset 6px -6px 1px -6px rgba(255, 255, 255, 0.55),
+    inset -6px 6px 1px -6px rgba(255, 255, 255, 0.55),
+    inset 0 0 2px rgba(0, 0, 0, 0.8),
+    0 4px 8px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  filter: brightness(0.9);
+  --tr: 15%;
+}
+/* A blurred dark ring low in the glass: the soft inner shadow. */
+.box::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 35%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  border-radius: inherit;
+  border: 1px solid rgba(0, 0, 0, 0.9);
+  filter: blur(8px);
+  pointer-events: none;
+}
+/* Blurred white highlights in two opposite corners. */
+.box::after {
+  content: "";
+  position: absolute;
+  z-index: 501;
+  inset: 0;
+  border-radius: inherit;
+  filter: blur(7px);
+  background: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.8) 0%,
+    transparent var(--tr),
+    transparent calc(100% - var(--tr)),
+    rgba(255, 255, 255, 0.8) 100%
+  );
+  pointer-events: none;
+}
+.box .circle-overlay {
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: inherit;
+  filter: blur(1px);
+  pointer-events: none;
+}
+
 .bar {
   flex: 1;
   min-width: 0;
-  border-radius: 999px;
+  border-radius: 9999px;
   display: flex;
   flex-direction: column;
   padding: 0 14px 0 14px;
+  --tr: 12%;
 }
 .bar[data-phase="confirm"],
 .bar[data-phase="choice"] {
-  border-radius: 30px;
+  border-radius: 32px;
   padding-bottom: 12px;
 }
-/* Ambient light: a bright edge at the top-left and a soft glow in the middle. */
-.bar::before,
-.closer::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background:
-    radial-gradient(55% 110% at 8% -25%, rgba(255, 255, 255, 0.2), transparent 60%),
-    radial-gradient(34% 90% at 50% 105%, rgba(255, 255, 255, 0.11), transparent 70%),
-    var(--grain);
-  opacity: 0.55;
-  pointer-events: none;
-}
-/* Glossy rim: bright on the upper left, fading, catching light again at the far side. */
-.bar::after,
-.closer::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1.3px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.06) 40%, rgba(255, 255, 255, 0.04) 62%, rgba(255, 255, 255, 0.26));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-/* A slow glint that crosses the glass now and then. */
-.glint {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.22) 50%, transparent 60%) 170% 0 / 260% 100% no-repeat;
-  animation: glint 9s ease-in-out 1.2s infinite;
-  pointer-events: none;
-}
-@keyframes glint {
-  0%,
-  60% {
-    background-position: 170% 0;
-  }
-  88%,
-  100% {
-    background-position: -70% 0;
-  }
+.bar > *:not(.circle-overlay) {
+  position: relative;
+  z-index: 600;
 }
 
 .closer {
   flex-shrink: 0;
-  width: 58px;
-  height: 58px;
+  width: 60px;
+  height: 60px;
   padding: 0;
-  border: 0;
   border-radius: 50%;
   display: grid;
   place-items: center;
   color: var(--ink);
   cursor: pointer;
+  transition: 0.25s;
+}
+.closer svg {
+  position: relative;
+  z-index: 600;
 }
 .closer:hover {
-  filter: brightness(1.25);
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-3px);
+}
+.closer:active {
+  transform: scale(0.94);
 }
 
 .row {
@@ -158,24 +169,33 @@ body {
   color: var(--ink);
   background: transparent;
   cursor: pointer;
-  box-shadow: none;
+}
+.plus {
+  transition: 0.25s;
 }
 .plus:hover,
 .plus.on {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.07);
 }
 .tool {
   cursor: default;
-  opacity: 0.92;
+  opacity: 0.85;
 }
-.tool:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
+/* Send: the dark round button with a light chevron, as in the supplied design. */
 .go {
-  color: #101014;
-  background: linear-gradient(180deg, #ffffff, #d9dae2);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  width: 40px;
+  height: 40px;
+  color: #f5f5f5;
+  background: #3e3e3e;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);
+  transition: 0.25s;
   animation: go-in 0.18s ease-out both;
+}
+.go:hover {
+  transform: scale(1.1);
+}
+.go:active {
+  transform: scale(0.94);
 }
 @keyframes go-in {
   from {
@@ -193,7 +213,7 @@ body {
   min-height: 38px;
   padding: 6px 2px;
   font: inherit;
-  font-size: 17px;
+  font-size: 18px;
   color: var(--ink);
   background: transparent;
   border: 0;
@@ -225,9 +245,6 @@ body {
 }
 .status .message.muted {
   color: var(--muted);
-}
-.status.done .message {
-  color: var(--ink);
 }
 .status.failed .message {
   color: var(--error);
@@ -264,26 +281,27 @@ body {
 .chip {
   font: inherit;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.65);
   border: 0;
   border-radius: 14px;
   padding: 5px 12px;
   cursor: pointer;
   text-align: left;
   box-shadow: inset 0 0 0 1px var(--rim);
+  transition: 0.2s;
 }
 .result button:hover,
 .undo:hover,
 .chip:hover {
-  background: rgba(255, 255, 255, 0.17);
+  background: #fff;
 }
 .result button.primary {
-  color: #101014;
-  background: linear-gradient(180deg, #ffffff, #d9dae2);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  color: #f5f5f5;
+  background: #3e3e3e;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);
 }
 button:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline: 2px solid #3e3e3e;
   outline-offset: 2px;
 }
 kbd {
@@ -298,7 +316,7 @@ kbd {
   flex-wrap: nowrap;
   overflow: hidden;
   gap: 6px;
-  padding: 10px 6px 0;
+  padding: 10px 8px 0;
 }
 .chip {
   flex-shrink: 0;
@@ -307,8 +325,12 @@ kbd {
   font-size: 12px;
   line-height: 1.5;
   border-radius: 999px;
-  background: var(--glass);
-  box-shadow: var(--glass-shadow);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.8),
+    0 3px 10px rgba(0, 0, 0, 0.18);
+}
+.chip:hover {
+  transform: translateY(-2px);
 }
 
 /* ---------- AI orb: drifting colour with eyes that change with its mood ---------- */
@@ -321,7 +343,7 @@ kbd {
   isolation: isolate;
   background: #c9dcff;
   box-shadow:
-    0 0 16px rgba(120, 150, 255, 0.45),
+    0 0 14px rgba(120, 150, 255, 0.4),
     inset 0 -5px 9px rgba(40, 50, 170, 0.4),
     inset 0 3px 6px rgba(255, 255, 255, 0.75);
 }
@@ -396,7 +418,6 @@ kbd {
   border-radius: 3px;
   background: #15183a;
   animation: blink 4.6s infinite;
-  transform-origin: center;
 }
 .ai-orb .eye:nth-child(2) {
   animation-delay: 0.05s;
@@ -411,7 +432,6 @@ kbd {
     transform: scaleY(0.1);
   }
 }
-/* thinking: narrowed, slanted eyes */
 .ai-orb.working .eye {
   height: 3px;
   width: 30%;
@@ -424,7 +444,6 @@ kbd {
 .ai-orb.working .eye:last-child {
   transform: rotate(-14deg);
 }
-/* done: happy arcs */
 .ai-orb.done .eye {
   background: transparent;
   height: 22%;
@@ -434,7 +453,6 @@ kbd {
   border-bottom: 0;
   animation: none;
 }
-/* failed: crossed eyes */
 .ai-orb.failed .eye {
   background: transparent;
   width: 24%;
@@ -481,7 +499,6 @@ kbd {
 @keyframes pop-in {
   0% {
     opacity: 0;
-    clip-path: inset(0 calc(100% - 58px) 0 0 round 999px);
     transform: translateY(16px) scale(0.93);
     filter: blur(5px);
   }
@@ -490,14 +507,12 @@ kbd {
     filter: blur(0);
   }
   100% {
-    clip-path: inset(-20px -20px -40px -20px round 999px);
     transform: translateY(0) scale(1);
   }
 }
 @keyframes pop-out {
   to {
     opacity: 0;
-    clip-path: inset(0 calc(100% - 58px) 0 0 round 999px);
     transform: translateY(10px) scale(0.95);
     filter: blur(4px);
   }
@@ -515,11 +530,14 @@ kbd {
 }
 @media (prefers-reduced-motion: reduce) {
   .shell[data-anim] .dock,
-  .shell[data-anim] .chips {
+  .shell[data-anim] .chips,
+  .closer,
+  .go,
+  .chip {
     animation-duration: 0.01s;
     animation-delay: 0s;
+    transition: none;
   }
-  .glint,
   .ai-orb .blob,
   .ai-orb .eye {
     animation: none;

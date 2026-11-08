@@ -211,8 +211,9 @@ export default function App() {
   return (
     <div className="shell" ref={rootRef} data-anim={anim}>
       <div className="dock" data-tauri-drag-region onMouseEnter={() => (hover.current = true)} onMouseLeave={() => (hover.current = false)} onMouseDown={() => (dragUntil.current = Date.now() + 2_000)}>
-        <div className="bar" data-phase={state.phase} data-tauri-drag-region>
-          <span className="glint" aria-hidden="true" />
+        <div className="fx-layer">
+        <div className="bar box" data-phase={state.phase} data-tauri-drag-region>
+          <div className="circle-overlay" aria-hidden="true" />
           {/* Any empty part of the pill drags it; the input and buttons do not. */}
           <div className="row" data-tauri-drag-region>
             {showStatus ? (
@@ -279,7 +280,7 @@ export default function App() {
             {canSend ? (
               <button className="go" aria-label="Run" title="Run (Enter)" onClick={() => send(text)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 19V6M6 11l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
             ) : (
@@ -332,11 +333,13 @@ export default function App() {
           )}
         </div>
 
-        <button className="closer" aria-label="Close" title="Close (Esc)" onClick={closeBar}>
+        <button className="closer box" aria-label="Close" title="Close (Esc)" onClick={closeBar}>
           <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
+          <div className="circle-overlay" aria-hidden="true" />
         </button>
+      </div>
       </div>
 
       {showChips && state.phase === "idle" && text === "" && (
