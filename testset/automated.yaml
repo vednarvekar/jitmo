@@ -86,3 +86,9 @@ T47: { request: "Turn on Bluetooth.", expect: ran, skill: system.radio, calls: [
 T49: { request: "Take a screenshot.", expect: ran, skill: system.screenshot, calls: [{ connector: system_controls, action: screenshot }] }
 T57: { known_failing: "the router sends loose volume wording to media control (A3, 0.86) instead of S1; the SP1 near-neighbour confusion. Needs real-log retraining.", needs_model: true, request: "louder", expect: ran, skill: system.volume, calls: [{ connector: system_controls, action: adjust, args: { text: "louder" } }] }
 T62: { needs_model: true, request: "wifi off", expect: ran, skill: system.radio, calls: [{ connector: system_controls, action: radio, args: { text: "wifi off" } }] }
+
+# Web lookup (fake connector here; answers and the offline message are covered by the
+# connector's unit tests, offline_gives_the_exact_message for T100).
+T19: { request: "Will it rain tomorrow?", expect: ran, skill: web.weather, calls: [{ connector: web_lookup, action: weather, args: { text: "Will it rain tomorrow?" } }] }
+T20: { request: "What's the capital of Australia?", expect: ran, skill: web.fact, calls: [{ connector: web_lookup, action: fact, args: { text: "What's the capital of Australia?" } }] }
+T56: { needs_model: true, request: "gonna rain tmrw?", expect: ran, skill: web.weather, calls: [{ connector: web_lookup, action: weather, args: { text: "gonna rain tmrw?" } }] }

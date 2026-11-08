@@ -205,6 +205,8 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/system.lock.yaml"),
         include_str!("../../../skills/system.radio.yaml"),
         include_str!("../../../skills/system.screenshot.yaml"),
+        include_str!("../../../skills/web.weather.yaml"),
+        include_str!("../../../skills/web.fact.yaml"),
         include_str!("../../../skills/stub.send.yaml"),
     ]
     .iter()
@@ -273,6 +275,14 @@ fn connectors(db: &std::path::Path) -> HashMap<String, Arc<dyn Connector>> {
             )
         })
         .collect();
+    // The place for "will it rain tomorrow" when none is said (setting `default_place`).
+    let default_place = Store::open(db, None)
+        .ok()
+        .and_then(|s| s.get_setting("default_place").ok().flatten());
+    map.insert(
+        "web_lookup".into(),
+        Arc::new(jitmo_connectors::web_lookup::WebLookup::new(default_place)),
+    );
     #[cfg(windows)]
     map.insert(
         "spotify".into(),
