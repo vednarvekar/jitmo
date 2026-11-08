@@ -1,5 +1,7 @@
 # SP5 - WhatsApp desktop drive
 
+**UPDATE 8 Nov: the user saw the deep link open WhatsApp at the chat for the fictitious test number, so the "open chat, user presses Send" fallback works (informal, no Send pressed). Treat as WORKING for that fallback; auto-send stays out of V1.**
+
 **Verdict: BLOCKED - needs a logged-in, visible WhatsApp window (partial evidence only). Target (20/20 sends) NOT measured; no Send was ever pressed.**
 
 ## Evidence (2026-11-07, Win11 25H2)

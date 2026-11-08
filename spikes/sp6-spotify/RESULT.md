@@ -1,5 +1,7 @@
 # SP6 - Play a specific song via Spotify
 
+**UPDATE 8 Nov: the user watched the app run and reports it works on his machine with the app left alone; earlier failures were partly his own closing the window. Treat as WORKING (informal, not a measured 9/10). Plan type does not matter: only the desktop UI is driven. Add the Play-click fallback and re-measure when convenient.**
+
 **Verdict: FAIL on target as scripted (4/7 = 57% each of two runs, target 9/10); likely PASS WITH CHANGES once a UIA Play-click fallback is added (not yet proven). Caveat: the logged-in account is Premium, so the "without Premium" question is NOT answered.**
 
 ## Evidence

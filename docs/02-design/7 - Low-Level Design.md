@@ -116,7 +116,7 @@ and [00.11 Developer Platform](../00-vision/00.11%20Developer%20Platform.md).
 
 ## Router and extractor
 
-Both run on the shared Tier 0 encoder in one pass. Input is the request
+The router runs on a small encoder (all-MiniLM-L6-v2 int8, ONNX). The extractor is a separate model (GLiNER-small int8) plus rules for dates, times, durations, numbers and settings, and runtime gazetteers (contacts, installed apps, file index). Both are always loaded (Tier 0). Input is the request
 text plus a short context note (open app, selected item).
 
 ``` json
@@ -140,11 +140,11 @@ text plus a short context note (open app, selected item).
   -----------------------------------------------------------------------
   Condition                           Action
   ----------------------------------- -----------------------------------
-  Top task 0.85 or higher, not        Use that skill directly
+  Top task 0.80 or higher, not        Use that skill directly
   chained                             
 
-  Top task 0.50--0.85, or chained     Send to the planner with the top 5
-                                      skills
+  Top task 0.50--0.80, or chained     Ask to confirm the top task; chains use a saved template, else the planner
+                                      (SP1: 0.80+ was 96% correct)
 
   Out of scope 0.60 or higher         Decline and explain
 

@@ -10,7 +10,7 @@ The engine is a light desktop app that runs every request on the laptop, using s
 
 1. **Code does most of the work.** Models only answer narrow questions, like “which task?” or “which contact?”
 2. **Known tasks skip the big model.** Ready-made skills cover most requests.
-3. **Load models only when needed.** One shared base with small swappable adapters keeps memory low.
+3. **Load models only when needed.** Two small always-on models (router encoder, extractor); the big model loads only for new chains.
 4. **Official APIs first.** The accessibility tree is the fallback. No screenshots in V1.
 5. **Check every step.** Code confirms each action actually worked.
 6. **Safety by risk level.** Anything that sends or shares needs a confirm.
@@ -29,7 +29,7 @@ flowchart TD
     F[Policy engine<br/>Runs now, adds Undo, or asks to confirm]
     G[Executor<br/>Calls app APIs and Windows]
     H[Verifier<br/>Checks every step really worked]
-    I[Model scheduler, under 2GB<br/>Shared encoder Tier 0; base model + adapters Tier 1]
+    I[Model scheduler, under 2GB<br/>Router + extractor Tier 0; base model + adapters Tier 1]
     J[Context service<br/>Selected file, open app, recent files]
     K[Apps and Windows<br/>Gmail, Outlook, Teams, WhatsApp, Spotify]
     L[Local store, encrypted<br/>Memory, defaults and action log]
@@ -81,8 +81,8 @@ The core, models and OS adapters stay native for speed. Every plugin, whether a 
 |---|---|---|---|
 | Command bar | Takes typed requests, shows confirms, results and Undo | Tauri (uses the OS web view) | ~40MB (likely higher because of the web view; measure in SP8 and SP11) |
 | Core engine | Runs the whole flow and the background service | Rust | ~30MB |
-| Router | Picks the task, or “out of scope” | Small encoder + classifier head (ONNX Runtime) | Shared ~150MB |
-| Extractor | Pulls out names, files, times, places | Same encoder, extraction head | Shared |
+| Router | Picks the task, or “out of scope” | Small encoder + classifier head (ONNX Runtime, int8) | ~100MB |
+| Extractor | Pulls out names, files, times, places | GLiNER-small int8 (ONNX) + rules + runtime gazetteers | ~200-700MB, to re-measure |
 | Resolver | Turns “this file” or “Ved” into the exact item | Rust code + context service + memory | Small |
 | Skill library | Ready-made workflows for the 49 tasks | Declarative skill files (YAML) | Small |
 | Planner | Builds plans for chained or new requests | 1–3B model, 4-bit, with adapters (llama.cpp) | ~1–1.8GB, on demand |
@@ -114,7 +114,7 @@ Two tiers. Tier 0 is always loaded and handles most requests. Tier 1 loads only 
 
 | Tier | Model | Jobs | When loaded | Size |
 |---:|---|---|---|---|
-| 0 | Small shared encoder (~30–100M) | Router, skill retrieval, extraction, email urgency | Always | ~150MB |
+| 0 | Router encoder (~25M) + GLiNER-small extractor (~170M) | Routing, skill retrieval, extraction | Always | ~300-800MB, SP8 to confirm |
 | 1 | One 1–3B base model, 4-bit | Planner, summaries, reply drafts | On demand, unloaded after idle time | ~1–1.8GB |
 | 1 adapters | Adapters on the base model (~10–50MB each) | One per job: planner, summarizer, reply writer | Swapped in with the job | Small |
 
