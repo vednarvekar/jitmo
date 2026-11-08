@@ -5,3 +5,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[features]
+# Real encryption (SQLCipher). Needs OpenSSL built from source, which is
+# currently blocked on the dev PC by Windows Application Control (see Decision Log).
+# Without it the store is plain SQLite and refuses to take a key.
+sqlcipher = ["rusqlite/bundled-sqlcipher-vendored-openssl"]
+
+[dependencies]
+rusqlite = { version = "0.37", features = ["bundled"] }
+thiserror.workspace = true
