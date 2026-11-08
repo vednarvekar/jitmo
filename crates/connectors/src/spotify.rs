@@ -4,10 +4,12 @@
 //! controls, the same ones the keyboard media keys use, aimed at the Spotify
 //! session only. No keys or clicks are sent.
 //!
-//! Playing a named song or artist is only partly possible: the SP6 spike found
-//! that opening a Spotify link does not reliably start playback, and the
-//! Spotify web API needs a sign-in. So `search` opens Spotify on the search for
-//! the name, and the user presses Play. The answer says so.
+//! Playing a named song or artist: the SP6 spike found that opening a Spotify
+//! link does not reliably start playback, and the Spotify web API needs a
+//! sign-in. So `search` opens Spotify on the search for the name, then invokes
+//! the first result's Play button through UI Automation (no keys, no clicks),
+//! then reads the media session back. Only a read-back of Playing is reported
+//! as playing; otherwise the answer asks the user to press Play.
 
 use crate::system_controls::ScriptRunner;
 use crate::{ActionSpec, Args, ConnError, Connector, Health, Output};
@@ -34,6 +36,43 @@ switch ($env:JITMO_OP) {
 }
 Start-Sleep -Milliseconds 400
 "$($s.GetPlaybackInfo().PlaybackStatus)"
+"#;
+
+/// Press Play on the first search result through UI Automation `InvokePattern`
+/// only (no keys, no mouse). Waits up to 8 s for the Spotify window and a result
+/// button. Candidates are Buttons named "Play ..." (or exactly "Play") that sit
+/// above the player bar at the bottom of the window; the top-left-most wins.
+/// Prints `INVOKED <name>`, or throws `no spotify window` / `no play button`.
+pub const PLAY_FIRST_RESULT_SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
+$deadline = (Get-Date).AddSeconds(8)
+$btnCond = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)
+$found = $null; $sawWindow = $false
+while ($null -eq $found -and (Get-Date) -lt $deadline) {
+  $p = Get-Process Spotify -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+  if ($null -ne $p) {
+    $sawWindow = $true
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
+    $win = $root.Current.BoundingRectangle
+    $cands = @()
+    foreach ($b in $root.FindAll('Descendants', $btnCond)) {
+      $n = $b.Current.Name; $r = $b.Current.BoundingRectangle
+      if ($n -notmatch '^Play(\s|$)') { continue }
+      if ($r.IsEmpty -or $r.Width -le 0 -or $b.Current.IsOffscreen) { continue }
+      # The player bar (play/pause) is the bottom strip of the window.
+      if ($r.Y -gt ($win.Bottom - 120)) { continue }
+      if (-not $b.Current.IsEnabled) { continue }
+      $cands += [pscustomobject]@{ El = $b; Name = $n; Y = $r.Y; X = $r.X }
+    }
+    if ($cands.Count -gt 0) { $found = $cands | Sort-Object Y, X | Select-Object -First 1 }
+  }
+  if ($null -eq $found) { Start-Sleep -Milliseconds 500 }
+}
+if (-not $sawWindow) { throw 'no spotify window' }
+if ($null -eq $found) { throw 'no play button' }
+$found.El.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+"INVOKED $($found.Name)"
 "#;
 
 /// Open a Spotify link. Env: `JITMO_URL`.
@@ -139,11 +178,27 @@ fn encode(s: &str) -> String {
 
 pub struct Spotify {
     runner: Arc<dyn ScriptRunner>,
+    /// Pause before each status read-back after the Play invoke.
+    settle: std::time::Duration,
 }
 
 impl Spotify {
     pub fn new(runner: Arc<dyn ScriptRunner>) -> Self {
-        Spotify { runner }
+        Spotify {
+            runner,
+            settle: std::time::Duration::from_millis(800),
+        }
+    }
+
+    /// Up to 4 status reads, `settle` apart; true once Spotify says Playing.
+    fn is_playing_soon(&self) -> bool {
+        for _ in 0..4 {
+            std::thread::sleep(self.settle);
+            if self.media("status").is_ok_and(|s| s.trim() == "Playing") {
+                return true;
+            }
+        }
+        false
     }
 
     fn media(&self, op: &str) -> Result<String, ConnError> {
@@ -205,9 +260,15 @@ impl Connector for Spotify {
                 self.runner
                     .run(OPEN_SCRIPT, &[("JITMO_URL", &url)])
                     .map_err(|_| ConnError::NotInstalled("Spotify".into()))?;
-                Ok(msg(format!(
-                    "Opened Spotify on a search for {q}. Press Play on the first result."
-                )))
+                // Playback is only claimed after the media session reads Playing.
+                let invoked = self.runner.run(PLAY_FIRST_RESULT_SCRIPT, &[]).is_ok();
+                if invoked && self.is_playing_soon() {
+                    Ok(msg(format!("Playing {q} on Spotify.")))
+                } else {
+                    Ok(msg(format!(
+                        "Opened Spotify on a search for {q}. Press Play on the first result."
+                    )))
+                }
             }
             other => Err(ConnError::UnknownAction(other.to_string())),
         }
@@ -227,8 +288,8 @@ impl Connector for Spotify {
                     Control::Next | Control::Previous => !status.is_empty(),
                 })
             }
-            // Opening a link cannot be read back.
-            "search" => Ok(parse_search(text_arg(args)?).is_some()),
+            // Opening a link cannot be read back; the media session can.
+            "search" => Ok(parse_search(text_arg(args)?).is_some() && self.is_playing_soon()),
             other => Err(ConnError::UnknownAction(other.to_string())),
         }
     }
@@ -261,7 +322,9 @@ mod tests {
             calls: Mutex::new(Vec::new()),
             reply: reply.map(String::from).map_err(String::from),
         });
-        (Spotify::new(r.clone()), r)
+        let mut s = Spotify::new(r.clone());
+        s.settle = std::time::Duration::ZERO;
+        (s, r)
     }
 
     fn args(t: &str) -> Args {
@@ -325,6 +388,71 @@ mod tests {
             "spotify:search:Arijit%20Singh"
         );
         assert!(out.0["message"].contains("Press Play"));
+    }
+
+    /// Answers by script: open link, UIA play script, media status.
+    struct Seq {
+        calls: Mutex<Vec<String>>,
+        play: Result<String, String>,
+        status: Result<String, String>,
+    }
+
+    impl ScriptRunner for Seq {
+        fn run(&self, script: &str, env: &[(&str, &str)]) -> Result<String, String> {
+            let (tag, reply) = if script == OPEN_SCRIPT {
+                (format!("open {}", env[0].1), Ok(String::new()))
+            } else if script == PLAY_FIRST_RESULT_SCRIPT {
+                assert!(env.is_empty(), "user words must not reach the UIA script");
+                ("play".to_string(), self.play.clone())
+            } else {
+                (format!("media {}", env[0].1), self.status.clone())
+            };
+            self.calls.lock().unwrap().push(tag);
+            reply
+        }
+    }
+
+    fn seq(play: Result<&str, &str>, status: Result<&str, &str>) -> (Spotify, Arc<Seq>) {
+        let r = Arc::new(Seq {
+            calls: Mutex::new(Vec::new()),
+            play: play.map(String::from).map_err(String::from),
+            status: status.map(String::from).map_err(String::from),
+        });
+        let mut s = Spotify::new(r.clone());
+        s.settle = std::time::Duration::ZERO;
+        (s, r)
+    }
+
+    #[test]
+    fn search_opens_then_plays_then_confirms_before_claiming_playback() {
+        let (s, r) = seq(Ok("INVOKED Play Arijit Singh"), Ok("Playing"));
+        let q = args("Play Arijit Singh on Spotify");
+        let out = s.execute("search", &q).unwrap();
+        assert_eq!(out.0["message"], "Playing Arijit Singh on Spotify.");
+        assert_eq!(
+            r.calls.lock().unwrap()[..3],
+            ["open spotify:search:Arijit%20Singh", "play", "media status"]
+        );
+        assert!(s.check("search", &q).unwrap());
+    }
+
+    #[test]
+    fn search_falls_back_when_no_button_or_not_playing() {
+        for (play, status) in [
+            (Err("no play button"), Ok("Playing")),
+            (Err("no spotify window"), Ok("Playing")),
+            (Ok("INVOKED Play x"), Ok("Paused")),
+            (Ok("INVOKED Play x"), Err("no spotify session")),
+        ] {
+            let (s, _) = seq(play, status);
+            let out = s.execute("search", &args("put on some arijit")).unwrap();
+            assert_eq!(
+                out.0["message"],
+                "Opened Spotify on a search for arijit. Press Play on the first result."
+            );
+        }
+        let (s, _) = seq(Err("no play button"), Ok("Paused"));
+        assert!(!s.check("search", &args("put on some arijit")).unwrap());
     }
 
     #[test]

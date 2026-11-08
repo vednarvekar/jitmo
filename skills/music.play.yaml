@@ -12,6 +12,8 @@ risk: safe
 examples:
   - "play arijit singh on spotify"
   - "play some jazz"
+  - "put on some arijit"
+  - "play Arijit Singh"
 slots: {}
 steps:
   - connector: spotify
