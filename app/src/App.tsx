@@ -32,6 +32,8 @@ export default function App() {
   const history = useRef<string[]>([]);
   const historyAt = useRef(-1);
   const hover = useRef(false);
+  // Dragging makes the window lose focus for a moment; that is not a click elsewhere.
+  const dragUntil = useRef(0);
 
   const resetBar = useCallback(() => {
     dispatch({ type: "reset" });
@@ -50,6 +52,7 @@ export default function App() {
       }),
       bridge.onBarShown(resetBar),
       bridge.onBarBlurred(() => {
+        if (Date.now() < dragUntil.current) return;
         if (hideOnBlur(stateRef.current)) bridge.hideBar();
       }),
     ];
@@ -151,15 +154,13 @@ export default function App() {
       <div
         className="bar"
         data-phase={state.phase}
+        data-tauri-drag-region
         onMouseEnter={() => (hover.current = true)}
         onMouseLeave={() => (hover.current = false)}
+        onMouseDown={() => (dragUntil.current = Date.now() + 2_000)}
       >
-        {/* The strip at the top is the handle for dragging the bar. */}
-        <div className="grip" data-tauri-drag-region title="Drag to move">
-          <span className="grip-dot" data-tauri-drag-region />
-        </div>
-
-        <div className="row">
+        {/* Any empty part of the pill drags it; the input and buttons do not. */}
+        <div className="row" data-tauri-drag-region>
           <span className="mark" data-tauri-drag-region aria-hidden="true">
             ✦
           </span>
@@ -169,7 +170,7 @@ export default function App() {
             autoFocus
             spellCheck={false}
             aria-label="Ask jitmo"
-            placeholder="Ask jitmo…  try “open Spotify” or “set a 10-minute timer”"
+            placeholder="Ask jitmo…"
             value={text}
             disabled={!typing}
             onChange={(e) => {
@@ -194,7 +195,7 @@ export default function App() {
           </button>
         </div>
 
-        <div className="result" role="status" aria-live="polite">
+        <div className="result" role="status" aria-live="polite" data-tauri-drag-region>
           {state.phase === "working" && (
             <div className="line muted">
               <span className="spinner" aria-hidden="true" /> Working…

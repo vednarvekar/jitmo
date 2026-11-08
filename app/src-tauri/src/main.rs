@@ -40,9 +40,9 @@ use core_client::CoreClient;
 
 const BAR: &str = "bar";
 /// Window size in logical pixels. The window is larger than the pill: the extra
-/// 20 px on every side is transparent and holds the pill's shadow (see `.shell` in styles.css).
-const BAR_WIDTH: f64 = 680.0;
-const BAR_START_HEIGHT: f64 = 96.0;
+/// 14 px on every side is transparent and holds the pill's shadow (see `.shell` in styles.css).
+const BAR_WIDTH: f64 = 584.0;
+const BAR_START_HEIGHT: f64 = 76.0;
 /// Gap between the pill's shadow margin and the taskbar, in logical pixels.
 const TASKBAR_GAP: f64 = 0.0;
 /// Ignore "moved" events this long after the app moved the window itself.
@@ -53,6 +53,11 @@ const DESTROY_AFTER_HIDDEN: Duration = Duration::from_secs(60);
 /// When the app last moved the bar itself (ms since the epoch), so those moves
 /// are not mistaken for the user dragging it.
 static LAST_OWN_MOVE: OwnMoveClock = OwnMoveClock::new(0);
+/// When the user last dragged the bar. Dragging makes the window lose focus for a
+/// moment, which must not be taken for a click elsewhere.
+static LAST_USER_MOVE: OwnMoveClock = OwnMoveClock::new(0);
+/// A focus loss this soon after a drag is part of the drag.
+const DRAG_BLUR_QUIET_MS: u64 = 1500;
 
 struct AppState {
     core: CoreClient,
@@ -205,12 +210,17 @@ fn watch_bar(app: &AppHandle, w: &WebviewWindow) {
     let win = w.clone();
     w.on_window_event(move |event| match event {
         WindowEvent::Focused(false) => {
-            let _ = handle.emit("bar-blurred", ());
+            let dragging =
+                now_ms().saturating_sub(LAST_USER_MOVE.load(Ordering::SeqCst)) < DRAG_BLUR_QUIET_MS;
+            if !dragging {
+                let _ = handle.emit("bar-blurred", ());
+            }
         }
         WindowEvent::Moved(_) => {
             let ours =
                 now_ms().saturating_sub(LAST_OWN_MOVE.load(Ordering::SeqCst)) < OWN_MOVE_QUIET_MS;
             if !ours {
+                LAST_USER_MOVE.store(now_ms(), Ordering::SeqCst);
                 save_position(&handle, &win);
             }
         }
