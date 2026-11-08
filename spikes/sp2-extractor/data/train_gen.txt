@@ -1,0 +1,1800 @@
+G0001|hey remind me to [message|book tickets] [date_time|tonight] please
+G0002|enable [setting|wifi] now
+G0003|can you increase the [setting|volume] please
+G0004|never mind please
+G0005|yo what's the [query|population of India]
+G0006|can you send [contact|Karan] a message saying [message|I'm running late]
+G0007|move [file|budget.xlsx] to [folder|Work]
+G0008|quick, what's the [query|capital of Canada]
+G0009|delete the [file|invoice] now
+G0010|kindly mute [setting|volume]
+G0011|could you enable [setting|night light] now
+G0012|please email [file|screenshot] to [contact|boss]
+G0013|could you go to [website|reddit] please
+G0014|can you remind me [date_time|on the 15th] to [message|pay the rent]
+G0015|yo mail [contact|Dr. Shah] the [file|notes.txt]
+G0016|quick, find the [file|photo.jpg] please
+G0017|pls put on [media|Blinding Lights] please
+G0018|pls weather in [place|New York] [date_time|in the afternoon] for me
+G0019|hey message [contact|dad] [message|send me the file]
+G0020|could you send [contact|Divya] a message saying [message|happy birthday]
+G0021|can you set [setting|brightness] to [number|20]
+G0022|kindly switch to [app|Outlook] for me
+G0023|pls schedule [event|yoga class] with [contact|Aditi] [date_time|at noon] now
+G0024|remind me to [message|buy groceries] [date_time|tomorrow morning]
+G0025|quick, set a timer for [duration|an hour] asap
+G0026|can you move [file|cv] to [folder|Pictures]
+G0027|kindly [query|meaning of ephemeral]
+G0028|yo tell me a joke for me
+G0029|can you send the [file|timesheet] to [contact|neha] on [app|WhatsApp] now
+G0030|please play [media|Kesariya] please
+G0031|send the [file|resume] to [contact|Ravi sir] on [app|Teams] please
+G0032|quick, message [contact|Amit] [message|meeting moved to 4] for me
+G0033|pls turn off [setting|airplane mode]
+G0034|could you play [media|AP Dhillon] on [app|Spotify]
+G0035|send the [file|notes.txt] to [contact|John] on [app|Slack]
+G0036|please find [file|cv] in [folder|Desktop]
+G0037|pls weather in [place|Mumbai] [date_time|this evening]
+G0038|hey thanks now
+G0039|kindly turn on [setting|do not disturb] now
+G0040|can you call [contact|Karan] and tell [contact|Sanjay] [message|pick up milk]
+G0041|message [contact|Sarah] [message|I'll be there in 10] asap
+G0042|quick, turn off [setting|quiet mode]
+G0043|hey email [file|tax return] to [contact|Rohit] now
+G0044|hey alarm [date_time|monday morning]
+G0045|yo turn off [setting|bluetooth] please
+G0046|please put on [media|Kesariya] for me
+G0047|hey email [file|project proposal] to [contact|dad] for me
+G0048|book [event|dentist] [date_time|on friday]
+G0049|quick, play [media|Kishore Kumar] on [app|Spotify]
+G0050|quick, put on [media|Coldplay]
+G0051|kindly call [contact|Neha] [date_time|tomorrow] please
+G0052|mute [setting|volume] now
+G0053|please message [contact|John] [message|meeting moved to 4] asap
+G0054|quick, search [website|amazon] for [query|population of India] for me
+G0055|call [contact|Aditi] and tell [contact|dad] [message|thanks a lot] for me
+G0056|kindly call [contact|my manager] [date_time|next monday]
+G0057|show me [file|resume] from [date_time|last week]
+G0058|quick, book [event|lunch with the team] [date_time|tonight]
+G0059|kindly rename [file|timesheet] to [file|budget.xlsx]
+G0060|pls text [contact|Rohit] on [app|Telegram] [message|pick up milk]
+G0061|play [media|Honey Singh] now
+G0062|could you open my [file|timesheet] now
+G0063|pls rename [file|presentation] to [file|photo.jpg]
+G0064|can you play [media|Honey Singh] please
+G0065|can you mail [contact|Divya] the [file|screenshot] please
+G0066|schedule [event|design review] with [contact|Pooja] [date_time|this evening]
+G0067|please call [contact|Rohit] and tell [contact|neha] [message|I'll be there in 10]
+G0068|please remind me [date_time|tomorrow at 8] to [message|renew insurance] for me
+G0069|please turn off [setting|airplane mode] please
+G0070|turn on [setting|focus mode]
+G0071|switch [setting|airplane mode] off asap
+G0072|call [contact|Karan] please
+G0073|pls text [contact|Meera] on [app|Telegram] [message|dinner at 8?] for me
+G0074|yo never mind asap
+G0075|kindly open my [file|timesheet]
+G0076|tell me a joke
+G0077|switch to [app|WhatsApp] please
+G0078|show me [file|tax return] from [date_time|yesterday] asap
+G0079|could you tell [contact|Zoya] [message|pick up milk] for me
+G0080|pls [query|capital of Canada]
+G0081|please call [contact|Arjun] asap
+G0082|please open [website|twitter] asap
+G0083|please go to [website|netflix]
+G0084|close [app|Chrome]
+G0085|kindly rename [file|presentation] to [file|offer letter]
+G0086|could you send the [file|assignment] to [contact|bhai] on [app|Slack] asap
+G0087|please turn on [setting|do not disturb]
+G0088|hey send [contact|Vikram] a message saying [message|I'm running late] please
+G0089|pls mute [setting|volume]
+G0090|yo switch [setting|focus mode] off asap
+G0091|pls text [contact|dad] on [app|WhatsApp] [message|dinner at 8?] asap
+G0092|pls enable [setting|airplane mode]
+G0093|pls alarm [date_time|next week]
+G0094|can you email [file|timesheet] to [contact|Sarah] now
+G0095|email [file|passport scan] to [contact|Sneha]
+G0096|set [setting|volume] to [number|75] asap
+G0097|open the [folder|Taxes] folder
+G0098|quick, switch [setting|airplane mode] off
+G0099|quick, weather in [place|Delhi] [date_time|tonight] for me
+G0100|kindly call [contact|boss] [date_time|at 10]
+G0101|quick, tell me a joke now
+G0102|call [contact|Manish] [date_time|7pm] for me
+G0103|kindly send [contact|Neha] a message saying [message|thanks a lot] now
+G0104|play [media|Kishore Kumar] on [app|Spotify] please
+G0105|kindly move [file|salary slip] to [folder|Taxes] please
+G0106|could you close [app|Spotify] asap
+G0107|please open [app|PowerPoint]
+G0108|can you mail [contact|wife] the [file|screenshot]
+G0109|yo timer [duration|half an hour]
+G0110|yo call [contact|Emma] and tell [contact|Ravi sir] [message|dinner at 8?]
+G0111|could you switch to [app|Notion] please
+G0112|yo find the [file|screenshot] asap
+G0113|could you thanks please
+G0114|kindly timer [duration|an hour] please
+G0115|go to [website|netflix] please
+G0116|could you switch to [app|VS Code] now
+G0117|please mail [contact|Sunita ma'am] the [file|salary slip]
+G0118|pls enable [setting|dark mode] asap
+G0119|hey open [app|Telegram]
+G0120|tell [contact|bhai] [message|thanks a lot]
+G0121|raise the [setting|brightness]
+G0122|hey tell [contact|David] [message|send me the file] for me
+G0123|please schedule [event|standup] with [contact|Mike] [date_time|this evening]
+G0124|can you open the [folder|Documents] folder
+G0125|pls send [contact|Sarah] a message saying [message|call me back]
+G0126|pls what's the [query|capital of Canada] now
+G0127|can you open my [file|notes.txt] now
+G0128|can you message [contact|neha] [message|pick up milk] now
+G0129|book [event|yoga class] [date_time|saturday 6pm]
+G0130|pls find the [file|invoice]
+G0131|can you turn on [setting|night light] asap
+G0132|yo close [app|VS Code] now
+G0133|kindly convert [query|20 celsius in fahrenheit] please
+G0134|mail [contact|Divya] the [file|offer letter]
+G0135|could you turn on [setting|quiet mode] for me
+G0136|please launch [app|Spotify]
+G0137|search [website|linkedin] for [query|who won the world cup] asap
+G0138|please message [contact|priya] [message|where are you] for me
+G0139|please switch [setting|night light] off
+G0140|could you switch to [app|Settings]
+G0141|kindly find [file|presentation] in [folder|Documents] asap
+G0142|can you set [setting|brightness] to [number|30] asap
+G0143|call [contact|Kiran] [date_time|tomorrow at 8]
+G0144|could you tell [contact|Amit] [message|where are you]
+G0145|please what can you do please
+G0146|find [file|budget.xlsx] in [folder|College] please
+G0147|tell [contact|Vikram] [message|meeting moved to 4]
+G0148|pls call [contact|John] [date_time|at 10] for me
+G0149|send the [file|salary slip] to [contact|Emma] on [app|Teams] for me
+G0150|quick, tell [contact|Rahul] [message|pick up milk] asap
+G0151|pls search [website|twitter] for [query|distance to Mumbai] now
+G0152|please rename [file|tax return] to [file|resume] for me
+G0153|pls send [contact|Neha] a message saying [message|meeting moved to 4]
+G0154|yo increase the [setting|brightness] now
+G0155|can you enable [setting|battery saver] now
+G0156|pls call [contact|didi] and tell [contact|Amit] [message|meeting moved to 4]
+G0157|pls thanks now
+G0158|please close [app|Slack] please
+G0159|could you [query|capital of Canada] now
+G0160|yo send [contact|Pooja] a message saying [message|where are you]
+G0161|quick, remind me to [message|book tickets] [date_time|tonight]
+G0162|could you schedule [event|design review] with [contact|Anjali] [date_time|today at 5pm]
+G0163|weather in [place|New York] [date_time|tonight] asap
+G0164|can you enable [setting|airplane mode]
+G0165|rename [file|presentation] to [file|project proposal]
+G0166|pls never mind for me
+G0167|could you timer [duration|5 min]
+G0168|hey call [contact|wife] and tell [contact|Neha] [message|thanks a lot] for me
+G0169|yo thanks for me
+G0170|play [media|Taylor Swift] on [app|Spotify]
+G0171|show me [file|notes.txt] from [date_time|two weeks ago] asap
+G0172|quick, text [contact|John] on [app|Telegram] [message|happy birthday] asap
+G0173|quick, tell me a joke please
+G0174|please send the [file|timesheet] to [contact|dad] on [app|Slack] asap
+G0175|could you call [contact|bhai] [date_time|on friday]
+G0176|pls never mind
+G0177|hey search [website|netflix] for [query|who won the world cup] please
+G0178|can you hi
+G0179|weather in [place|Pune] [date_time|monday morning]
+G0180|can you send the [file|salary slip] to [contact|John] on [app|WhatsApp] now
+G0181|could you schedule [event|client call] with [contact|Meera] [date_time|tomorrow morning]
+G0182|quick, what is [query|sqrt of 144] please
+G0183|pls go to [website|amazon] asap
+G0184|pls timer [duration|20 minutes] now
+G0185|please remind me to [message|email HR] [date_time|at 9:30 am]
+G0186|pls launch [app|Paint] now
+G0187|weather in [place|New York] [date_time|tonight] please
+G0188|please play [media|Honey Singh]
+G0189|please call [contact|Priya] now
+G0190|quick, timer [duration|half an hour]
+G0191|play [media|some jazz] asap
+G0192|yo tell [contact|Rohit] [message|thanks a lot]
+G0193|hey turn on [setting|dark mode]
+G0194|pls text [contact|Divya] on [app|WhatsApp] [message|send me the file] for me
+G0195|[query|who won the world cup] please
+G0196|could you rename [file|timesheet] to [file|salary slip] for me
+G0197|can you convert [query|3 feet in cm]
+G0198|weather in [place|Delhi] [date_time|at noon] asap
+G0199|pls convert [query|100 usd in inr] for me
+G0200|pls call [contact|Ravi sir] and tell [contact|Aditi] [message|where are you] for me
+G0201|hey weather in [place|London] [date_time|at noon] for me
+G0202|mute [setting|volume]
+G0203|set [setting|brightness] to [number|30]
+G0204|rename [file|report.pdf] to [file|project proposal] please
+G0205|hey call [contact|didi] and tell [contact|Arjun] [message|dinner at 8?]
+G0206|kindly remind me [date_time|today at 5pm] to [message|submit the form] for me
+G0207|please open [website|github]
+G0208|could you search [website|youtube] for [query|population of India] for me
+G0209|quick, add [event|dentist] on [date_time|tomorrow morning] for me
+G0210|please put on [media|Kesariya] now
+G0211|kindly remind me [date_time|at noon] to [message|take medicine] please
+G0212|please text [contact|Dr. Shah] on [app|WhatsApp] [message|thanks a lot]
+G0213|quick, play [media|Shape of You] on [app|Spotify] asap
+G0214|pls open the [folder|Receipts] folder for me
+G0215|hey play [media|Shape of You]
+G0216|[query|time in London]
+G0217|quick, thanks
+G0218|could you set [setting|volume] to [number|20]
+G0219|hey email [file|photo.jpg] to [contact|didi]
+G0220|email [file|notes.txt] to [contact|didi] please
+G0221|kindly switch [setting|dark mode] off
+G0222|quick, book [event|lunch with the team] [date_time|at 9:30 am]
+G0223|could you go to [website|github] now
+G0224|hey [query|distance to Mumbai] asap
+G0225|quick, switch to [app|Firefox]
+G0226|could you alarm [date_time|this evening] now
+G0227|timer [duration|2 hours] for me
+G0228|pls what is [query|240 divided by 12] for me
+G0229|pls call [contact|boss]
+G0230|hey play [media|Shape of You] please
+G0231|kindly what's the [query|distance to Mumbai] for me
+G0232|hey close [app|VS Code]
+G0233|hey turn on [setting|bluetooth]
+G0234|quick, call [contact|Priya] and tell [contact|Mike] [message|pick up milk] asap
+G0235|quick, convert [query|100 usd in inr]
+G0236|please remind me to [message|email HR] [date_time|tomorrow at 8] for me
+G0237|call [contact|bhai] [date_time|tomorrow morning]
+G0238|delete the [file|cv] asap
+G0239|hey move [file|tax return] to [folder|Projects] asap
+G0240|please enable [setting|quiet mode]
+G0241|please schedule [event|dentist] with [contact|mom] [date_time|7pm] please
+G0242|yo what can you do asap
+G0243|pls tell [contact|Priya] [message|thanks a lot]
+G0244|quick, play [media|some jazz]
+G0245|text [contact|Priya] on [app|WhatsApp] [message|where are you]
+G0246|thanks please
+G0247|kindly convert [query|5 kg to pounds]
+G0248|kindly show me [file|offer letter] from [date_time|last month]
+G0249|open [website|twitter]
+G0250|could you schedule [event|standup] with [contact|rahul] [date_time|tomorrow at 8]
+G0251|yo play [media|Kesariya] now
+G0252|pls open [app|PowerPoint]
+G0253|pls schedule [event|standup] with [contact|Sarah] [date_time|tomorrow at 8] asap
+G0254|please email [file|offer letter] to [contact|Rahul]
+G0255|please call [contact|Sanjay] and tell [contact|Arjun] [message|can we talk later]
+G0256|can you turn on [setting|do not disturb] for me
+G0257|yo add [event|client call] on [date_time|monday morning]
+G0258|can you book [event|interview] [date_time|in the afternoon] now
+G0259|quick, mail [contact|Ravi sir] the [file|lease agreement]
+G0260|send the [file|lease agreement] to [contact|Aditi] on [app|Teams]
+G0261|add [event|standup] on [date_time|today at 5pm]
+G0262|quick, hi
+G0263|kindly convert [query|10 km in miles] for me
+G0264|please alarm [date_time|7pm]
+G0265|yo email [file|screenshot] to [contact|wife] please
+G0266|yo alarm [date_time|in the afternoon]
+G0267|pls message [contact|Aditi] [message|happy birthday] asap
+G0268|hey search [website|reddit] for [query|population of India]
+G0269|quick, call [contact|Neha] and tell [contact|priya] [message|I'm running late] for me
+G0270|turn off [setting|quiet mode]
+G0271|please schedule [event|lunch with the team] with [contact|Ravi sir] [date_time|in the afternoon]
+G0272|kindly timer [duration|an hour]
+G0273|could you send the [file|timesheet] to [contact|Meera] on [app|Slack]
+G0274|kindly close [app|Settings]
+G0275|please add [event|interview] on [date_time|monday morning]
+G0276|yo thanks please
+G0277|kindly what can you do please
+G0278|hey send the [file|project proposal] to [contact|neha] on [app|WhatsApp] for me
+G0279|enable [setting|do not disturb] asap
+G0280|kindly open my [file|lease agreement] for me
+G0281|yo open [app|Firefox]
+G0282|quick, weather in [place|Pune] [date_time|next week]
+G0283|could you convert [query|3 feet in cm]
+G0284|could you add [event|1:1 sync] on [date_time|tomorrow morning]
+G0285|yo add [event|interview] on [date_time|at 10] now
+G0286|quick, remind me to [message|pay the rent] [date_time|tomorrow morning]
+G0287|hey remind me [date_time|tomorrow morning] to [message|take medicine] now
+G0288|remind me [date_time|7pm] to [message|buy groceries] for me
+G0289|what can you do asap
+G0290|can you switch to [app|Word] please
+G0291|switch to [app|Word] for me
+G0292|set [setting|brightness] to [number|40] now
+G0293|yo go to [website|netflix]
+G0294|quick, call [contact|neha] and tell [contact|Rahul] [message|can we talk later] now
+G0295|can you add [event|yoga class] on [date_time|tomorrow morning] now
+G0296|yo call [contact|dad] for me
+G0297|yo add [event|lunch with the team] on [date_time|tomorrow at 8] now
+G0298|yo remind me [date_time|this evening] to [message|book tickets]
+G0299|quick, lower the [setting|brightness]
+G0300|could you send the [file|invoice] to [contact|John] on [app|Teams]
+G0301|please find [file|cv] in [folder|Documents]
+G0302|could you open my [file|resume]
+G0303|can you call [contact|dad] and tell [contact|Divya] [message|thanks a lot]
+G0304|book [event|design review] [date_time|tonight] asap
+G0305|can you send [contact|Rahul] a message saying [message|call me back] for me
+G0306|yo add [event|design review] on [date_time|this evening] please
+G0307|can you find [file|tax return] in [folder|Projects]
+G0308|yo timer [duration|20 minutes] now
+G0309|turn off [setting|battery saver]
+G0310|kindly weather in [place|Delhi] [date_time|monday morning]
+G0311|please switch to [app|Figma] for me
+G0312|can you what is [query|sqrt of 144]
+G0313|pls turn off [setting|do not disturb] asap
+G0314|could you mute [setting|volume] please
+G0315|hey remind me to [message|email HR] [date_time|at noon]
+G0316|quick, search [website|github] for [query|population of India]
+G0317|convert [query|10 km in miles] now
+G0318|yo go to [website|amazon] please
+G0319|please set a timer for [duration|20 minutes]
+G0320|please set [setting|volume] to [number|100] please
+G0321|kindly what can you do asap
+G0322|please find [file|salary slip] in [folder|College] please
+G0323|pls lower the [setting|volume]
+G0324|put on [media|AP Dhillon]
+G0325|please find the [file|lease agreement]
+G0326|hey play [media|Blinding Lights] on [app|Spotify]
+G0327|could you enable [setting|battery saver] for me
+G0328|yo mail [contact|Meera] the [file|cv]
+G0329|what is [query|240 divided by 12] please
+G0330|could you hi
+G0331|can you what's the [query|capital of Canada]
+G0332|yo enable [setting|airplane mode]
+G0333|kindly thanks now
+G0334|hey mute [setting|volume] asap
+G0335|pls go to [website|myntra]
+G0336|kindly switch to [app|Paint]
+G0337|yo find the [file|budget.xlsx]
+G0338|pls call [contact|Sunita ma'am] [date_time|today at 5pm]
+G0339|kindly set [setting|volume] to [number|30] asap
+G0340|timer [duration|20 minutes]
+G0341|kindly [query|time in London]
+G0342|quick, what is [query|15% of 2400] now
+G0343|yo play [media|Coldplay] on [app|Spotify]
+G0344|text [contact|priya] on [app|WhatsApp] [message|thanks a lot]
+G0345|pls open [website|github] for me
+G0346|kindly text [contact|Anjali] on [app|Telegram] [message|see you tomorrow] for me
+G0347|what is [query|45 plus 78]
+G0348|can you rename [file|budget.xlsx] to [file|salary slip]
+G0349|what's the [query|weather in Pune] for me
+G0350|yo convert [query|10 km in miles] please
+G0351|call [contact|wife] [date_time|tomorrow] asap
+G0352|please play [media|Blinding Lights]
+G0353|hey thanks
+G0354|go to [website|twitter]
+G0355|pls send [contact|Kiran] a message saying [message|I'm running late]
+G0356|yo what is [query|15% of 2400] for me
+G0357|quick, remind me [date_time|monday morning] to [message|call the plumber]
+G0358|quick, book [event|client call] [date_time|monday morning]
+G0359|enable [setting|dark mode] for me
+G0360|[query|meaning of ephemeral]
+G0361|remind me to [message|call the plumber] [date_time|in the afternoon] for me
+G0362|please switch [setting|battery saver] off for me
+G0363|please tell me a joke
+G0364|search [website|amazon] for [query|who won the world cup] for me
+G0365|go to [website|github]
+G0366|kindly what is [query|45 plus 78]
+G0367|kindly rename [file|timesheet] to [file|project proposal] now
+G0368|please open [website|reddit]
+G0369|could you schedule [event|interview] with [contact|John] [date_time|tomorrow] for me
+G0370|move [file|cv] to [folder|Documents] now
+G0371|kindly close [app|Paint]
+G0372|quick, timer [duration|45 mins] now
+G0373|tell me a joke asap
+G0374|quick, turn off [setting|battery saver]
+G0375|could you enable [setting|bluetooth]
+G0376|remind me to [message|take medicine] [date_time|tomorrow]
+G0377|quick, message [contact|Rohit] [message|I'm running late] now
+G0378|quick, find the [file|presentation] asap
+G0379|pls mute [setting|volume] please
+G0380|quick, never mind
+G0381|turn on [setting|do not disturb]
+G0382|send [contact|Kiran] a message saying [message|pick up milk]
+G0383|could you find the [file|salary slip] for me
+G0384|close [app|Zoom] now
+G0385|yo open my [file|project proposal]
+G0386|enable [setting|do not disturb] now
+G0387|pls turn off [setting|wifi]
+G0388|close [app|Paint]
+G0389|search [website|youtube] for [query|capital of Canada] asap
+G0390|could you hi please
+G0391|hey close [app|VS Code] please
+G0392|can you remind me [date_time|saturday 6pm] to [message|buy groceries]
+G0393|play [media|Blinding Lights] on [app|Spotify] now
+G0394|open [app|Spotify]
+G0395|thanks
+G0396|can you message [contact|Amit] [message|I'll be there in 10]
+G0397|please put on [media|Taylor Swift]
+G0398|please call [contact|Priya] and tell [contact|Meera] [message|can we talk later]
+G0399|play [media|Diljit]
+G0400|can you launch [app|Outlook]
+G0401|pls turn on [setting|dark mode] asap
+G0402|hey play [media|AP Dhillon] on [app|Spotify] please
+G0403|kindly send [contact|Divya] a message saying [message|pick up milk]
+G0404|close [app|Word]
+G0405|pls launch [app|Notepad] please
+G0406|can you remind me [date_time|tonight] to [message|email HR]
+G0407|play [media|Kishore Kumar]
+G0408|could you tell [contact|boss] [message|happy birthday]
+G0409|lower the [setting|brightness]
+G0410|find [file|tax return] in [folder|Desktop] now
+G0411|show me [file|timesheet] from [date_time|two weeks ago]
+G0412|quick, convert [query|5 kg to pounds] asap
+G0413|add [event|yoga class] on [date_time|tonight]
+G0414|yo find the [file|salary slip]
+G0415|could you call [contact|Sarah] [date_time|tomorrow morning]
+G0416|hey text [contact|Arjun] on [app|Telegram] [message|see you tomorrow]
+G0417|could you find [file|salary slip] in [folder|Documents]
+G0418|hey thanks for me
+G0419|go to [website|gmail]
+G0420|find [file|report.pdf] in [folder|Downloads] now
+G0421|please [query|capital of Canada]
+G0422|pls rename [file|resume] to [file|resume] please
+G0423|please close [app|WhatsApp]
+G0424|could you send the [file|cv] to [contact|Rohit] on [app|Teams]
+G0425|could you find the [file|offer letter] asap
+G0426|set [setting|volume] to [number|100] now
+G0427|convert [query|3 feet in cm]
+G0428|never mind
+G0429|can you add [event|yoga class] on [date_time|at 10]
+G0430|please turn on [setting|battery saver]
+G0431|kindly send [contact|David] a message saying [message|pick up milk]
+G0432|hey launch [app|Edge]
+G0433|kindly set a timer for [duration|half an hour]
+G0434|kindly convert [query|10 km in miles] now
+G0435|can you thanks
+G0436|text [contact|Sarah] on [app|Telegram] [message|thanks a lot]
+G0437|go to [website|gmail] asap
+G0438|call [contact|Priya] asap
+G0439|quick, move [file|report.pdf] to [folder|College] please
+G0440|pls raise the [setting|brightness] now
+G0441|kindly go to [website|netflix] now
+G0442|please rename [file|cv] to [file|photo.jpg] asap
+G0443|could you never mind asap
+G0444|hey open [app|Word] for me
+G0445|can you tell [contact|Aditi] [message|dinner at 8?] now
+G0446|hey find the [file|passport scan] asap
+G0447|please go to [website|youtube]
+G0448|show me [file|cv] from [date_time|last month]
+G0449|could you turn off [setting|bluetooth] now
+G0450|yo call [contact|Pooja] and tell [contact|priya] [message|send me the file]
+G0451|please [query|population of India] asap
+G0452|kindly send the [file|timesheet] to [contact|Sarah] on [app|Teams] for me
+G0453|increase the [setting|brightness] for me
+G0454|quick, remind me to [message|book tickets] [date_time|this evening] please
+G0455|could you add [event|client call] on [date_time|in the afternoon]
+G0456|can you find [file|project proposal] in [folder|Pictures]
+G0457|could you switch [setting|quiet mode] off asap
+G0458|pls tell me a joke
+G0459|can you open the [folder|Receipts] folder please
+G0460|hey search [website|reddit] for [query|distance to Mumbai] now
+G0461|please mute [setting|volume]
+G0462|pls delete the [file|timesheet] asap
+G0463|pls move [file|assignment] to [folder|Taxes] for me
+G0464|hey text [contact|Aditi] on [app|Telegram] [message|I'm running late] please
+G0465|can you find the [file|project proposal]
+G0466|quick, turn on [setting|focus mode] please
+G0467|hey enable [setting|bluetooth] asap
+G0468|weather in [place|Bangalore] [date_time|on the 15th] for me
+G0469|kindly go to [website|google maps] now
+G0470|please lower the [setting|volume] please
+G0471|yo what's the [query|meaning of ephemeral]
+G0472|what can you do
+G0473|kindly tell [contact|Emma] [message|where are you] please
+G0474|yo message [contact|Sanjay] [message|dinner at 8?]
+G0475|quick, switch to [app|PowerPoint]
+G0476|can you show me [file|budget.xlsx] from [date_time|last week]
+G0477|kindly send the [file|resume] to [contact|Rohit] on [app|WhatsApp]
+G0478|could you never mind
+G0479|weather in [place|Pune] [date_time|on the 15th]
+G0480|hey switch to [app|Excel]
+G0481|open the [folder|Documents] folder
+G0482|quick, switch [setting|wifi] off
+G0483|can you open the [folder|Downloads] folder
+G0484|please launch [app|Notepad]
+G0485|quick, set a timer for [duration|5 min]
+G0486|could you open [website|flipkart] asap
+G0487|could you mail [contact|Isha] the [file|project proposal] now
+G0488|can you schedule [event|client call] with [contact|Neha] [date_time|tomorrow morning] please
+G0489|hey switch [setting|dark mode] off
+G0490|pls set [setting|brightness] to [number|20]
+G0491|can you turn on [setting|battery saver] please
+G0492|can you never mind
+G0493|can you timer [duration|20 minutes] asap
+G0494|can you text [contact|Sarah] on [app|WhatsApp] [message|send me the file]
+G0495|email [file|presentation] to [contact|Sarah]
+G0496|could you what can you do now
+G0497|hey alarm [date_time|at noon] for me
+G0498|quick, alarm [date_time|in the afternoon]
+G0499|please play [media|Coldplay]
+G0500|pls show me [file|photo.jpg] from [date_time|two weeks ago] now
+G0501|kindly alarm [date_time|next monday] please
+G0502|move [file|passport scan] to [folder|Projects]
+G0503|quick, remind me to [message|email HR] [date_time|tomorrow] for me
+G0504|thanks now
+G0505|yo send the [file|salary slip] to [contact|Dr. Shah] on [app|Outlook] asap
+G0506|pls email [file|tax return] to [contact|Mike]
+G0507|can you go to [website|myntra] for me
+G0508|could you thanks
+G0509|message [contact|Manish] [message|thanks a lot]
+G0510|convert [query|20 celsius in fahrenheit] now
+G0511|can you turn off [setting|bluetooth]
+G0512|pls show me [file|tax return] from [date_time|yesterday] for me
+G0513|switch [setting|wifi] off asap
+G0514|delete the [file|tax return]
+G0515|hi asap
+G0516|quick, show me [file|invoice] from [date_time|last week] please
+G0517|hey alarm [date_time|next week] please
+G0518|can you call [contact|Karan] and tell [contact|Sarah] [message|pick up milk] please
+G0519|can you play [media|Honey Singh]
+G0520|yo add [event|interview] on [date_time|tomorrow at 8]
+G0521|please text [contact|Dr. Shah] on [app|Telegram] [message|dinner at 8?]
+G0522|yo launch [app|Photos] asap
+G0523|remind me [date_time|next week] to [message|take medicine] for me
+G0524|yo open [website|github]
+G0525|could you convert [query|20 celsius in fahrenheit] now
+G0526|open my [file|photo.jpg]
+G0527|hey add [event|1:1 sync] on [date_time|next monday]
+G0528|please turn on [setting|bluetooth] for me
+G0529|what is [query|sqrt of 144]
+G0530|can you alarm [date_time|7pm] asap
+G0531|could you alarm [date_time|tonight]
+G0532|pls timer [duration|half an hour] asap
+G0533|remind me [date_time|on the 15th] to [message|water the plants]
+G0534|pls remind me [date_time|today at 5pm] to [message|call mom]
+G0535|could you email [file|notes.txt] to [contact|Ravi sir] asap
+G0536|could you mute [setting|volume]
+G0537|kindly search [website|youtube] for [query|who won the world cup] please
+G0538|yo [query|meaning of ephemeral] asap
+G0539|call [contact|Neha] [date_time|tomorrow] for me
+G0540|pls enable [setting|dark mode]
+G0541|pls call [contact|David] and tell [contact|rahul] [message|dinner at 8?]
+G0542|hey call [contact|Dr. Shah] [date_time|next week] asap
+G0543|send the [file|project proposal] to [contact|Priya] on [app|Teams]
+G0544|open [website|reddit] please
+G0545|please remind me [date_time|next monday] to [message|water the plants] for me
+G0546|play [media|AP Dhillon] now
+G0547|hey tell [contact|Kiran] [message|see you tomorrow] for me
+G0548|convert [query|10 km in miles] for me
+G0549|play [media|Arijit Singh]
+G0550|switch [setting|night light] off
+G0551|quick, what is [query|240 divided by 12] now
+G0552|kindly search [website|google maps] for [query|time in London] for me
+G0553|yo remind me to [message|book tickets] [date_time|today at 5pm]
+G0554|hey show me [file|screenshot] from [date_time|last month]
+G0555|yo call [contact|Emma] [date_time|on the 15th]
+G0556|please what is [query|45 plus 78] please
+G0557|quick, enable [setting|focus mode] for me
+G0558|please delete the [file|photo.jpg] for me
+G0559|please set a timer for [duration|45 mins] please
+G0560|pls weather in [place|Mumbai] [date_time|at 9:30 am] asap
+G0561|please rename [file|photo.jpg] to [file|tax return] please
+G0562|quick, delete the [file|salary slip] for me
+G0563|could you call [contact|didi] [date_time|at 10] please
+G0564|kindly send the [file|photo.jpg] to [contact|neha] on [app|Teams] now
+G0565|call [contact|Manish] [date_time|tonight] for me
+G0566|hey text [contact|Rahul] on [app|WhatsApp] [message|I'll be there in 10] asap
+G0567|mute [setting|volume] please
+G0568|please delete the [file|budget.xlsx]
+G0569|hey tell me a joke
+G0570|launch [app|Discord]
+G0571|kindly search [website|reddit] for [query|weather in Pune]
+G0572|yo launch [app|Calculator]
+G0573|could you message [contact|Sunita ma'am] [message|I'll be there in 10] please
+G0574|could you call [contact|Amit] asap
+G0575|kindly go to [website|twitter] for me
+G0576|quick, close [app|Photos] asap
+G0577|message [contact|Zoya] [message|dinner at 8?]
+G0578|quick, never mind for me
+G0579|add [event|client call] on [date_time|at noon] now
+G0580|quick, find [file|salary slip] in [folder|Pictures]
+G0581|pls call [contact|Sunita ma'am] [date_time|tonight] now
+G0582|hey book [event|client call] [date_time|on the 15th]
+G0583|hey search [website|youtube] for [query|who won the world cup]
+G0584|launch [app|Firefox]
+G0585|yo remind me to [message|email HR] [date_time|at noon] asap
+G0586|pls turn off [setting|focus mode]
+G0587|rename [file|budget.xlsx] to [file|presentation] for me
+G0588|yo send the [file|cv] to [contact|Mike] on [app|Teams]
+G0589|pls hi
+G0590|kindly what's the [query|capital of Canada]
+G0591|can you turn on [setting|wifi]
+G0592|could you open my [file|cv] now
+G0593|hey remind me to [message|pay the rent] [date_time|at 9:30 am]
+G0594|yo play [media|lofi beats] on [app|Spotify]
+G0595|pls remind me [date_time|today at 5pm] to [message|pay the rent] asap
+G0596|pls book [event|design review] [date_time|today at 5pm] now
+G0597|open the [folder|Desktop] folder asap
+G0598|could you turn off [setting|battery saver] please
+G0599|hey set a timer for [duration|an hour] asap
+G0600|what's the [query|who won the world cup] now
+G0601|please send [contact|neha] a message saying [message|I'll be there in 10] now
+G0602|pls open my [file|budget.xlsx] now
+G0603|call [contact|Priya] [date_time|today at 5pm] please
+G0604|quick, turn on [setting|dark mode]
+G0605|kindly weather in [place|Pune] [date_time|on the 15th]
+G0606|hey call [contact|Neha] and tell [contact|bhai] [message|where are you]
+G0607|can you what can you do
+G0608|quick, turn on [setting|quiet mode] for me
+G0609|could you tell [contact|Neha] [message|send me the file]
+G0610|quick, schedule [event|design review] with [contact|Arjun] [date_time|today at 5pm]
+G0611|find [file|salary slip] in [folder|Pictures]
+G0612|kindly what is [query|sqrt of 144]
+G0613|quick, close [app|Figma]
+G0614|yo open [website|twitter]
+G0615|hey find [file|offer letter] in [folder|Work]
+G0616|kindly put on [media|Taylor Swift]
+G0617|yo open [app|VS Code] please
+G0618|quick, call [contact|Anjali] [date_time|tonight] now
+G0619|close [app|File Explorer]
+G0620|call [contact|Arjun] and tell [contact|boss] [message|I'm running late]
+G0621|please play [media|Diljit]
+G0622|hey tell me a joke for me
+G0623|hey what can you do
+G0624|mail [contact|neha] the [file|cv]
+G0625|can you reduce the [setting|volume]
+G0626|pls schedule [event|yoga class] with [contact|Isha] [date_time|tomorrow morning]
+G0627|can you weather in [place|Bangalore] [date_time|in the afternoon]
+G0628|quick, what can you do
+G0629|pls email [file|notes.txt] to [contact|Rahul]
+G0630|please remind me [date_time|on the 15th] to [message|call the plumber]
+G0631|what can you do now
+G0632|hey text [contact|mom] on [app|WhatsApp] [message|where are you]
+G0633|pls what is [query|15% of 2400] please
+G0634|call [contact|Emma] [date_time|next monday]
+G0635|play [media|Coldplay] on [app|Spotify] for me
+G0636|hey weather in [place|Tokyo] [date_time|on the 15th]
+G0637|please what can you do
+G0638|kindly show me [file|tax return] from [date_time|last month] please
+G0639|search [website|gmail] for [query|weather in Pune] please
+G0640|find [file|assignment] in [folder|Downloads]
+G0641|kindly remind me to [message|renew insurance] [date_time|at 10] please
+G0642|could you mail [contact|Aditi] the [file|presentation] now
+G0643|pls schedule [event|dentist] with [contact|Rahul] [date_time|this evening] asap
+G0644|timer [duration|1 hr]
+G0645|kindly enable [setting|night light]
+G0646|weather in [place|New York] [date_time|in the afternoon]
+G0647|pls set [setting|brightness] to [number|75] for me
+G0648|switch [setting|battery saver] off for me
+G0649|yo tell [contact|Isha] [message|see you tomorrow] asap
+G0650|can you launch [app|Word] please
+G0651|set [setting|brightness] to [number|40]
+G0652|hey play [media|some jazz] on [app|Spotify]
+G0653|yo put on [media|Shape of You]
+G0654|can you launch [app|PowerPoint] for me
+G0655|set [setting|brightness] to [number|100]
+G0656|kindly convert [query|5 kg to pounds] asap
+G0657|could you book [event|design review] [date_time|at 10]
+G0658|mail [contact|boss] the [file|cv] now
+G0659|hey launch [app|Notion]
+G0660|yo play [media|Kesariya] on [app|Spotify]
+G0661|hey never mind for me
+G0662|add [event|1:1 sync] on [date_time|at noon] please
+G0663|yo tell me a joke asap
+G0664|switch to [app|VS Code] asap
+G0665|play [media|Coldplay]
+G0666|hi
+G0667|enable [setting|quiet mode] now
+G0668|kindly turn on [setting|battery saver] asap
+G0669|please tell [contact|Ravi sir] [message|happy birthday]
+G0670|pls schedule [event|1:1 sync] with [contact|David] [date_time|this evening] now
+G0671|could you email [file|offer letter] to [contact|bhai] please
+G0672|can you what can you do asap
+G0673|hey text [contact|mom] on [app|Telegram] [message|send me the file]
+G0674|pls reduce the [setting|brightness]
+G0675|quick, call [contact|Sanjay] [date_time|next week] please
+G0676|hey mail [contact|Sneha] the [file|photo.jpg] for me
+G0677|can you find the [file|resume] please
+G0678|could you play [media|Blinding Lights] on [app|Spotify] for me
+G0679|could you set a timer for [duration|half an hour]
+G0680|open my [file|resume] now
+G0681|can you move [file|invoice] to [folder|Work]
+G0682|could you call [contact|Sneha] now
+G0683|hi now
+G0684|never mind now
+G0685|could you send [contact|Dr. Shah] a message saying [message|can we talk later] for me
+G0686|increase the [setting|volume]
+G0687|kindly tell [contact|Meera] [message|pick up milk] asap
+G0688|search [website|flipkart] for [query|who won the world cup] asap
+G0689|kindly increase the [setting|brightness] asap
+G0690|can you tell me a joke for me
+G0691|pls open [website|linkedin]
+G0692|kindly weather in [place|Goa] [date_time|saturday 6pm]
+G0693|enable [setting|airplane mode] now
+G0694|kindly convert [query|10 km in miles]
+G0695|raise the [setting|volume] asap
+G0696|could you go to [website|linkedin] now
+G0697|quick, [query|time in London] for me
+G0698|could you alarm [date_time|at 9:30 am]
+G0699|yo call [contact|Priya]
+G0700|kindly call [contact|Arjun] and tell [contact|bhai] [message|meeting moved to 4] asap
+G0701|kindly remind me [date_time|next monday] to [message|buy groceries] please
+G0702|can you open [app|Notion] asap
+G0703|could you what is [query|45 plus 78]
+G0704|text [contact|Arjun] on [app|Telegram] [message|happy birthday] now
+G0705|hey schedule [event|dentist] with [contact|Emma] [date_time|this evening]
+G0706|please remind me to [message|buy groceries] [date_time|at noon]
+G0707|weather in [place|Bangalore] [date_time|tomorrow morning] please
+G0708|book [event|dentist] [date_time|tomorrow at 8]
+G0709|text [contact|Aditi] on [app|WhatsApp] [message|thanks a lot] now
+G0710|kindly find [file|salary slip] in [folder|Work]
+G0711|could you email [file|presentation] to [contact|bhai] asap
+G0712|quick, open the [folder|Taxes] folder please
+G0713|could you switch to [app|Notepad] asap
+G0714|quick, send the [file|resume] to [contact|Aditi] on [app|Teams]
+G0715|set a timer for [duration|5 min]
+G0716|please turn on [setting|airplane mode]
+G0717|pls tell me a joke please
+G0718|could you send the [file|budget.xlsx] to [contact|Arjun] on [app|Slack]
+G0719|open my [file|budget.xlsx] for me
+G0720|raise the [setting|volume]
+G0721|enable [setting|dark mode] please
+G0722|yo put on [media|Ed Sheeran]
+G0723|launch [app|Teams]
+G0724|kindly move [file|budget.xlsx] to [folder|Pictures]
+G0725|quick, move [file|invoice] to [folder|Taxes] asap
+G0726|please go to [website|flipkart] now
+G0727|please book [event|interview] [date_time|7pm]
+G0728|find the [file|presentation] now
+G0729|remind me to [message|email HR] [date_time|tomorrow] for me
+G0730|kindly call [contact|Mike] please
+G0731|quick, alarm [date_time|tomorrow morning] now
+G0732|kindly schedule [event|standup] with [contact|Isha] [date_time|today at 5pm]
+G0733|alarm [date_time|on friday] asap
+G0734|could you open the [folder|Desktop] folder
+G0735|can you what can you do for me
+G0736|please remind me to [message|renew insurance] [date_time|on friday]
+G0737|alarm [date_time|at 9:30 am] now
+G0738|tell [contact|wife] [message|I'm running late]
+G0739|hey mail [contact|Amit] the [file|presentation]
+G0740|can you email [file|cv] to [contact|Sunita ma'am]
+G0741|pls send [contact|dad] a message saying [message|thanks a lot]
+G0742|quick, move [file|budget.xlsx] to [folder|Documents] asap
+G0743|please launch [app|Word]
+G0744|could you delete the [file|invoice] for me
+G0745|can you email [file|tax return] to [contact|Zoya] for me
+G0746|open [website|netflix]
+G0747|could you reduce the [setting|brightness]
+G0748|kindly alarm [date_time|today at 5pm]
+G0749|could you [query|weather in Pune] asap
+G0750|pls set a timer for [duration|20 minutes] for me
+G0751|please call [contact|Divya]
+G0752|hey remind me [date_time|tomorrow morning] to [message|take medicine] for me
+G0753|hey open my [file|presentation]
+G0754|tell [contact|Meera] [message|call me back] now
+G0755|yo close [app|Discord] please
+G0756|kindly convert [query|20 celsius in fahrenheit]
+G0757|pls convert [query|20 celsius in fahrenheit] please
+G0758|hey play [media|Ed Sheeran] asap
+G0759|yo schedule [event|yoga class] with [contact|boss] [date_time|tonight]
+G0760|send [contact|Anjali] a message saying [message|pick up milk] for me
+G0761|kindly remind me to [message|call the plumber] [date_time|saturday 6pm]
+G0762|could you call [contact|Rahul] [date_time|this evening]
+G0763|quick, open my [file|invoice] for me
+G0764|quick, weather in [place|Bangalore] [date_time|tomorrow morning] asap
+G0765|reduce the [setting|volume] for me
+G0766|hey add [event|1:1 sync] on [date_time|on the 15th]
+G0767|hey call [contact|Sanjay] [date_time|at 10]
+G0768|kindly remind me [date_time|in the afternoon] to [message|call mom] asap
+G0769|hey add [event|dentist] on [date_time|this evening] asap
+G0770|yo close [app|Discord] for me
+G0771|could you switch to [app|Teams] now
+G0772|quick, play [media|Shape of You] for me
+G0773|hey text [contact|Pooja] on [app|Telegram] [message|pick up milk]
+G0774|yo increase the [setting|brightness] for me
+G0775|can you find [file|screenshot] in [folder|Documents] asap
+G0776|text [contact|my manager] on [app|Telegram] [message|send me the file]
+G0777|please mail [contact|Dr. Shah] the [file|budget.xlsx] for me
+G0778|open [website|github]
+G0779|yo call [contact|Anjali] and tell [contact|neha] [message|where are you]
+G0780|could you tell me a joke
+G0781|schedule [event|dentist] with [contact|my manager] [date_time|at 10] for me
+G0782|pls call [contact|Divya] [date_time|on the 15th] please
+G0783|can you alarm [date_time|this evening]
+G0784|yo hi now
+G0785|pls text [contact|rahul] on [app|Telegram] [message|dinner at 8?] for me
+G0786|pls schedule [event|lunch with the team] with [contact|didi] [date_time|this evening] now
+G0787|pls send the [file|cv] to [contact|Ravi sir] on [app|WhatsApp]
+G0788|kindly mail [contact|Anjali] the [file|notes.txt] now
+G0789|yo hi
+G0790|kindly send [contact|mom] a message saying [message|see you tomorrow]
+G0791|could you call [contact|wife] now
+G0792|hey turn on [setting|focus mode] now
+G0793|please go to [website|reddit]
+G0794|message [contact|didi] [message|happy birthday] for me
+G0795|yo switch to [app|Spotify] please
+G0796|kindly open the [folder|Projects] folder now
+G0797|hey convert [query|100 usd in inr] please
+G0798|quick, call [contact|amit] [date_time|saturday 6pm]
+G0799|quick, timer [duration|half an hour] for me
+G0800|please mail [contact|boss] the [file|resume]
+G0801|please thanks asap
+G0802|pls call [contact|Neha] and tell [contact|Neha] [message|call me back]
+G0803|weather in [place|Bangalore] [date_time|next week]
+G0804|hey turn off [setting|night light] please
+G0805|add [event|design review] on [date_time|tomorrow at 8]
+G0806|enable [setting|quiet mode]
+G0807|send the [file|offer letter] to [contact|Ravi sir] on [app|Outlook] for me
+G0808|pls convert [query|10 km in miles] now
+G0809|kindly mute [setting|volume] for me
+G0810|can you call [contact|Vikram] [date_time|tomorrow] please
+G0811|quick, move [file|project proposal] to [folder|Downloads]
+G0812|play [media|Kishore Kumar] on [app|Spotify]
+G0813|quick, move [file|salary slip] to [folder|Pictures]
+G0814|could you find the [file|presentation]
+G0815|hey switch [setting|bluetooth] off please
+G0816|yo what is [query|45 plus 78] please
+G0817|put on [media|Kesariya] for me
+G0818|please schedule [event|client call] with [contact|wife] [date_time|next monday] please
+G0819|quick, switch [setting|bluetooth] off now
+G0820|please tell [contact|neha] [message|see you tomorrow] now
+G0821|yo text [contact|Isha] on [app|WhatsApp] [message|meeting moved to 4]
+G0822|set [setting|volume] to [number|50]
+G0823|yo delete the [file|assignment] asap
+G0824|could you message [contact|wife] [message|call me back] please
+G0825|kindly remind me [date_time|at 10] to [message|take medicine] please
+G0826|can you tell [contact|Amit] [message|I'm running late] please
+G0827|quick, [query|population of India] please
+G0828|yo move [file|screenshot] to [folder|College] for me
+G0829|kindly call [contact|Divya] and tell [contact|Neha] [message|dinner at 8?]
+G0830|yo call [contact|Divya] and tell [contact|amit] [message|call me back] please
+G0831|hey what is [query|15% of 2400] please
+G0832|email [file|cv] to [contact|Sarah] asap
+G0833|pls remind me to [message|water the plants] [date_time|on the 15th] now
+G0834|text [contact|Anjali] on [app|WhatsApp] [message|pick up milk] for me
+G0835|can you [query|population of India] now
+G0836|message [contact|Priya] [message|can we talk later]
+G0837|pls play [media|Ed Sheeran]
+G0838|play [media|Kesariya]
+G0839|hey switch to [app|Notepad]
+G0840|hey tell [contact|Isha] [message|send me the file] please
+G0841|text [contact|David] on [app|Telegram] [message|thanks a lot]
+G0842|kindly call [contact|dad]
+G0843|weather in [place|London] [date_time|tomorrow at 8] please
+G0844|please go to [website|youtube] asap
+G0845|set a timer for [duration|20 minutes]
+G0846|pls hi for me
+G0847|pls message [contact|Sneha] [message|can we talk later] now
+G0848|quick, weather in [place|Delhi] [date_time|today at 5pm] please
+G0849|pls mail [contact|Amit] the [file|salary slip]
+G0850|remind me to [message|renew insurance] [date_time|7pm]
+G0851|kindly add [event|1:1 sync] on [date_time|saturday 6pm]
+G0852|pls open [website|flipkart] for me
+G0853|play [media|Blinding Lights] please
+G0854|could you turn on [setting|airplane mode] now
+G0855|please send the [file|presentation] to [contact|Aditi] on [app|Outlook] asap
+G0856|please mail [contact|Sneha] the [file|lease agreement] asap
+G0857|text [contact|Pooja] on [app|Telegram] [message|call me back]
+G0858|yo email [file|tax return] to [contact|Priya] please
+G0859|pls call [contact|Aditi] [date_time|next week]
+G0860|launch [app|Excel] asap
+G0861|open [app|PowerPoint] now
+G0862|can you enable [setting|do not disturb]
+G0863|send [contact|Rohit] a message saying [message|thanks a lot] for me
+G0864|call [contact|dad]
+G0865|find the [file|timesheet]
+G0866|can you play [media|Arijit Singh] please
+G0867|pls enable [setting|quiet mode]
+G0868|hey rename [file|invoice] to [file|salary slip] now
+G0869|please delete the [file|project proposal] please
+G0870|can you find [file|invoice] in [folder|Receipts]
+G0871|hey alarm [date_time|7pm] please
+G0872|could you play [media|Kishore Kumar] on [app|Spotify]
+G0873|could you what's the [query|who won the world cup] please
+G0874|yo what can you do
+G0875|could you put on [media|Ed Sheeran]
+G0876|yo weather in [place|Pune] [date_time|monday morning]
+G0877|please thanks
+G0878|weather in [place|Goa] [date_time|next monday] for me
+G0879|hey call [contact|Kiran] and tell [contact|Manish] [message|thanks a lot]
+G0880|show me [file|photo.jpg] from [date_time|yesterday]
+G0881|go to [website|netflix]
+G0882|pls call [contact|David] and tell [contact|Sunita ma'am] [message|meeting moved to 4] please
+G0883|yo remind me [date_time|tomorrow] to [message|take medicine]
+G0884|could you enable [setting|focus mode]
+G0885|please [query|capital of Canada] now
+G0886|please open [website|netflix] asap
+G0887|hey text [contact|priya] on [app|WhatsApp] [message|send me the file] for me
+G0888|delete the [file|cv]
+G0889|remind me to [message|call the plumber] [date_time|this evening]
+G0890|kindly schedule [event|yoga class] with [contact|Vikram] [date_time|this evening] now
+G0891|remind me [date_time|tomorrow morning] to [message|book tickets]
+G0892|could you what can you do for me
+G0893|quick, convert [query|5 kg to pounds]
+G0894|pls schedule [event|yoga class] with [contact|Rohit] [date_time|tonight] for me
+G0895|message [contact|Mike] [message|call me back] asap
+G0896|call [contact|priya] [date_time|today at 5pm] for me
+G0897|yo weather in [place|Mumbai] [date_time|saturday 6pm] now
+G0898|kindly open the [folder|Pictures] folder now
+G0899|quick, close [app|Settings] for me
+G0900|pls weather in [place|London] [date_time|tomorrow at 8]
+G0901|pls what is [query|15% of 2400]
+G0902|could you alarm [date_time|on the 15th]
+G0903|hey what is [query|sqrt of 144]
+G0904|please mute [setting|volume] please
+G0905|please move [file|assignment] to [folder|Projects]
+G0906|please enable [setting|airplane mode] for me
+G0907|hey call [contact|Karan] [date_time|at 9:30 am] asap
+G0908|kindly call [contact|neha] [date_time|tomorrow at 8] please
+G0909|could you turn on [setting|focus mode]
+G0910|can you search [website|github] for [query|distance to Mumbai]
+G0911|yo what is [query|sqrt of 144] for me
+G0912|yo thanks asap
+G0913|yo alarm [date_time|tomorrow morning] now
+G0914|pls weather in [place|Bangalore] [date_time|on friday] please
+G0915|yo thanks
+G0916|show me [file|assignment] from [date_time|two weeks ago]
+G0917|set a timer for [duration|half an hour] now
+G0918|please set a timer for [duration|an hour] now
+G0919|email [file|salary slip] to [contact|Sanjay]
+G0920|find [file|cv] in [folder|Pictures] asap
+G0921|could you close [app|Zoom]
+G0922|pls remind me [date_time|this evening] to [message|submit the form] please
+G0923|pls call [contact|Zoya] [date_time|on the 15th]
+G0924|quick, rename [file|invoice] to [file|report.pdf] for me
+G0925|open [app|Slack] please
+G0926|mail [contact|Sunita ma'am] the [file|report.pdf] now
+G0927|please [query|weather in Pune]
+G0928|tell [contact|Sanjay] [message|see you tomorrow] now
+G0929|yo play [media|Believer] on [app|Spotify] asap
+G0930|kindly move [file|notes.txt] to [folder|Downloads]
+G0931|open [app|Paint] asap
+G0932|could you [query|capital of Canada]
+G0933|pls convert [query|100 usd in inr]
+G0934|please play [media|Kishore Kumar] on [app|Spotify]
+G0935|yo add [event|1:1 sync] on [date_time|at noon]
+G0936|pls send [contact|David] a message saying [message|call me back] asap
+G0937|kindly launch [app|Outlook]
+G0938|please play [media|Arijit Singh] on [app|Spotify] now
+G0939|kindly schedule [event|design review] with [contact|wife] [date_time|at 10] asap
+G0940|close [app|Notion] now
+G0941|could you schedule [event|yoga class] with [contact|Manish] [date_time|saturday 6pm]
+G0942|pls call [contact|Kiran] [date_time|next monday] please
+G0943|quick, text [contact|Emma] on [app|WhatsApp] [message|thanks a lot]
+G0944|remind me to [message|book tickets] [date_time|7pm]
+G0945|yo call [contact|boss] [date_time|7pm] please
+G0946|kindly show me [file|assignment] from [date_time|last week] now
+G0947|can you schedule [event|design review] with [contact|Manish] [date_time|7pm] now
+G0948|kindly call [contact|Sneha] asap
+G0949|can you put on [media|Believer]
+G0950|please book [event|dentist] [date_time|at 9:30 am]
+G0951|kindly turn on [setting|do not disturb]
+G0952|quick, search [website|myntra] for [query|capital of Canada]
+G0953|yo increase the [setting|volume] now
+G0954|search [website|linkedin] for [query|distance to Mumbai]
+G0955|pls enable [setting|night light]
+G0956|can you switch [setting|night light] off please
+G0957|what is [query|45 plus 78] now
+G0958|yo tell me a joke
+G0959|pls open my [file|notes.txt] for me
+G0960|pls call [contact|Isha] [date_time|on the 15th]
+G0961|search [website|github] for [query|distance to Mumbai]
+G0962|kindly play [media|Honey Singh] on [app|Spotify]
+G0963|please book [event|design review] [date_time|next week] now
+G0964|search [website|youtube] for [query|distance to Mumbai]
+G0965|[query|weather in Pune]
+G0966|please play [media|Coldplay] on [app|Spotify] for me
+G0967|could you switch [setting|night light] off
+G0968|hey book [event|1:1 sync] [date_time|next week] please
+G0969|kindly mail [contact|wife] the [file|photo.jpg] for me
+G0970|yo open [app|Word] now
+G0971|hey convert [query|10 km in miles]
+G0972|quick, mute [setting|volume]
+G0973|can you email [file|lease agreement] to [contact|boss] asap
+G0974|hey send the [file|tax return] to [contact|Priya] on [app|Teams]
+G0975|can you remind me [date_time|at noon] to [message|submit the form] for me
+G0976|pls turn on [setting|focus mode]
+G0977|kindly tell [contact|Pooja] [message|see you tomorrow] for me
+G0978|kindly what can you do
+G0979|yo rename [file|budget.xlsx] to [file|cv]
+G0980|please open my [file|resume] now
+G0981|rename [file|presentation] to [file|report.pdf]
+G0982|pls show me [file|passport scan] from [date_time|last week] for me
+G0983|yo play [media|Arijit Singh] on [app|Spotify] please
+G0984|hey schedule [event|dentist] with [contact|Isha] [date_time|this evening] now
+G0985|open [app|File Explorer]
+G0986|please open the [folder|Documents] folder
+G0987|please switch to [app|Edge]
+G0988|play [media|Diljit] please
+G0989|what's the [query|capital of Canada]
+G0990|please timer [duration|45 mins]
+G0991|hey [query|time in London] asap
+G0992|yo alarm [date_time|saturday 6pm] please
+G0993|quick, search [website|gmail] for [query|population of India] asap
+G0994|could you play [media|Kishore Kumar]
+G0995|pls put on [media|Shape of You] now
+G0996|kindly remind me to [message|renew insurance] [date_time|on friday] now
+G0997|can you mail [contact|neha] the [file|budget.xlsx]
+G0998|hey turn off [setting|battery saver]
+G0999|quick, rename [file|resume] to [file|invoice]
+G1000|yo schedule [event|yoga class] with [contact|amit] [date_time|in the afternoon]
+G1001|yo call [contact|Rahul] and tell [contact|Pooja] [message|thanks a lot]
+G1002|yo open [app|Zoom]
+G1003|can you weather in [place|Delhi] [date_time|in the afternoon] please
+G1004|[query|who won the world cup]
+G1005|pls enable [setting|focus mode]
+G1006|could you call [contact|Zoya] asap
+G1007|quick, delete the [file|passport scan]
+G1008|can you mail [contact|Manish] the [file|resume] asap
+G1009|can you message [contact|Amit] [message|meeting moved to 4] now
+G1010|remind me to [message|email HR] [date_time|tomorrow morning] now
+G1011|pls call [contact|Rohit]
+G1012|please text [contact|bhai] on [app|Telegram] [message|where are you] please
+G1013|show me [file|report.pdf] from [date_time|two weeks ago]
+G1014|call [contact|Kiran]
+G1015|yo remind me [date_time|7pm] to [message|water the plants]
+G1016|please show me [file|cv] from [date_time|last week]
+G1017|can you search [website|flipkart] for [query|time in London] asap
+G1018|could you message [contact|Meera] [message|dinner at 8?]
+G1019|hey what's the [query|meaning of ephemeral]
+G1020|quick, what is [query|15% of 2400]
+G1021|quick, tell [contact|mom] [message|I'll be there in 10]
+G1022|hey convert [query|20 celsius in fahrenheit]
+G1023|kindly find [file|report.pdf] in [folder|College]
+G1024|add [event|standup] on [date_time|at 10]
+G1025|hey lower the [setting|brightness] for me
+G1026|please switch to [app|Word]
+G1027|hey search [website|twitter] for [query|distance to Mumbai] asap
+G1028|hey remind me [date_time|monday morning] to [message|email HR] please
+G1029|remind me to [message|book tickets] [date_time|today at 5pm] for me
+G1030|quick, open my [file|assignment]
+G1031|send the [file|project proposal] to [contact|Sarah] on [app|WhatsApp] for me
+G1032|pls email [file|photo.jpg] to [contact|Manish] please
+G1033|pls alarm [date_time|today at 5pm] asap
+G1034|hey alarm [date_time|at 10] for me
+G1035|yo hi asap
+G1036|hey set [setting|brightness] to [number|20]
+G1037|kindly call [contact|Vikram] and tell [contact|Aditi] [message|thanks a lot] for me
+G1038|email [file|salary slip] to [contact|Kiran] now
+G1039|could you schedule [event|lunch with the team] with [contact|Mike] [date_time|on the 15th]
+G1040|yo never mind please
+G1041|kindly close [app|Zoom]
+G1042|please put on [media|Diljit] now
+G1043|open [app|Excel] asap
+G1044|what's the [query|time in London]
+G1045|can you put on [media|Kishore Kumar]
+G1046|can you open [app|PowerPoint]
+G1047|rename [file|notes.txt] to [file|project proposal]
+G1048|could you put on [media|AP Dhillon] asap
+G1049|rename [file|timesheet] to [file|notes.txt]
+G1050|enable [setting|battery saver] please
+G1051|find the [file|screenshot]
+G1052|kindly set a timer for [duration|5 min]
+G1053|could you call [contact|Mike]
+G1054|yo timer [duration|1 hr]
+G1055|quick, timer [duration|an hour] asap
+G1056|please schedule [event|lunch with the team] with [contact|priya] [date_time|tomorrow] now
+G1057|please open my [file|offer letter] please
+G1058|please convert [query|10 km in miles] asap
+G1059|please what is [query|15% of 2400] asap
+G1060|can you email [file|passport scan] to [contact|David]
+G1061|hey schedule [event|dentist] with [contact|Rahul] [date_time|at 9:30 am]
+G1062|please send the [file|presentation] to [contact|Anjali] on [app|Outlook]
+G1063|can you set [setting|volume] to [number|20] for me
+G1064|pls open my [file|report.pdf] for me
+G1065|yo message [contact|Neha] [message|I'm running late] for me
+G1066|yo switch [setting|dark mode] off
+G1067|kindly call [contact|Aditi] [date_time|next week] asap
+G1068|remind me [date_time|next monday] to [message|pay the rent] please
+G1069|remind me [date_time|in the afternoon] to [message|renew insurance] please
+G1070|can you play [media|Shape of You] on [app|Spotify]
+G1071|launch [app|Discord] now
+G1072|could you open the [folder|Projects] folder for me
+G1073|open [app|Notion]
+G1074|kindly launch [app|Chrome]
+G1075|pls email [file|notes.txt] to [contact|Sneha]
+G1076|can you hi asap
+G1077|could you launch [app|Notion]
+G1078|can you search [website|gmail] for [query|meaning of ephemeral] for me
+G1079|quick, text [contact|bhai] on [app|WhatsApp] [message|can we talk later]
+G1080|go to [website|google maps]
+G1081|find [file|presentation] in [folder|Taxes] for me
+G1082|yo alarm [date_time|tomorrow at 8] asap
+G1083|yo set [setting|volume] to [number|50] for me
+G1084|yo go to [website|myntra]
+G1085|yo convert [query|100 usd in inr] now
+G1086|can you add [event|yoga class] on [date_time|today at 5pm]
+G1087|move [file|presentation] to [folder|Work] please
+G1088|yo find the [file|passport scan] now
+G1089|could you delete the [file|photo.jpg] asap
+G1090|put on [media|lofi beats]
+G1091|add [event|dentist] on [date_time|tonight] please
+G1092|hey launch [app|Chrome] now
+G1093|pls turn off [setting|dark mode]
+G1094|pls remind me [date_time|saturday 6pm] to [message|water the plants]
+G1095|move [file|assignment] to [folder|Receipts]
+G1096|pls schedule [event|lunch with the team] with [contact|Anjali] [date_time|at noon] please
+G1097|remind me to [message|call mom] [date_time|next week] please
+G1098|quick, search [website|chatgpt] for [query|distance to Mumbai]
+G1099|yo what can you do now
+G1100|please put on [media|Blinding Lights]
+G1101|hey open my [file|tax return] asap
+G1102|open my [file|resume] for me
+G1103|quick, set a timer for [duration|10 minutes] asap
+G1104|yo schedule [event|client call] with [contact|Manish] [date_time|at 10]
+G1105|kindly move [file|project proposal] to [folder|Taxes] asap
+G1106|never mind asap
+G1107|yo alarm [date_time|saturday 6pm]
+G1108|please never mind now
+G1109|can you weather in [place|Bangalore] [date_time|next week]
+G1110|turn on [setting|airplane mode] for me
+G1111|quick, find [file|screenshot] in [folder|Receipts]
+G1112|book [event|dentist] [date_time|monday morning] please
+G1113|can you play [media|Ed Sheeran] for me
+G1114|weather in [place|Delhi] [date_time|on friday]
+G1115|yo launch [app|Zoom]
+G1116|mute [setting|volume] for me
+G1117|hey open my [file|budget.xlsx] please
+G1118|could you open my [file|project proposal] asap
+G1119|can you switch [setting|dark mode] off for me
+G1120|hey call [contact|David]
+G1121|[query|meaning of ephemeral] now
+G1122|quick, what is [query|sqrt of 144] asap
+G1123|please open [app|Telegram]
+G1124|quick, search [website|google maps] for [query|meaning of ephemeral] please
+G1125|launch [app|Word]
+G1126|can you enable [setting|wifi] now
+G1127|quick, launch [app|VS Code]
+G1128|kindly tell me a joke asap
+G1129|could you play [media|Arijit Singh] on [app|Spotify]
+G1130|could you open [app|File Explorer]
+G1131|could you rename [file|project proposal] to [file|lease agreement] please
+G1132|could you email [file|screenshot] to [contact|dad] now
+G1133|email [file|salary slip] to [contact|Meera]
+G1134|can you open my [file|photo.jpg] asap
+G1135|hey find [file|cv] in [folder|Desktop] please
+G1136|could you call [contact|Manish] asap
+G1137|please open [app|VS Code]
+G1138|quick, [query|population of India] asap
+G1139|hey convert [query|3 feet in cm]
+G1140|yo call [contact|Zoya]
+G1141|hey open [app|VS Code]
+G1142|pls open [app|Excel]
+G1143|hey never mind
+G1144|please search [website|twitter] for [query|time in London]
+G1145|could you tell me a joke now
+G1146|weather in [place|Delhi] [date_time|on friday] asap
+G1147|kindly call [contact|Arjun] [date_time|at 10]
+G1148|kindly call [contact|wife] [date_time|7pm]
+G1149|pls what is [query|sqrt of 144] now
+G1150|hey delete the [file|report.pdf]
+G1151|kindly remind me [date_time|tonight] to [message|submit the form] please
+G1152|set a timer for [duration|1 hr]
+G1153|please play [media|Taylor Swift]
+G1154|timer [duration|5 min]
+G1155|turn on [setting|airplane mode] please
+G1156|[query|meaning of ephemeral] please
+G1157|pls convert [query|100 usd in inr] asap
+G1158|alarm [date_time|saturday 6pm] asap
+G1159|please open [website|gmail]
+G1160|switch [setting|focus mode] off
+G1161|could you timer [duration|45 mins] asap
+G1162|kindly launch [app|Outlook] asap
+G1163|please send the [file|presentation] to [contact|mom] on [app|Outlook]
+G1164|kindly find the [file|resume]
+G1165|turn off [setting|quiet mode] for me
+G1166|kindly alarm [date_time|at 9:30 am] now
+G1167|close [app|Calculator]
+G1168|could you go to [website|flipkart] now
+G1169|rename [file|report.pdf] to [file|lease agreement] asap
+G1170|what can you do for me
+G1171|can you what is [query|45 plus 78] now
+G1172|lower the [setting|volume]
+G1173|can you switch [setting|night light] off
+G1174|quick, timer [duration|2 hours]
+G1175|yo delete the [file|budget.xlsx] for me
+G1176|pls what's the [query|meaning of ephemeral] now
+G1177|weather in [place|Goa] [date_time|next week] please
+G1178|weather in [place|Delhi] [date_time|in the afternoon]
+G1179|send [contact|Ravi sir] a message saying [message|I'm running late] now
+G1180|close [app|Calculator] please
+G1181|close [app|WhatsApp] asap
+G1182|please enable [setting|do not disturb] for me
+G1183|please tell [contact|Anjali] [message|send me the file] please
+G1184|please turn off [setting|wifi]
+G1185|can you weather in [place|Tokyo] [date_time|tomorrow morning] asap
+G1186|quick, tell me a joke
+G1187|can you never mind for me
+G1188|rename [file|presentation] to [file|photo.jpg] now
+G1189|kindly call [contact|Sneha]
+G1190|can you tell [contact|Rahul] [message|happy birthday]
+G1191|please put on [media|Diljit]
+G1192|can you schedule [event|interview] with [contact|Pooja] [date_time|at noon]
+G1193|switch [setting|quiet mode] off
+G1194|please turn on [setting|bluetooth]
+G1195|go to [website|youtube] asap
+G1196|kindly add [event|dentist] on [date_time|7pm] please
+G1197|open [website|youtube]
+G1198|quick, set [setting|brightness] to [number|20] please
+G1199|pls find the [file|photo.jpg] for me
+G1200|please switch [setting|do not disturb] off
+G1201|can you set [setting|brightness] to [number|15] please
+G1202|yo play [media|Ed Sheeran] now
+G1203|quick, find [file|lease agreement] in [folder|Projects]
+G1204|please call [contact|Dr. Shah]
+G1205|[query|time in London] asap
+G1206|could you schedule [event|lunch with the team] with [contact|Rohit] [date_time|7pm] for me
+G1207|tell me a joke for me
+G1208|could you email [file|resume] to [contact|Neha]
+G1209|yo email [file|salary slip] to [contact|Dr. Shah] now
+G1210|call [contact|Mike] [date_time|tomorrow at 8]
+G1211|please search [website|youtube] for [query|population of India] please
+G1212|yo raise the [setting|volume] please
+G1213|delete the [file|presentation] asap
+G1214|pls set a timer for [duration|90 seconds]
+G1215|quick, search [website|amazon] for [query|population of India] asap
+G1216|kindly email [file|budget.xlsx] to [contact|boss]
+G1217|hey call [contact|David] asap
+G1218|hey launch [app|Edge] asap
+G1219|quick, launch [app|Edge]
+G1220|kindly weather in [place|Delhi] [date_time|tomorrow] please
+G1221|enable [setting|night light] now
+G1222|schedule [event|lunch with the team] with [contact|Emma] [date_time|7pm]
+G1223|yo find [file|assignment] in [folder|Downloads] now
+G1224|can you set [setting|brightness] to [number|50]
+G1225|kindly call [contact|Mike] and tell [contact|neha] [message|thanks a lot] for me
+G1226|please switch [setting|dark mode] off
+G1227|could you text [contact|Sneha] on [app|WhatsApp] [message|thanks a lot] please
+G1228|enable [setting|night light]
+G1229|pls show me [file|cv] from [date_time|last week]
+G1230|delete the [file|offer letter] now
+G1231|find [file|report.pdf] in [folder|Desktop] now
+G1232|hey go to [website|amazon] please
+G1233|can you tell [contact|amit] [message|meeting moved to 4] for me
+G1234|could you what's the [query|time in London]
+G1235|please set [setting|brightness] to [number|50]
+G1236|could you schedule [event|yoga class] with [contact|Sunita ma'am] [date_time|at 10] please
+G1237|pls alarm [date_time|tonight]
+G1238|call [contact|Sunita ma'am]
+G1239|can you remind me to [message|renew insurance] [date_time|saturday 6pm] asap
+G1240|timer [duration|half an hour]
+G1241|please tell me a joke asap
+G1242|hey send [contact|didi] a message saying [message|send me the file] please
+G1243|pls schedule [event|1:1 sync] with [contact|Sarah] [date_time|tomorrow at 8]
+G1244|quick, set a timer for [duration|half an hour] now
+G1245|yo schedule [event|dentist] with [contact|Divya] [date_time|next monday] now
+G1246|hey timer [duration|5 min]
+G1247|what's the [query|distance to Mumbai]
+G1248|set a timer for [duration|20 minutes] please
+G1249|message [contact|wife] [message|can we talk later] for me
+G1250|please turn on [setting|night light]
+G1251|can you timer [duration|45 mins]
+G1252|send the [file|invoice] to [contact|amit] on [app|Slack]
+G1253|open the [folder|Projects] folder
+G1254|can you what's the [query|who won the world cup] for me
+G1255|find the [file|offer letter] for me
+G1256|set [setting|volume] to [number|30] for me
+G1257|quick, message [contact|Anjali] [message|can we talk later]
+G1258|pls text [contact|priya] on [app|Telegram] [message|thanks a lot]
+G1259|please turn off [setting|quiet mode] for me
+G1260|kindly launch [app|Settings] for me
+G1261|kindly what's the [query|meaning of ephemeral]
+G1262|could you open [website|twitter]
+G1263|yo tell [contact|Pooja] [message|send me the file]
+G1264|please message [contact|Arjun] [message|happy birthday] now
+G1265|please call [contact|boss] and tell [contact|David] [message|see you tomorrow]
+G1266|launch [app|Firefox] for me
+G1267|kindly thanks asap
+G1268|find [file|passport scan] in [folder|College]
+G1269|tell [contact|neha] [message|pick up milk] please
+G1270|remind me to [message|book tickets] [date_time|next monday] asap
+G1271|find the [file|budget.xlsx] now
+G1272|send [contact|John] a message saying [message|call me back]
+G1273|yo find [file|notes.txt] in [folder|Desktop]
+G1274|yo set [setting|volume] to [number|15]
+G1275|pls show me [file|lease agreement] from [date_time|last week]
+G1276|please add [event|standup] on [date_time|7pm] now
+G1277|open [website|myntra] please
+G1278|yo play [media|Kishore Kumar] on [app|Spotify]
+G1279|yo set [setting|volume] to [number|50] now
+G1280|reduce the [setting|volume]
+G1281|please launch [app|Settings] for me
+G1282|could you move [file|cv] to [folder|Desktop] for me
+G1283|can you go to [website|amazon] please
+G1284|hey play [media|Ed Sheeran] now
+G1285|quick, email [file|budget.xlsx] to [contact|mom] please
+G1286|can you close [app|Telegram] asap
+G1287|please open my [file|lease agreement] for me
+G1288|rename [file|salary slip] to [file|project proposal]
+G1289|kindly call [contact|Mike] [date_time|on the 15th]
+G1290|pls thanks
+G1291|quick, call [contact|Meera] [date_time|this evening]
+G1292|switch to [app|Photos]
+G1293|can you book [event|interview] [date_time|today at 5pm] please
+G1294|please open [website|flipkart] now
+G1295|quick, convert [query|20 celsius in fahrenheit] for me
+G1296|open [app|Spotify] asap
+G1297|quick, call [contact|mom] and tell [contact|priya] [message|thanks a lot]
+G1298|yo remind me [date_time|tomorrow morning] to [message|call the plumber] for me
+G1299|can you search [website|netflix] for [query|meaning of ephemeral]
+G1300|could you delete the [file|offer letter] now
+G1301|send [contact|Aditi] a message saying [message|happy birthday] please
+G1302|please find the [file|screenshot]
+G1303|can you move [file|salary slip] to [folder|Downloads] please
+G1304|please add [event|lunch with the team] on [date_time|at noon]
+G1305|pls enable [setting|bluetooth]
+G1306|yo mute [setting|volume] now
+G1307|find the [file|notes.txt]
+G1308|can you what's the [query|meaning of ephemeral] asap
+G1309|please switch to [app|Excel]
+G1310|could you schedule [event|design review] with [contact|Vikram] [date_time|at noon] please
+G1311|hey what is [query|240 divided by 12] now
+G1312|rename [file|notes.txt] to [file|project proposal] now
+G1313|hey tell [contact|Rahul] [message|I'll be there in 10] for me
+G1314|hey open [website|netflix] now
+G1315|please open [website|linkedin]
+G1316|could you delete the [file|cv] for me
+G1317|delete the [file|resume] for me
+G1318|yo search [website|netflix] for [query|capital of Canada] for me
+G1319|kindly show me [file|presentation] from [date_time|last month]
+G1320|please search [website|netflix] for [query|distance to Mumbai]
+G1321|pls convert [query|5 kg to pounds]
+G1322|quick, set a timer for [duration|45 mins] asap
+G1323|send the [file|screenshot] to [contact|Aditi] on [app|Teams]
+G1324|pls call [contact|Manish]
+G1325|pls close [app|Paint] for me
+G1326|could you go to [website|chatgpt]
+G1327|open [app|Zoom] now
+G1328|please tell me a joke for me
+G1329|hey message [contact|Emma] [message|happy birthday]
+G1330|pls call [contact|Divya] [date_time|next week] please
+G1331|hey call [contact|didi]
+G1332|open the [folder|College] folder
+G1333|kindly find [file|invoice] in [folder|Pictures] for me
+G1334|pls rename [file|lease agreement] to [file|timesheet]
+G1335|launch [app|Calculator] please
+G1336|please launch [app|Chrome] now
+G1337|please call [contact|my manager] [date_time|monday morning]
+G1338|hey convert [query|10 km in miles] now
+G1339|hey text [contact|Sneha] on [app|Telegram] [message|send me the file] please
+G1340|kindly find [file|lease agreement] in [folder|Documents]
+G1341|open [website|linkedin]
+G1342|could you turn on [setting|battery saver] now
+G1343|hey message [contact|bhai] [message|I'll be there in 10] now
+G1344|kindly call [contact|dad] now
+G1345|turn on [setting|dark mode] please
+G1346|kindly book [event|design review] [date_time|next week] please
+G1347|kindly text [contact|Emma] on [app|Telegram] [message|I'll be there in 10]
+G1348|hey open [website|google maps]
+G1349|email [file|presentation] to [contact|Aditi] for me
+G1350|convert [query|10 km in miles]
+G1351|find [file|timesheet] in [folder|College] asap
+G1352|please call [contact|Divya] and tell [contact|Isha] [message|dinner at 8?]
+G1353|yo what is [query|240 divided by 12]
+G1354|hey tell [contact|amit] [message|where are you]
+G1355|find the [file|invoice] for me
+G1356|kindly set [setting|volume] to [number|100] for me
+G1357|hey delete the [file|budget.xlsx]
+G1358|please call [contact|Neha] [date_time|today at 5pm]
+G1359|please call [contact|Priya] for me
+G1360|put on [media|AP Dhillon] now
+G1361|pls hi now
+G1362|yo show me [file|photo.jpg] from [date_time|last month]
+G1363|kindly never mind now
+G1364|book [event|interview] [date_time|saturday 6pm] please
+G1365|hey weather in [place|Delhi] [date_time|tonight] asap
+G1366|could you delete the [file|assignment]
+G1367|can you what's the [query|time in London] please
+G1368|kindly find [file|cv] in [folder|Taxes] for me
+G1369|pls enable [setting|night light] please
+G1370|hey book [event|lunch with the team] [date_time|at noon]
+G1371|quick, call [contact|Manish]
+G1372|remind me to [message|call mom] [date_time|in the afternoon]
+G1373|launch [app|Notion] now
+G1374|could you play [media|lofi beats] please
+G1375|hey call [contact|Aditi]
+G1376|quick, call [contact|Rohit] [date_time|tomorrow] for me
+G1377|kindly schedule [event|lunch with the team] with [contact|Sunita ma'am] [date_time|tomorrow morning]
+G1378|quick, search [website|gmail] for [query|time in London]
+G1379|kindly turn on [setting|bluetooth]
+G1380|call [contact|John] for me
+G1381|what's the [query|population of India]
+G1382|could you call [contact|David] now
+G1383|pls move [file|report.pdf] to [folder|Taxes] asap
+G1384|quick, what is [query|240 divided by 12]
+G1385|go to [website|amazon]
+G1386|quick, remind me [date_time|at 9:30 am] to [message|water the plants]
+G1387|hey set a timer for [duration|90 seconds] asap
+G1388|could you set [setting|volume] to [number|15]
+G1389|can you never mind asap
+G1390|kindly turn on [setting|do not disturb] for me
+G1391|call [contact|Manish] [date_time|saturday 6pm] now
+G1392|yo turn on [setting|focus mode] asap
+G1393|can you set a timer for [duration|half an hour] asap
+G1394|hey show me [file|tax return] from [date_time|two weeks ago] asap
+G1395|quick, weather in [place|Mumbai] [date_time|tonight]
+G1396|pls find [file|salary slip] in [folder|Projects] now
+G1397|kindly hi
+G1398|pls close [app|Teams] for me
+G1399|hey what can you do asap
+G1400|pls [query|weather in Pune] now
+G1401|email [file|project proposal] to [contact|Aditi]
+G1402|yo find [file|offer letter] in [folder|Work]
+G1403|rename [file|lease agreement] to [file|resume] now
+G1404|kindly put on [media|Kesariya] for me
+G1405|could you remind me [date_time|tonight] to [message|take medicine] please
+G1406|hey remind me to [message|call mom] [date_time|tonight]
+G1407|pls never mind please
+G1408|kindly convert [query|100 usd in inr]
+G1409|could you remind me [date_time|saturday 6pm] to [message|book tickets]
+G1410|can you call [contact|Dr. Shah] [date_time|on the 15th] now
+G1411|find [file|notes.txt] in [folder|College] please
+G1412|kindly rename [file|budget.xlsx] to [file|passport scan] please
+G1413|hey search [website|flipkart] for [query|weather in Pune] please
+G1414|call [contact|Sarah] and tell [contact|Anjali] [message|send me the file]
+G1415|play [media|AP Dhillon] on [app|Spotify]
+G1416|hey schedule [event|lunch with the team] with [contact|David] [date_time|tonight]
+G1417|kindly set [setting|brightness] to [number|15]
+G1418|mail [contact|Emma] the [file|salary slip] now
+G1419|can you text [contact|Kiran] on [app|Telegram] [message|pick up milk]
+G1420|kindly move [file|salary slip] to [folder|Desktop] now
+G1421|open [app|WhatsApp] now
+G1422|kindly hi for me
+G1423|pls tell [contact|Karan] [message|thanks a lot]
+G1424|yo find [file|notes.txt] in [folder|Downloads]
+G1425|kindly remind me to [message|call mom] [date_time|on the 15th]
+G1426|can you enable [setting|wifi]
+G1427|put on [media|Taylor Swift] please
+G1428|hey open [app|Calculator]
+G1429|could you move [file|photo.jpg] to [folder|Work]
+G1430|please never mind for me
+G1431|open my [file|cv]
+G1432|hey message [contact|neha] [message|happy birthday] asap
+G1433|kindly raise the [setting|brightness] asap
+G1434|quick, add [event|dentist] on [date_time|monday morning]
+G1435|pls set [setting|volume] to [number|20]
+G1436|hey set a timer for [duration|1 hr]
+G1437|could you set a timer for [duration|45 mins] asap
+G1438|quick, show me [file|budget.xlsx] from [date_time|two weeks ago]
+G1439|hey switch [setting|bluetooth] off
+G1440|hey never mind asap
+G1441|hey open [app|Paint] please
+G1442|please raise the [setting|brightness] asap
+G1443|move [file|passport scan] to [folder|Taxes]
+G1444|kindly schedule [event|yoga class] with [contact|Ravi sir] [date_time|this evening]
+G1445|quick, send [contact|Isha] a message saying [message|pick up milk]
+G1446|hey mail [contact|my manager] the [file|passport scan]
+G1447|call [contact|dad] and tell [contact|mom] [message|meeting moved to 4]
+G1448|quick, send [contact|Pooja] a message saying [message|I'll be there in 10]
+G1449|can you open the [folder|Work] folder for me
+G1450|yo email [file|report.pdf] to [contact|Vikram] asap
+G1451|quick, what is [query|sqrt of 144]
+G1452|show me [file|cv] from [date_time|two weeks ago]
+G1453|please mail [contact|Karan] the [file|budget.xlsx] now
+G1454|could you open the [folder|Documents] folder
+G1455|could you remind me [date_time|at noon] to [message|water the plants]
+G1456|could you set a timer for [duration|1 hr] please
+G1457|play [media|Shape of You]
+G1458|please convert [query|100 usd in inr]
+G1459|yo hi for me
+G1460|could you switch [setting|dark mode] off for me
+G1461|could you go to [website|google maps] please
+G1462|kindly remind me [date_time|on the 15th] to [message|take medicine] now
+G1463|please launch [app|Firefox] for me
+G1464|hey turn on [setting|bluetooth] please
+G1465|could you set a timer for [duration|20 minutes]
+G1466|open the [folder|Downloads] folder for me
+G1467|kindly what's the [query|capital of Canada] now
+G1468|hey raise the [setting|volume]
+G1469|please move [file|passport scan] to [folder|Receipts]
+G1470|hey call [contact|didi] and tell [contact|Priya] [message|I'm running late] asap
+G1471|message [contact|rahul] [message|pick up milk] for me
+G1472|hey message [contact|mom] [message|dinner at 8?]
+G1473|yo schedule [event|client call] with [contact|David] [date_time|this evening]
+G1474|hey turn off [setting|wifi] please
+G1475|what can you do please
+G1476|can you email [file|offer letter] to [contact|Isha] for me
+G1477|what is [query|240 divided by 12]
+G1478|kindly lower the [setting|volume] please
+G1479|please open [app|Excel]
+G1480|can you send [contact|Aditi] a message saying [message|where are you]
+G1481|could you timer [duration|an hour]
+G1482|hey lower the [setting|brightness] now
+G1483|hey call [contact|rahul] and tell [contact|Ravi sir] [message|meeting moved to 4] for me
+G1484|can you mail [contact|Sneha] the [file|budget.xlsx] please
+G1485|find the [file|invoice] please
+G1486|quick, text [contact|Divya] on [app|WhatsApp] [message|can we talk later]
+G1487|quick, find [file|tax return] in [folder|Projects] for me
+G1488|hey remind me to [message|take medicine] [date_time|saturday 6pm]
+G1489|kindly play [media|Arijit Singh] on [app|Spotify] asap
+G1490|please put on [media|Ed Sheeran]
+G1491|please call [contact|Vikram] and tell [contact|Neha] [message|dinner at 8?]
+G1492|kindly close [app|Discord] for me
+G1493|could you tell [contact|John] [message|thanks a lot] now
+G1494|open my [file|screenshot]
+G1495|yo open [app|Spotify]
+G1496|please never mind
+G1497|open my [file|photo.jpg] please
+G1498|[query|population of India] now
+G1499|quick, tell me a joke for me
+G1500|yo message [contact|Sanjay] [message|see you tomorrow] asap
+G1501|remind me [date_time|saturday 6pm] to [message|take medicine] please
+G1502|can you switch to [app|Word] asap
+G1503|can you send the [file|assignment] to [contact|boss] on [app|Teams]
+G1504|pls remind me to [message|pay the rent] [date_time|at 10] now
+G1505|alarm [date_time|tomorrow morning]
+G1506|put on [media|Honey Singh]
+G1507|delete the [file|salary slip] please
+G1508|please open the [folder|Projects] folder
+G1509|can you delete the [file|assignment]
+G1510|kindly schedule [event|standup] with [contact|Emma] [date_time|at 9:30 am] now
+G1511|can you play [media|Believer] for me
+G1512|please call [contact|Amit] and tell [contact|bhai] [message|where are you] for me
+G1513|pls mute [setting|volume] asap
+G1514|could you add [event|standup] on [date_time|saturday 6pm]
+G1515|weather in [place|New York] [date_time|on friday] asap
+G1516|could you put on [media|Taylor Swift] please
+G1517|could you play [media|Honey Singh]
+G1518|kindly turn on [setting|battery saver]
+G1519|yo rename [file|salary slip] to [file|cv] asap
+G1520|hey search [website|chatgpt] for [query|time in London]
+G1521|remind me to [message|pay the rent] [date_time|at 9:30 am]
+G1522|kindly text [contact|Sunita ma'am] on [app|WhatsApp] [message|send me the file]
+G1523|move [file|salary slip] to [folder|Work]
+G1524|could you go to [website|flipkart]
+G1525|kindly open [app|Notepad]
+G1526|could you call [contact|Dr. Shah] and tell [contact|Anjali] [message|meeting moved to 4]
+G1527|raise the [setting|volume] please
+G1528|turn off [setting|quiet mode] now
+G1529|could you enable [setting|night light]
+G1530|send [contact|Arjun] a message saying [message|can we talk later] now
+G1531|quick, remind me to [message|buy groceries] [date_time|monday morning] asap
+G1532|quick, go to [website|gmail] asap
+G1533|close [app|PowerPoint]
+G1534|yo call [contact|didi] [date_time|saturday 6pm]
+G1535|alarm [date_time|next week] asap
+G1536|search [website|netflix] for [query|weather in Pune] now
+G1537|could you remind me to [message|email HR] [date_time|7pm]
+G1538|hey find [file|project proposal] in [folder|Desktop]
+G1539|can you tell [contact|wife] [message|call me back] please
+G1540|can you remind me [date_time|tomorrow morning] to [message|submit the form] now
+G1541|hey email [file|salary slip] to [contact|rahul]
+G1542|put on [media|some jazz]
+G1543|search [website|chatgpt] for [query|weather in Pune] please
+G1544|hey send [contact|Isha] a message saying [message|happy birthday]
+G1545|hey call [contact|wife] now
+G1546|alarm [date_time|at 9:30 am]
+G1547|[query|distance to Mumbai]
+G1548|set a timer for [duration|an hour] asap
+G1549|send the [file|notes.txt] to [contact|Isha] on [app|WhatsApp]
+G1550|quick, increase the [setting|volume] please
+G1551|yo send [contact|Sneha] a message saying [message|can we talk later] please
+G1552|can you move [file|project proposal] to [folder|Pictures]
+G1553|quick, launch [app|Spotify]
+G1554|hey what is [query|45 plus 78]
+G1555|quick, what's the [query|time in London]
+G1556|hey open the [folder|College] folder
+G1557|open my [file|passport scan]
+G1558|move [file|tax return] to [folder|Projects]
+G1559|hey close [app|Outlook] asap
+G1560|hey launch [app|Slack] please
+G1561|quick, message [contact|Neha] [message|thanks a lot] asap
+G1562|could you close [app|Notion] asap
+G1563|hey open [app|Spotify]
+G1564|call [contact|Divya] asap
+G1565|pls what's the [query|meaning of ephemeral]
+G1566|kindly add [event|yoga class] on [date_time|monday morning]
+G1567|pls text [contact|dad] on [app|WhatsApp] [message|I'll be there in 10] for me
+G1568|hey timer [duration|half an hour]
+G1569|could you turn off [setting|do not disturb]
+G1570|kindly text [contact|Kiran] on [app|Telegram] [message|I'll be there in 10]
+G1571|turn off [setting|bluetooth] please
+G1572|timer [duration|half an hour] asap
+G1573|can you turn on [setting|dark mode]
+G1574|hey tell [contact|Anjali] [message|call me back]
+G1575|show me [file|notes.txt] from [date_time|last week]
+G1576|could you schedule [event|standup] with [contact|Divya] [date_time|next monday] please
+G1577|quick, move [file|project proposal] to [folder|Pictures]
+G1578|hey schedule [event|dentist] with [contact|my manager] [date_time|next monday]
+G1579|pls convert [query|100 usd in inr] now
+G1580|pls raise the [setting|volume]
+G1581|could you enable [setting|battery saver] please
+G1582|could you send [contact|Sarah] a message saying [message|thanks a lot] asap
+G1583|find the [file|report.pdf]
+G1584|please find [file|lease agreement] in [folder|Documents]
+G1585|pls go to [website|gmail]
+G1586|can you rename [file|resume] to [file|cv] for me
+G1587|kindly mail [contact|Manish] the [file|lease agreement]
+G1588|pls play [media|Kishore Kumar] please
+G1589|quick, call [contact|Sarah] and tell [contact|Mike] [message|pick up milk] now
+G1590|can you enable [setting|airplane mode] please
+G1591|kindly play [media|Taylor Swift]
+G1592|yo remind me to [message|renew insurance] [date_time|tonight]
+G1593|quick, add [event|design review] on [date_time|this evening] now
+G1594|hey go to [website|gmail] please
+G1595|please enable [setting|night light]
+G1596|quick, launch [app|Spotify] now
+G1597|can you open [website|reddit]
+G1598|hey move [file|notes.txt] to [folder|Receipts]
+G1599|kindly weather in [place|Mumbai] [date_time|monday morning] please
+G1600|hey open my [file|timesheet]
+G1601|yo alarm [date_time|tonight]
+G1602|kindly remind me [date_time|next monday] to [message|take medicine]
+G1603|please rename [file|photo.jpg] to [file|lease agreement]
+G1604|could you call [contact|Sanjay] and tell [contact|Mike] [message|I'll be there in 10]
+G1605|could you search [website|chatgpt] for [query|weather in Pune]
+G1606|can you enable [setting|bluetooth] now
+G1607|could you rename [file|photo.jpg] to [file|passport scan]
+G1608|please remind me to [message|renew insurance] [date_time|at 10] please
+G1609|can you text [contact|Priya] on [app|Telegram] [message|dinner at 8?]
+G1610|kindly remind me to [message|email HR] [date_time|at 10] for me
+G1611|could you mute [setting|volume] for me
+G1612|kindly switch to [app|Chrome] now
+G1613|kindly turn off [setting|do not disturb]
+G1614|yo never mind
+G1615|pls mute [setting|volume] now
+G1616|kindly call [contact|Sarah]
+G1617|hey go to [website|linkedin]
+G1618|hey schedule [event|yoga class] with [contact|priya] [date_time|today at 5pm] asap
+G1619|turn off [setting|dark mode]
+G1620|hey open [app|Notepad] now
+G1621|could you remind me to [message|call the plumber] [date_time|this evening] please
+G1622|yo find the [file|assignment]
+G1623|hey put on [media|Honey Singh] please
+G1624|set [setting|volume] to [number|15]
+G1625|kindly close [app|WhatsApp] now
+G1626|could you remind me [date_time|tomorrow at 8] to [message|call mom]
+G1627|hey go to [website|reddit] asap
+G1628|can you call [contact|amit] [date_time|next monday]
+G1629|switch to [app|Edge] asap
+G1630|yo switch to [app|Chrome] please
+G1631|yo remind me to [message|renew insurance] [date_time|on the 15th]
+G1632|could you find [file|presentation] in [folder|Projects]
+G1633|yo call [contact|Kiran] [date_time|at 10] please
+G1634|kindly find the [file|cv] please
+G1635|hey set [setting|volume] to [number|30]
+G1636|quick, turn off [setting|wifi] asap
+G1637|rename [file|presentation] to [file|invoice]
+G1638|delete the [file|offer letter]
+G1639|open [app|PowerPoint] please
+G1640|yo mute [setting|volume]
+G1641|could you text [contact|Divya] on [app|Telegram] [message|call me back] now
+G1642|open the [folder|College] folder now
+G1643|could you set a timer for [duration|90 seconds]
+G1644|can you delete the [file|screenshot]
+G1645|can you enable [setting|focus mode] now
+G1646|call [contact|Pooja]
+G1647|pls what can you do for me
+G1648|kindly [query|distance to Mumbai] now
+G1649|launch [app|Firefox] please
+G1650|email [file|invoice] to [contact|Sunita ma'am] now
+G1651|hey hi for me
+G1652|rename [file|cv] to [file|offer letter] please
+G1653|move [file|timesheet] to [folder|Pictures]
+G1654|find [file|lease agreement] in [folder|Pictures]
+G1655|could you remind me to [message|water the plants] [date_time|on friday] now
+G1656|kindly book [event|interview] [date_time|saturday 6pm] for me
+G1657|could you set [setting|volume] to [number|30] for me
+G1658|yo call [contact|bhai] and tell [contact|Rahul] [message|meeting moved to 4]
+G1659|kindly go to [website|github] now
+G1660|alarm [date_time|next week]
+G1661|find [file|report.pdf] in [folder|Downloads] asap
+G1662|hey set a timer for [duration|an hour] now
+G1663|could you rename [file|tax return] to [file|budget.xlsx] please
+G1664|weather in [place|Mumbai] [date_time|saturday 6pm] asap
+G1665|quick, set a timer for [duration|1 hr]
+G1666|schedule [event|dentist] with [contact|Amit] [date_time|at 10] for me
+G1667|pls mail [contact|rahul] the [file|passport scan]
+G1668|yo remind me to [message|pay the rent] [date_time|monday morning]
+G1669|yo enable [setting|focus mode]
+G1670|remind me [date_time|at 9:30 am] to [message|email HR]
+G1671|turn off [setting|quiet mode] please
+G1672|kindly mail [contact|Arjun] the [file|timesheet] please
+G1673|quick, convert [query|3 feet in cm]
+G1674|hey call [contact|Karan] now
+G1675|search [website|gmail] for [query|distance to Mumbai]
+G1676|hey email [file|cv] to [contact|Mike]
+G1677|please add [event|yoga class] on [date_time|this evening]
+G1678|remind me to [message|renew insurance] [date_time|this evening] please
+G1679|could you open my [file|timesheet] please
+G1680|close [app|Settings] asap
+G1681|open [app|Firefox]
+G1682|call [contact|Sarah] and tell [contact|Sarah] [message|pick up milk]
+G1683|yo call [contact|boss]
+G1684|pls open my [file|photo.jpg] please
+G1685|could you call [contact|Emma] [date_time|this evening] please
+G1686|mail [contact|John] the [file|tax return]
+G1687|yo timer [duration|20 minutes] for me
+G1688|hey delete the [file|lease agreement] for me
+G1689|kindly open my [file|presentation] asap
+G1690|turn on [setting|night light] please
+G1691|mail [contact|Mike] the [file|passport scan]
+G1692|open [website|reddit] for me
+G1693|pls open my [file|assignment]
+G1694|yo move [file|cv] to [folder|Downloads] please
+G1695|pls increase the [setting|volume] now
+G1696|yo what is [query|sqrt of 144]
+G1697|book [event|standup] [date_time|today at 5pm] now
+G1698|hey open [app|Outlook]
+G1699|could you delete the [file|lease agreement]
+G1700|could you email [file|resume] to [contact|Dr. Shah]
+G1701|yo call [contact|Sarah] [date_time|next monday]
+G1702|hey hi
+G1703|can you open my [file|passport scan] asap
+G1704|pls convert [query|20 celsius in fahrenheit]
+G1705|set a timer for [duration|1 hr] please
+G1706|send the [file|timesheet] to [contact|Sarah] on [app|Slack]
+G1707|kindly tell me a joke
+G1708|pls set a timer for [duration|half an hour]
+G1709|schedule [event|design review] with [contact|Neha] [date_time|on the 15th] asap
+G1710|could you delete the [file|report.pdf] please
+G1711|call [contact|Anjali] [date_time|7pm]
+G1712|could you launch [app|PowerPoint] asap
+G1713|can you email [file|timesheet] to [contact|Kiran] please
+G1714|please call [contact|Kiran] [date_time|7pm] for me
+G1715|please set [setting|brightness] to [number|50] for me
+G1716|yo weather in [place|Delhi] [date_time|tonight]
+G1717|kindly alarm [date_time|monday morning] asap
+G1718|kindly tell me a joke now
+G1719|can you find [file|report.pdf] in [folder|Receipts]
+G1720|kindly add [event|client call] on [date_time|tomorrow]
+G1721|yo mute [setting|volume] please
+G1722|can you search [website|amazon] for [query|who won the world cup] now
+G1723|pls play [media|Believer] on [app|Spotify] asap
+G1724|kindly search [website|github] for [query|distance to Mumbai] asap
+G1725|can you find [file|budget.xlsx] in [folder|Pictures]
+G1726|quick, reduce the [setting|brightness]
+G1727|yo put on [media|AP Dhillon]
+G1728|yo lower the [setting|volume]
+G1729|hey switch to [app|WhatsApp] now
+G1730|pls close [app|Notepad] for me
+G1731|yo message [contact|Dr. Shah] [message|meeting moved to 4]
+G1732|can you what's the [query|meaning of ephemeral]
+G1733|yo mail [contact|Karan] the [file|lease agreement]
+G1734|text [contact|Dr. Shah] on [app|WhatsApp] [message|meeting moved to 4] now
+G1735|remind me [date_time|next monday] to [message|submit the form] for me
+G1736|pls send the [file|resume] to [contact|my manager] on [app|Outlook]
+G1737|send the [file|report.pdf] to [contact|didi] on [app|Teams] for me
+G1738|please tell me a joke please
+G1739|open the [folder|College] folder asap
+G1740|kindly schedule [event|standup] with [contact|Sanjay] [date_time|this evening]
+G1741|hey add [event|client call] on [date_time|tomorrow]
+G1742|quick, enable [setting|focus mode]
+G1743|yo call [contact|boss] and tell [contact|dad] [message|I'll be there in 10]
+G1744|could you lower the [setting|brightness] for me
+G1745|pls tell me a joke now
+G1746|could you open [app|Paint]
+G1747|please call [contact|Rohit] and tell [contact|rahul] [message|I'll be there in 10]
+G1748|quick, find the [file|salary slip]
+G1749|delete the [file|lease agreement] for me
+G1750|open the [folder|Desktop] folder now
+G1751|pls schedule [event|1:1 sync] with [contact|bhai] [date_time|in the afternoon] for me
+G1752|hey move [file|salary slip] to [folder|Work] for me
+G1753|quick, what can you do please
+G1754|kindly turn on [setting|focus mode] now
+G1755|open [app|Edge]
+G1756|kindly set a timer for [duration|90 seconds] for me
+G1757|email [file|assignment] to [contact|Priya]
+G1758|call [contact|Emma]
+G1759|find [file|budget.xlsx] in [folder|Receipts] now
+G1760|show me [file|lease agreement] from [date_time|yesterday] please
+G1761|kindly message [contact|neha] [message|call me back] now
+G1762|hey close [app|Figma]
+G1763|pls schedule [event|yoga class] with [contact|Emma] [date_time|at 10] for me
+G1764|can you email [file|assignment] to [contact|Vikram] please
+G1765|kindly delete the [file|passport scan] for me
+G1766|can you send [contact|Sanjay] a message saying [message|meeting moved to 4] now
+G1767|please set a timer for [duration|an hour]
+G1768|message [contact|Sneha] [message|call me back]
+G1769|quick, mail [contact|mom] the [file|resume]
+G1770|yo weather in [place|Goa] [date_time|on the 15th]
+G1771|find [file|project proposal] in [folder|Taxes] for me
+G1772|quick, turn off [setting|do not disturb] asap
+G1773|could you [query|weather in Pune] now
+G1774|pls what can you do
+G1775|could you find the [file|tax return]
+G1776|pls alarm [date_time|tonight] for me
+G1777|hey close [app|Edge]
+G1778|kindly turn off [setting|battery saver]
+G1779|quick, turn off [setting|do not disturb]
+G1780|can you [query|who won the world cup]
+G1781|can you schedule [event|dentist] with [contact|amit] [date_time|next week]
+G1782|pls open [app|Settings] now
+G1783|quick, send the [file|timesheet] to [contact|priya] on [app|Outlook]
+G1784|can you find [file|timesheet] in [folder|Pictures] now
+G1785|hey add [event|dentist] on [date_time|tomorrow morning]
+G1786|could you call [contact|priya] now
+G1787|quick, call [contact|neha] and tell [contact|Dr. Shah] [message|I'll be there in 10] please
+G1788|hey find [file|lease agreement] in [folder|Downloads] for me
+G1789|could you enable [setting|dark mode]
+G1790|hey turn on [setting|airplane mode]
+G1791|yo delete the [file|tax return]
+G1792|can you alarm [date_time|on friday] please
+G1793|can you call [contact|Ravi sir] and tell [contact|Sunita ma'am] [message|dinner at 8?] please
+G1794|book [event|client call] [date_time|tomorrow]
+G1795|please add [event|1:1 sync] on [date_time|at 9:30 am] asap
+G1796|quick, find [file|presentation] in [folder|Taxes]
+G1797|yo tell [contact|Priya] [message|I'll be there in 10] please
+G1798|yo close [app|Word]
+G1799|hey turn off [setting|bluetooth] asap
+G1800|move [file|invoice] to [folder|Taxes] now

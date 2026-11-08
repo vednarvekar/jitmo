@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "V:\Code\jitmo\spikes\sp3-planner\eval.py", line 9, in <module>
-    import resource
-ModuleNotFoundError: No module named 'resource'

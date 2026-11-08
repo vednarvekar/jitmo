@@ -1,7 +1,7 @@
 # SP9 — Can trick instructions in emails / pages / messages be blocked?
 
 ## Verdict
-**PASS (T91, T92, T93 all pass), with caveats.** Run: `PYTHONPATH=. python3 eval.py` (rules only; no model, no network; output in `eval_output.txt`).
+**PASS (T91, T92, T93 all pass), with caveats.** Run: `PYTHONPATH=. python3 eval.py` (rules only; no model, no network).
 Important scope note: the "planner" is simulated as a *worst-case obedient model* that always proposes the attacker's action. So the result tests the structural defence (route + guard + sanitizer), NOT how often a real 1-3B model would be fooled. That is the intended property of the design: safety must not depend on the model.
 
 ## Harness (`harness.py`, ~200 lines)

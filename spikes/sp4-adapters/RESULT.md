@@ -5,7 +5,7 @@
 ## Setup
 - Base: Qwen2.5-1.5B-Instruct Q4_K_M via llama-cpp-python 0.3.36 (prebuilt CPU wheel, Windows venv `.venv`, Python 3.12), 4 threads, ctx 512. The base GGUF lives in `..\sp3-planner\models\`.
 - Adapters: 3 **randomly initialised, untrained** LoRA GGUFs (`make_adapters.py`; rank 8/8/16, q and v projections, all 28 layers, 4.4/4.4/8.7MB). Valid for swap time and memory only; they teach nothing. Generations differ per adapter, so they are really applied.
-- `bench2.py` (this round, data `result_r2.json`, log `bench2.log`): (1) 500 hot swaps rotating a/b/c, each followed by a 1-token decode so the adapter enters the compute graph; (2) interleaved no-adapter vs adapter 8-token generations to get per-token overhead; (3) 100 cold cycles (load from disk, apply, decode, detach, free). Memory is sampled as USS (private bytes) and RSS. The earlier round (`bench.py`, `result_contended.json`, done in WSL) agrees on swap time.
+- `bench2.py` (this round, data `result_r2.json`): (1) 500 hot swaps rotating a/b/c, each followed by a 1-token decode so the adapter enters the compute graph; (2) interleaved no-adapter vs adapter 8-token generations to get per-token overhead; (3) 100 cold cycles (load from disk, apply, decode, detach, free). Memory is sampled as USS (private bytes) and RSS. The earlier round (`bench.py`, done in WSL) agrees on swap time.
 
 ## Numbers
 | Metric | Result | Target |

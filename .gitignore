@@ -21,3 +21,5 @@ docs/*.md
 !docs/README.md
 hf_cache/
 .gitattributes.bak
+ft_out/
+*.log
