@@ -1,7 +1,5 @@
-//! Flow, resolver, policy engine, verifier and scheduler.
+//! Core engine: flow, resolver, policy, verifier and scheduler.
+//!
+//! No Windows-only code lives here, so it builds and tests anywhere.
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn crate_builds() {}
-}
+pub mod policy;

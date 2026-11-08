@@ -140,6 +140,11 @@ version = "0.1.0"
 [[package]]
 name = "jitmo-core"
 version = "0.1.0"
+dependencies = [
+ "jitmo-skills",
+ "jitmo-store",
+ "thiserror",
+]
 
 [[package]]
 name = "jitmo-ipc"
