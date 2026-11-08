@@ -1,0 +1,185 @@
+/* What sits inside the pill: the row, input, status line, voice and send buttons,
+   the confirm and choice cards, and the suggestion chips. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+}
+
+/* ---------- input and status ---------- */
+.input,
+.status {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 34px;
+  padding: 6px 2px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: none;
+  user-select: text;
+}
+.input::placeholder {
+  color: var(--muted);
+}
+.input:disabled {
+  opacity: 0.6;
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: text;
+}
+.status.working {
+  cursor: default;
+}
+.status .message {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.status .message.muted {
+  color: var(--muted);
+}
+.status.failed .message {
+  color: var(--error);
+}
+
+/* ---------- voice (not built yet) and send ---------- */
+.tool,
+.go {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  background: transparent;
+}
+.tool {
+  width: 32px;
+  height: 32px;
+  cursor: default;
+  opacity: 0.85;
+}
+.tool svg {
+  width: 19px;
+  height: 19px;
+}
+/* Send: the dark round button with a light chevron, as in the supplied design. */
+.go {
+  width: 34px;
+  height: 34px;
+  color: #f5f5f5;
+  background: #3e3e3e;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: 0.25s;
+  animation: go-in 0.18s ease-out both;
+}
+.go:hover {
+  transform: scale(1.1);
+}
+.go:active {
+  transform: scale(0.94);
+}
+@keyframes go-in {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+
+/* ---------- buttons shared by the cards, Undo and the chips ---------- */
+.result button,
+.undo,
+.chip {
+  font: inherit;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.65);
+  border: 0;
+  border-radius: 14px;
+  padding: 5px 12px;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: inset 0 0 0 1px var(--rim);
+  transition: 0.2s;
+}
+.result button:hover,
+.undo:hover,
+.chip:hover {
+  background: #fff;
+}
+.result button.primary {
+  color: #f5f5f5;
+  background: #3e3e3e;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);
+}
+button:focus-visible {
+  outline: 2px solid #3e3e3e;
+  outline-offset: 2px;
+}
+kbd {
+  font: 12px "Segoe UI", sans-serif;
+  opacity: 0.65;
+  margin-left: 6px;
+}
+.undo {
+  flex-shrink: 0;
+}
+
+/* ---------- confirm and choice cards ---------- */
+.result {
+  padding: 0 2px;
+}
+.card {
+  background: var(--field);
+  border-radius: 20px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: inset 0 0 0 1px var(--rim);
+}
+.line {
+  user-select: text;
+}
+.buttons {
+  display: flex;
+  gap: 8px;
+}
+.buttons.column {
+  flex-direction: column;
+}
+
+/* ---------- suggestions (opened by clicking the orb): small, one line ---------- */
+.chips {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  gap: 6px;
+  padding: 8px 8px 0;
+}
+.chip {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 3px 11px;
+  font-size: 12px;
+  line-height: 1.5;
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.8),
+    0 3px 10px rgba(0, 0, 0, 0.18);
+}
+.chip:hover {
+  transform: translateY(-2px);
+}

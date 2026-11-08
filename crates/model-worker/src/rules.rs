@@ -4,7 +4,7 @@
 //!
 //! This is a port of the SP2 spike rules (`spikes/sp2-extractor/extract2.py`),
 //! kept deliberately close to the Python so the two can be compared sentence by
-//! sentence (`tools/extractor_parity.json`). The rules generalise well for
+//! sentence (`tools/extractor/extractor_parity.json`). The rules generalise well for
 //! date/time/duration/number/setting/app and for contacts and apps from closed
 //! lists; open-ended spans (query, media, message, event, file) are weak, which
 //! is why the GLiNER model is consulted for them (see `gliner.rs`).

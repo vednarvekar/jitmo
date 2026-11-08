@@ -1,0 +1,62 @@
+/* Pop up from behind the taskbar, and back down behind it.
+
+   The window sits right on the taskbar top edge, so sliding the bar down past the
+   bottom of the window makes it vanish behind the taskbar. The page keeps the
+   `data-anim` attribute on `.shell`: idle (hidden below), in (rising), out (sinking). */
+.dock,
+.chips {
+  /* promote the sliding layers so the slide runs on the compositor */
+  will-change: transform;
+  backface-visibility: hidden;
+}
+.shell[data-anim="idle"] .dock,
+.shell[data-anim="idle"] .chips {
+  opacity: 1;
+  transform: translateY(190%);
+}
+.shell[data-anim="in"] .dock {
+  animation: rise 0.72s cubic-bezier(0.2, 1.1, 0.3, 1) backwards;
+}
+.shell[data-anim="in"] .chips {
+  animation: rise 0.72s cubic-bezier(0.2, 1.1, 0.3, 1) 0.08s backwards;
+}
+.shell[data-anim="out"] .dock {
+  animation: sink 0.26s cubic-bezier(0.55, 0, 0.9, 0.5) both;
+}
+.shell[data-anim="out"] .chips {
+  animation: sink 0.2s cubic-bezier(0.55, 0, 0.9, 0.5) both;
+}
+@keyframes rise {
+  0% {
+    transform: translateY(190%);
+    opacity: 1;
+    filter: none;
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+@keyframes sink {
+  to {
+    transform: translateY(190%);
+    opacity: 1;
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-anim="idle"] .dock,
+  .shell[data-anim="idle"] .chips {
+    transform: none;
+    opacity: 0;
+  }
+  .shell[data-anim] .dock,
+  .shell[data-anim] .chips,
+  .closer,
+  .go,
+  .chip {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+    transition: none;
+  }
+}

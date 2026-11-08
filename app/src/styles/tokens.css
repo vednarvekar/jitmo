@@ -1,0 +1,30 @@
+/* Design tokens, the transparent page, and the shell (the window margin, which
+   holds the glass blur and shadow). */
+:root {
+  color-scheme: light;
+  --ink: #3e3e3e;
+  --muted: rgba(62, 62, 62, 0.55);
+  --ok: #1d7a49;
+  --error: #b52a2a;
+  --rim: rgba(51, 51, 51, 0.1);
+  --field: rgba(255, 255, 255, 0.55);
+}
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 14px "Segoe UI Variable Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+.shell {
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.dock {
+  display: block;
+}

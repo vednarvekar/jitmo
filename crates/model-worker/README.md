@@ -17,6 +17,6 @@ Separate model process (no network): Tier 0 router and extractor.
 `rules.rs` (pure Rust: dates, times, durations, numbers, settings, closed lists, sentence frames) plus
 `gliner.rs` (GLiNER-small int8 on ONNX Runtime). The model is loaded on the first `Extract` request
 only, and goes away when the worker exits after idle. The Python reference outputs are in
-`tools/extractor_reference.json` and `tools/extractor_parity.json` (regenerate with
-`tools/dump_extractor_reference.py`). Score it with
+`tools/extractor/extractor_reference.json` and `tools/extractor/extractor_parity.json` (regenerate with
+`tools/extractor/dump_reference.py`). Score it with
 `cargo test -p jitmo-model-worker --release --test extractor_model eval_sp2 -- --ignored --nocapture`.

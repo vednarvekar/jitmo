@@ -1,7 +1,7 @@
 # Memory and latency of the release model worker: router only, then with the extractor loaded.
 #
 #   cargo build --release -p jitmo-model-worker
-#   powershell -File tools/measure_worker_memory.ps1 [-Exe target\release\jitmo-model-worker.exe]
+#   powershell -File tools/perf/measure_worker_memory.ps1 [-Exe target\release\jitmo-model-worker.exe]
 #
 # Needs models/router and models/extractor (see crates/model-worker/README.md).
 param(

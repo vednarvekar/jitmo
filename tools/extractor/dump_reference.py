@@ -7,7 +7,7 @@ Writes two JSON files next to this script:
                             every sentence of doc4/val/val2/test/fresh, for the Rust `parity` test.
 
 Usage (from the repo root, with the SP2 venv that has gliner + onnxruntime):
-  spikes/sp2-extractor/.venv/Scripts/python.exe tools/dump_extractor_reference.py \
+  spikes/sp2-extractor/.venv/Scripts/python.exe tools/extractor/dump_reference.py \
       [--spike spikes/sp2-extractor] [--model <dir with onnx/model_int8.onnx>]
 """
 import json

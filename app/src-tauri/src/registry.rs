@@ -1,0 +1,179 @@
+use crate::storage::open_store;
+use jitmo_connectors::{fake::FakeConnector, Connector};
+use jitmo_core::router::Router;
+use jitmo_model_worker::{WorkerClient, WorkerLauncher};
+use jitmo_skills::Skill;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Skills shipped with the app. Dev build: parsed without signature checks.
+/// Rule-based routing, plus the model worker when its program sits next to the app.
+pub(crate) fn router() -> Router {
+    let router = Router::new(load_skills());
+    let worker = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join("jitmo-model-worker.exe")))
+        .filter(|p| p.exists());
+    match worker {
+        Some(program) => router.with_worker(WorkerClient::new(
+            WorkerLauncher {
+                program,
+                args: Vec::new(),
+            },
+            std::time::Duration::from_secs(10),
+        )),
+        None => router,
+    }
+}
+
+fn load_skills() -> Vec<Skill> {
+    [
+        include_str!("../../../skills/apps.open.yaml"),
+        include_str!("../../../skills/music.control.yaml"),
+        include_str!("../../../skills/music.play.yaml"),
+        include_str!("../../../skills/calc.math.yaml"),
+        include_str!("../../../skills/calc.moon.yaml"),
+        include_str!("../../../skills/calc.time_in.yaml"),
+        include_str!("../../../skills/settings.place.yaml"),
+        include_str!("../../../skills/files.find.yaml"),
+        include_str!("../../../skills/files.recent.yaml"),
+        include_str!("../../../skills/files.open.yaml"),
+        include_str!("../../../skills/files.move.yaml"),
+        include_str!("../../../skills/reminders.remind.yaml"),
+        include_str!("../../../skills/reminders.timer.yaml"),
+        include_str!("../../../skills/system.volume.yaml"),
+        include_str!("../../../skills/system.lock.yaml"),
+        include_str!("../../../skills/system.radio.yaml"),
+        include_str!("../../../skills/system.screenshot.yaml"),
+        include_str!("../../../skills/system.dnd.yaml"),
+        include_str!("../../../skills/web.weather.yaml"),
+        include_str!("../../../skills/web.fact.yaml"),
+        include_str!("../../../skills/browser.youtube_latest.yaml"),
+        include_str!("../../../skills/browser.search.yaml"),
+        include_str!("../../../skills/browser.site.yaml"),
+        include_str!("../../../skills/stub.send.yaml"),
+    ]
+    .iter()
+    .map(|y| Skill::parse(y).expect("built-in skill is invalid"))
+    .collect()
+}
+
+/// The current user's Pictures folder.
+fn pictures_dir() -> std::path::PathBuf {
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default()
+        .join("Pictures")
+}
+
+/// The current user's Downloads folder.
+fn downloads_dir() -> std::path::PathBuf {
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default()
+        .join("Downloads")
+}
+
+/// `windows_system` is real (it opens apps). The rest are still fakes that
+/// report success, until their connectors are built in Phase 2.
+pub(crate) fn connectors(
+    db: &std::path::Path,
+    key: Option<&jitmo_store::Key>,
+) -> HashMap<String, Arc<dyn Connector>> {
+    // The test send skill (`stub.send`) only checks the confirm card. It must say
+    // so, or "Done." would look like a real message went out.
+    let mut map: HashMap<String, Arc<dyn Connector>> = HashMap::from([(
+        "stub_messenger".to_string(),
+        Arc::new(FakeConnector::new("stub_messenger").with_answer(
+            "This was a test: nothing was really sent. Real messaging is not built yet.",
+        )) as Arc<dyn Connector>,
+    )]);
+    // The place for "will it rain tomorrow" when none is said (setting `default_place`).
+    let default_place = open_store(db, key)
+        .ok()
+        .and_then(|s| s.get_setting("default_place").ok().flatten());
+    map.insert(
+        "web_lookup".into(),
+        Arc::new(
+            jitmo_connectors::web_lookup::WebLookup::new(default_place).with_place_source({
+                // Read the saved place each time, so "set my city" works at once.
+                let (place_db, place_key) = (db.to_path_buf(), key.copied());
+                move || {
+                    open_store(&place_db, place_key.as_ref())
+                        .ok()
+                        .and_then(|s| s.get_setting("default_place").ok().flatten())
+                }
+            }),
+        ),
+    );
+    #[cfg(windows)]
+    map.insert(
+        "browser".into(),
+        Arc::new(jitmo_connectors::browser::Browser::new(Arc::new(
+            jitmo_connectors::system_controls::PowerShell,
+        ))),
+    );
+    #[cfg(not(windows))]
+    map.insert("browser".into(), Arc::new(FakeConnector::new("browser")));
+    #[cfg(windows)]
+    map.insert(
+        "spotify".into(),
+        Arc::new(jitmo_connectors::spotify::Spotify::new(Arc::new(
+            jitmo_connectors::system_controls::PowerShell,
+        ))),
+    );
+    #[cfg(not(windows))]
+    map.insert("spotify".into(), Arc::new(FakeConnector::new("spotify")));
+    #[cfg(windows)]
+    map.insert(
+        "dnd".into(),
+        Arc::new(jitmo_connectors::dnd::Dnd::new(Arc::new(
+            jitmo_connectors::system_controls::PowerShell,
+        ))),
+    );
+    #[cfg(not(windows))]
+    map.insert("dnd".into(), Arc::new(FakeConnector::new("dnd")));
+    #[cfg(windows)]
+    map.insert(
+        "system_controls".into(),
+        Arc::new(jitmo_connectors::system_controls::SystemControls::new(
+            Arc::new(jitmo_connectors::system_controls::PowerShell),
+            pictures_dir(),
+        )),
+    );
+    map.insert(
+        "settings".into(),
+        Arc::new(match key {
+            Some(k) => jitmo_connectors::settings::Settings::new(db.to_path_buf()).with_key(*k),
+            None => jitmo_connectors::settings::Settings::new(db.to_path_buf()),
+        }),
+    );
+    map.insert(
+        "reminders".into(),
+        Arc::new(match key {
+            Some(k) => jitmo_connectors::reminders::Reminders::new(db.to_path_buf()).with_key(*k),
+            None => jitmo_connectors::reminders::Reminders::new(db.to_path_buf()),
+        }),
+    );
+    map.insert(
+        "files".into(),
+        Arc::new(jitmo_connectors::files::Files::new(downloads_dir())),
+    );
+    map.insert(
+        "local_calc".into(),
+        Arc::new(jitmo_connectors::local_calc::LocalCalc::new()),
+    );
+    #[cfg(windows)]
+    map.insert(
+        "windows_system".into(),
+        Arc::new(jitmo_connectors::windows_system::WindowsSystem),
+    );
+    #[cfg(not(windows))]
+    map.insert(
+        "windows_system".into(),
+        Arc::new(FakeConnector::new("windows_system")),
+    );
+    map
+}

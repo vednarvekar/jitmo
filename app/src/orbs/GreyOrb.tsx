@@ -1,3 +1,4 @@
+import "./grey-orb.css";
 import { useEffect, useRef } from "react";
 
 /** The jitmo orb, recreated from the "AI orb" animation the owner picked: a soft

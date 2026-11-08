@@ -1,5 +1,5 @@
 //! Checks the Rust GLiNER port and the rules against the Python reference
-//! (`tools/dump_extractor_reference.py`), and scores the extractor on the SP2 sets.
+//! (`tools/extractor/dump_reference.py`), and scores the extractor on the SP2 sets.
 //!
 //! The model files are not in git. Put them in `models/extractor/` at the repo root,
 //! or point `JITMO_EXTRACTOR_DIR` at them (see the README). Without them these tests
@@ -57,7 +57,7 @@ struct RefEnt {
 fn gliner_matches_python() {
     let Some(dir) = model_dir() else { return };
     let reference: Reference = serde_json::from_slice(
-        &std::fs::read(repo().join("tools/extractor_reference.json")).expect("fixture"),
+        &std::fs::read(repo().join("tools/extractor/extractor_reference.json")).expect("fixture"),
     )
     .expect("fixture json");
     assert!(reference.sentences.len() >= 30);
@@ -240,7 +240,7 @@ struct Parity {
 fn parity_with_python_pipeline() {
     let Some(dir) = model_dir() else { return };
     let rows: Vec<Parity> = serde_json::from_slice(
-        &std::fs::read(repo().join("tools/extractor_parity.json")).expect("fixture"),
+        &std::fs::read(repo().join("tools/extractor/extractor_parity.json")).expect("fixture"),
     )
     .expect("fixture json");
     let env = env();

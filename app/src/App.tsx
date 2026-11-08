@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as bridge from "./bridge";
-import GreyOrb from "./GreyOrb";
-import type { Mood } from "./AiOrb";
-// The React Bits ring orb is kept in ./Orb.tsx; the bar uses AiOrb for now.
+import { ChoiceCard, ConfirmCard } from "./components/Cards";
+import { Chevron, Cross } from "./components/Icons";
+import Suggestions from "./components/Suggestions";
+import VoiceButtons from "./components/VoiceButtons";
+import { GreyOrb, type GreyMood } from "./orbs";
 import {
   UNDO_WINDOW_MS,
   autoHideMs,
@@ -201,7 +203,7 @@ export default function App() {
 
   // The "+" opens a row of one-tap suggestions. Off by default, to keep the bar clean.
   const [showChips, setShowChips] = useState(false);
-  const mood: Mood =
+  const mood: GreyMood =
     state.phase === "working" || state.phase === "confirm" || state.phase === "choice"
       ? "working"
       : state.phase === "done"
@@ -212,142 +214,101 @@ export default function App() {
 
   return (
     <div className="shell" ref={rootRef} data-anim={anim}>
-      <div className="dock" data-tauri-drag-region onMouseEnter={() => (hover.current = true)} onMouseLeave={() => (hover.current = false)} onMouseDown={() => (dragUntil.current = Date.now() + 2_000)}>
+      <div
+        className="dock"
+        data-tauri-drag-region
+        onMouseEnter={() => (hover.current = true)}
+        onMouseLeave={() => (hover.current = false)}
+        onMouseDown={() => (dragUntil.current = Date.now() + 2_000)}
+      >
         <div className="fx-layer">
-        <div className="bar box" data-phase={state.phase} data-tauri-drag-region>
-          <div className="circle-overlay" aria-hidden="true" />
-          {/* Any empty part of the pill drags it; the input and buttons do not. */}
-          <div className="row" data-tauri-drag-region>
-            {/* The orb stands where the plus was. Clicking it opens the suggestions. */}
-            <button
-              className="orb-btn"
-              aria-label="Suggestions"
-              aria-pressed={showChips}
-              title="Suggestions"
-              onClick={() => setShowChips((v) => !v)}
-            >
-              <GreyOrb mood={mood} size={34} />
-            </button>
-
-            {showStatus ? (
-              <div
-                className={`status ${state.phase}`}
-                role="status"
-                aria-live="polite"
-                title={state.phase === "working" ? undefined : "Type to ask something else"}
-                onClick={() => state.phase !== "working" && resetBar()}
+          <div className="bar box" data-phase={state.phase} data-tauri-drag-region>
+            <div className="circle-overlay" aria-hidden="true" />
+            {/* Any empty part of the pill drags it; the input and buttons do not. */}
+            <div className="row" data-tauri-drag-region>
+              {/* The orb opens the suggestions. */}
+              <button
+                className="orb-btn"
+                aria-label="Suggestions"
+                aria-pressed={showChips}
+                title="Suggestions"
+                onClick={() => setShowChips((v) => !v)}
               >
-                {state.phase === "working" && <span className="message muted">Working…</span>}
-                {state.phase === "done" && (
-                  <>
-                    <span className="message">{state.message}</span>
-                    {showUndo && (
-                      <button
-                        className="undo"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          bridge.undo(state.id);
-                        }}
-                      >
-                        Undo ({undoLeft})
-                      </button>
-                    )}
-                  </>
-                )}
-                {state.phase === "failed" && <span className="message">{state.message}</span>}
-              </div>
-            ) : (
-              <input
-                ref={inputRef}
-                className="input"
-                autoFocus
-                spellCheck={false}
-                aria-label="Ask AI"
-                placeholder="Ask AI"
-                value={text}
-                disabled={!typing}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  historyAt.current = -1;
-                }}
-                onKeyDown={onInputKey}
-              />
-            )}
-
-            {canSend ? (
-              <button className="go" aria-label="Run" title="Run (Enter)" onClick={() => send(text)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <GreyOrb mood={mood} size={34} />
               </button>
-            ) : (
-              <>
-                {/* Voice is not built yet. The icons are here for the design and say so. */}
-                <button className="tool" aria-disabled="true" aria-label="Voice input (not available yet)" title="Voice input is not available yet" tabIndex={-1}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-                    <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                    <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                  </svg>
+
+              {showStatus ? (
+                <div
+                  className={`status ${state.phase}`}
+                  role="status"
+                  aria-live="polite"
+                  title={state.phase === "working" ? undefined : "Type to ask something else"}
+                  onClick={() => state.phase !== "working" && resetBar()}
+                >
+                  {state.phase === "working" && <span className="message muted">Working…</span>}
+                  {state.phase === "done" && (
+                    <>
+                      <span className="message">{state.message}</span>
+                      {showUndo && (
+                        <button
+                          className="undo"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            bridge.undo(state.id);
+                          }}
+                        >
+                          Undo ({undoLeft})
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {state.phase === "failed" && <span className="message">{state.message}</span>}
+                </div>
+              ) : (
+                <input
+                  ref={inputRef}
+                  className="input"
+                  autoFocus
+                  spellCheck={false}
+                  aria-label="Ask AI"
+                  placeholder="Ask AI"
+                  value={text}
+                  disabled={!typing}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    historyAt.current = -1;
+                  }}
+                  onKeyDown={onInputKey}
+                />
+              )}
+
+              {canSend ? (
+                <button className="go" aria-label="Run" title="Run (Enter)" onClick={() => send(text)}>
+                  <Chevron />
                 </button>
-                <button className="tool" aria-disabled="true" aria-label="Voice conversation (not available yet)" title="Voice conversation is not available yet" tabIndex={-1}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </>
+              ) : (
+                <VoiceButtons />
+              )}
+            </div>
+
+            {(state.phase === "confirm" || state.phase === "choice") && (
+              <div className="result" role="status" aria-live="polite" data-tauri-drag-region>
+                {state.phase === "confirm" && <ConfirmCard id={state.id} text={state.text} />}
+                {state.phase === "choice" && (
+                  <ChoiceCard id={state.id} question={state.question} choices={state.choices} />
+                )}
+              </div>
             )}
           </div>
 
-          {(state.phase === "confirm" || state.phase === "choice") && (
-            <div className="result" role="status" aria-live="polite" data-tauri-drag-region>
-              {state.phase === "confirm" && (
-                <div className="card">
-                  <div className="line">{state.text}</div>
-                  <div className="buttons">
-                    <button className="primary" onClick={() => bridge.confirm(state.id, true)}>
-                      Confirm <kbd>Enter</kbd>
-                    </button>
-                    <button onClick={() => bridge.confirm(state.id, false)}>
-                      Cancel <kbd>Esc</kbd>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {state.phase === "choice" && (
-                <div className="card">
-                  <div className="line">{state.question}</div>
-                  <div className="buttons column">
-                    {state.choices.map((c, i) => (
-                      <button key={c.id} onClick={() => bridge.choose(state.id, c.id)}>
-                        <kbd>{i + 1}</kbd> {c.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <button className="closer box" aria-label="Close" title="Close (Esc)" onClick={closeBar}>
+            <Cross />
+            <div className="circle-overlay" aria-hidden="true" />
+          </button>
         </div>
-
-        <button className="closer box" aria-label="Close" title="Close (Esc)" onClick={closeBar}>
-          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          <div className="circle-overlay" aria-hidden="true" />
-        </button>
-      </div>
       </div>
 
-      {showChips && state.phase === "idle" && text === "" && (
-        <div className="chips" data-tauri-drag-region>
-          {SUGGESTIONS.map((s) => (
-            <button key={s} className="chip" onClick={() => send(s)}>
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+      {showChips && state.phase === "idle" && text === "" && <Suggestions items={SUGGESTIONS} onPick={send} />}
     </div>
   );
 }

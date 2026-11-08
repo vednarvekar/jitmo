@@ -574,7 +574,7 @@ const GlOrb = ({
 };
 
 /** The bar's orb: the React Bits ring, a bit livelier while a request runs. */
-export default function Orb({ working = false, size = 32 }: { working?: boolean; size?: number }) {
+export default function RingOrb({ working = false, size = 32 }: { working?: boolean; size?: number }) {
   const [fallback, setFallback] = useState(false);
   if (fallback) {
     return <span className={`orb${working ? " working" : ""}`} data-tauri-drag-region aria-hidden="true" />;

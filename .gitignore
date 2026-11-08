@@ -1,36 +1,37 @@
-# environments, builds, models
-.venv/
-venv/
+# ---- build output and dependencies ----
 target/
 node_modules/
+app/dist/
+app/src-tauri/gen/
+*.log
+
+# ---- Python environments and caches (spikes, tools) ----
+.venv/
+venv/
 __pycache__/
+hf_cache/
+ft_out/
+tools/router/.cache/
+
+# ---- model files: large, fetched or trained locally ----
+models/
+adapters/
 *.gguf
 *.onnx
 *.safetensors
 *.bin
-models/
-adapters/
-# local-only
-docs-backup-*/
-docs/_archive/
-.vscode/
-*Zone.Identifier
-spikes/**/results/
-# stale flat copies of docs (real ones live in docs/0x-*/)
-docs/*.md
-!docs/README.md
-hf_cache/
-.gitattributes.bak
-ft_out/
-*.log
-
-# frontend build output
-app/dist/
-app/src-tauri/gen/
-.claude/
-
-# trained router head is small and committed; encoder files are fetched (see models-src/router/README.md)
+# The trained router head is small and committed; the encoder files are fetched
+# (see models-src/router/README.md).
 !models-src/
 !models-src/**
 models-src/**/*.onnx
-tools/router/.cache/
+
+# ---- spike results and local-only notes ----
+spikes/**/results/
+docs-backup-*/
+docs/_archive/
+
+# ---- editor, OS and agent working files ----
+.vscode/
+.claude/
+*Zone.Identifier

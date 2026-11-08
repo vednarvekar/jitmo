@@ -1,3 +1,4 @@
+import "./ai-orb.css";
 /** An AI orb in the style of the LottieFiles "AI Orb" pack: a soft sphere of
  *  drifting blue, pink and mint with small eyes that change with its mood.
  *  Drawn with CSS only (no Lottie file, no library), so it is cheap and

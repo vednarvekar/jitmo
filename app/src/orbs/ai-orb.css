@@ -1,0 +1,147 @@
+/* AiOrb styles (colourful orb). Imported by AiOrb.tsx. */
+/* ---------- AI orb: drifting colour with eyes that change with its mood ---------- */
+.ai-orb {
+  position: relative;
+  flex-shrink: 0;
+  display: block;
+  border-radius: 50%;
+  overflow: hidden;
+  isolation: isolate;
+  background: #c9dcff;
+  box-shadow:
+    0 0 14px rgba(120, 150, 255, 0.4),
+    inset 0 -5px 9px rgba(40, 50, 170, 0.4),
+    inset 0 3px 6px rgba(255, 255, 255, 0.75);
+}
+.ai-orb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 38%);
+  pointer-events: none;
+}
+.ai-orb .blob {
+  position: absolute;
+  width: 95%;
+  height: 95%;
+  border-radius: 50%;
+  filter: blur(7px);
+  z-index: -1;
+}
+.ai-orb .b1 {
+  background: #2f6bff;
+  left: -22%;
+  top: -18%;
+  animation: drift-a 6s ease-in-out infinite alternate;
+}
+.ai-orb .b2 {
+  background: #ff5fd2;
+  right: -28%;
+  bottom: -22%;
+  animation: drift-b 7.5s ease-in-out infinite alternate;
+}
+.ai-orb .b3 {
+  background: #55f0c8;
+  left: 8%;
+  bottom: -34%;
+  animation: drift-c 5.2s ease-in-out infinite alternate;
+}
+.ai-orb.working .blob {
+  animation-duration: 1.6s;
+}
+@keyframes drift-a {
+  to {
+    transform: translate(38%, 30%) scale(1.15);
+  }
+}
+@keyframes drift-b {
+  to {
+    transform: translate(-42%, -26%) scale(0.9);
+  }
+}
+@keyframes drift-c {
+  to {
+    transform: translate(26%, -44%) scale(1.2);
+  }
+}
+.ai-orb .eyes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 36%;
+  display: flex;
+  justify-content: center;
+  gap: 24%;
+  z-index: 1;
+}
+.ai-orb .eye {
+  display: block;
+  width: 10%;
+  height: 27%;
+  min-width: 3px;
+  min-height: 7px;
+  border-radius: 3px;
+  background: #15183a;
+  animation: blink 4.6s infinite;
+}
+.ai-orb .eye:nth-child(2) {
+  animation-delay: 0.05s;
+}
+@keyframes blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.1);
+  }
+}
+.ai-orb.working .eye {
+  height: 3px;
+  width: 30%;
+  min-width: 8px;
+  animation: none;
+}
+.ai-orb.working .eye:first-child {
+  transform: rotate(14deg);
+}
+.ai-orb.working .eye:last-child {
+  transform: rotate(-14deg);
+}
+.ai-orb.done .eye {
+  background: transparent;
+  height: 22%;
+  width: 24%;
+  border-radius: 99px 99px 0 0;
+  border: 2.4px solid #15183a;
+  border-bottom: 0;
+  animation: none;
+}
+.ai-orb.failed .eye {
+  background: transparent;
+  width: 24%;
+  height: 24%;
+  position: relative;
+  animation: none;
+}
+.ai-orb.failed .eye::before,
+.ai-orb.failed .eye::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2.4px;
+  margin-top: -1.2px;
+  background: #15183a;
+  border-radius: 2px;
+}
+.ai-orb.failed .eye::before {
+  transform: rotate(45deg);
+}
+.ai-orb.failed .eye::after {
+  transform: rotate(-45deg);
+}
+
