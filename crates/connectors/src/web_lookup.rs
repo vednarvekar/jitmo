@@ -99,9 +99,29 @@ pub struct WebLookup {
     http: Box<dyn Http>,
     /// The place saved in the app settings, used when the request names none.
     default_place: Option<String>,
+    /// Reads the saved place each time, so "set my city" works without a restart.
+    place_source: Option<Box<dyn Fn() -> Option<String> + Send + Sync>>,
 }
 
 impl WebLookup {
+    /// Read the saved place live instead of once at startup.
+    pub fn with_place_source(
+        mut self,
+        source: impl Fn() -> Option<String> + Send + Sync + 'static,
+    ) -> Self {
+        self.place_source = Some(Box::new(source));
+        self
+    }
+
+    fn saved_place(&self) -> Option<String> {
+        let live = self
+            .place_source
+            .as_ref()
+            .and_then(|f| f())
+            .filter(|p| !p.trim().is_empty());
+        live.or_else(|| self.default_place.clone())
+    }
+
     pub fn new(default_place: Option<String>) -> Self {
         Self::with_http(Box::new(UreqHttp::new()), default_place)
     }
@@ -110,6 +130,7 @@ impl WebLookup {
         WebLookup {
             http,
             default_place: default_place.filter(|p| !p.trim().is_empty()),
+            place_source: None,
         }
     }
 
@@ -228,7 +249,7 @@ impl Connector for WebLookup {
             .get("text")
             .ok_or_else(|| ConnError::MissingArg("text".into()))?;
         match action {
-            "weather" => Ok(parse_weather(text).place.is_some() || self.default_place.is_some()),
+            "weather" => Ok(parse_weather(text).place.is_some() || self.saved_place().is_some()),
             "fact" => Ok(parse_fact_subject(text).is_some()),
             other => Err(ConnError::UnknownAction(other.to_string())),
         }

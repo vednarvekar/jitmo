@@ -490,7 +490,17 @@ fn connectors(
         .and_then(|s| s.get_setting("default_place").ok().flatten());
     map.insert(
         "web_lookup".into(),
-        Arc::new(jitmo_connectors::web_lookup::WebLookup::new(default_place)),
+        Arc::new(
+            jitmo_connectors::web_lookup::WebLookup::new(default_place).with_place_source({
+                // Read the saved place each time, so "set my city" works at once.
+                let (place_db, place_key) = (db.to_path_buf(), key.copied());
+                move || {
+                    open_store(&place_db, place_key.as_ref())
+                        .ok()
+                        .and_then(|s| s.get_setting("default_place").ok().flatten())
+                }
+            }),
+        ),
     );
     #[cfg(windows)]
     map.insert(
