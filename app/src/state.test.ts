@@ -3,7 +3,10 @@ import {
   BarState,
   CONFIRM_GUARD_MS,
   CoreEvent,
+  UNDO_WINDOW_MS,
+  autoHideMs,
   canConfirmNow,
+  hideOnBlur,
   initialState,
   reduce,
 } from "./state";
@@ -65,5 +68,31 @@ describe("command bar state", () => {
     expect(canConfirmNow(s, 1000 + CONFIRM_GUARD_MS - 1)).toBe(false);
     expect(canConfirmNow(s, 1000 + CONFIRM_GUARD_MS)).toBe(true);
     expect(canConfirmNow({ phase: "working", id: 7 }, 99999)).toBe(false);
+  });
+});
+
+describe("auto-hide and focus rules", () => {
+  it("closes a plain result after 5 seconds, errors after 8", () => {
+    expect(autoHideMs({ phase: "done", id: 1, message: "Done.", undoable: false })).toBe(5_000);
+    expect(autoHideMs({ phase: "failed", id: 1, message: "No." })).toBe(8_000);
+  });
+
+  it("keeps the bar up until Undo has expired", () => {
+    expect(autoHideMs({ phase: "done", id: 1, message: "Done.", undoable: true })).toBe(UNDO_WINDOW_MS + 1_000);
+  });
+
+  it("never closes by itself while the user is mid-task or nothing is shown", () => {
+    expect(autoHideMs({ phase: "idle" })).toBeNull();
+    expect(autoHideMs({ phase: "working", id: 1 })).toBeNull();
+    expect(autoHideMs({ phase: "confirm", id: 1, text: "Send?", shownAt: 0 })).toBeNull();
+    expect(autoHideMs({ phase: "choice", id: 1, question: "Which?", choices: [] })).toBeNull();
+  });
+
+  it("losing focus closes the bar only when nothing needs the user", () => {
+    expect(hideOnBlur({ phase: "idle" })).toBe(true);
+    expect(hideOnBlur({ phase: "done", id: 1, message: "ok", undoable: false })).toBe(true);
+    expect(hideOnBlur({ phase: "working", id: 1 })).toBe(false);
+    expect(hideOnBlur({ phase: "confirm", id: 1, text: "Send?", shownAt: 0 })).toBe(false);
+    expect(hideOnBlur({ phase: "choice", id: 1, question: "Which?", choices: [] })).toBe(false);
   });
 });

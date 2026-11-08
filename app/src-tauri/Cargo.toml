@@ -19,6 +19,7 @@ encrypted-db = ["jitmo-store/sqlcipher"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+serde_json.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 jitmo-connectors = { path = "../../crates/connectors" }
 jitmo-core = { path = "../../crates/core" }
