@@ -101,7 +101,7 @@ export default function App() {
         className="input"
         autoFocus
         spellCheck={false}
-        placeholder="Ask jitmo… (demo connectors)"
+        placeholder="Ask jitmo… (dev build: only “open app” is real)"
         value={text}
         disabled={!typing}
         onChange={(e) => setText(e.target.value)}

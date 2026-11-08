@@ -8,3 +8,6 @@ publish.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+jitmo-adapter-windows = { path = "../adapter-windows" }

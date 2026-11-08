@@ -10,7 +10,8 @@
 //!   destroys it, so idle memory drops to a few MB (SP11) while a second
 //!   request right after the first still opens in tens of milliseconds.
 //!
-//! Dev build: connectors are fakes and the database is not encrypted yet
+//! Dev build: only `windows_system` (open an app) is real; the other
+//! connectors are fakes, and the database is not encrypted yet
 //! (see docs/03-delivery/8.1 - Decision Log.md).
 
 use jitmo_connectors::{fake::FakeConnector, Connector};
@@ -141,12 +142,18 @@ fn load_skills() -> Vec<Skill> {
     .collect()
 }
 
-/// Dev build: every connector is a fake that reports success.
-fn demo_connectors() -> HashMap<String, Arc<dyn Connector>> {
-    ["windows_system", "spotify", "stub_messenger"]
+/// `windows_system` is real (it opens apps). The rest are still fakes that
+/// report success, until their connectors are built in Phase 2.
+fn connectors() -> HashMap<String, Arc<dyn Connector>> {
+    let mut map: HashMap<String, Arc<dyn Connector>> = ["spotify", "stub_messenger"]
         .iter()
         .map(|id| (id.to_string(), Arc::new(FakeConnector::new(id)) as Arc<dyn Connector>))
-        .collect()
+        .collect();
+    #[cfg(windows)]
+    map.insert("windows_system".into(), Arc::new(jitmo_connectors::windows_system::WindowsSystem));
+    #[cfg(not(windows))]
+    map.insert("windows_system".into(), Arc::new(FakeConnector::new("windows_system")));
+    map
 }
 
 fn main() {
@@ -164,7 +171,7 @@ fn main() {
                 .get_setting("hotkey")?
                 .unwrap_or_else(|| DEFAULT_HOTKEY.to_string());
 
-            let flow = Flow::new(StubRouter::new(load_skills()), store, demo_connectors());
+            let flow = Flow::new(StubRouter::new(load_skills()), store, connectors());
             let handle = app.handle().clone();
             let core = CoreService::spawn(flow, move |event| {
                 let _ = handle.emit("core-event", &event);

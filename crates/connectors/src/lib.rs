@@ -6,6 +6,8 @@
 //! `adapter-windows`.
 
 pub mod fake;
+#[cfg(windows)]
+pub mod windows_system;
 
 use std::collections::BTreeMap;
 
