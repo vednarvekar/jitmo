@@ -114,3 +114,7 @@ T69: { needs_model: true, files: ["Q3 deck.pptx", "Sales deck.pptx"], request: "
 # Spotify play (fake connector here; the real play path is unverified live, see the Decision Log).
 T02: { request: "Play Arijit Singh on Spotify.", expect: ran, skill: music.play, calls: [{ connector: spotify, action: search, args: { text: "Play Arijit Singh on Spotify." } }] }
 T50: { needs_model: true, request: "put on some arijit", expect: ran, skill: music.play, calls: [{ connector: spotify, action: search, args: { text: "put on some arijit" } }] }
+
+# Do Not Disturb (fake connector here; the real UI Automation route was not run live, see the Decision Log).
+T48: { request: "Don't disturb me for an hour.", expect: ran, skill: system.dnd, calls: [{ connector: dnd, action: set, args: { text: "Don't disturb me for an hour." } }] }
+T63: { needs_model: true, request: "shut notifications up for 1 hr", expect: ran, skill: system.dnd, calls: [{ connector: dnd, action: set, args: { text: "shut notifications up for 1 hr" } }] }

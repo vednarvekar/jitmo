@@ -205,6 +205,7 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/system.lock.yaml"),
         include_str!("../../../skills/system.radio.yaml"),
         include_str!("../../../skills/system.screenshot.yaml"),
+        include_str!("../../../skills/system.dnd.yaml"),
         include_str!("../../../skills/web.weather.yaml"),
         include_str!("../../../skills/web.fact.yaml"),
         include_str!("../../../skills/browser.youtube_latest.yaml"),
@@ -304,6 +305,15 @@ fn connectors(db: &std::path::Path) -> HashMap<String, Arc<dyn Connector>> {
     );
     #[cfg(not(windows))]
     map.insert("spotify".into(), Arc::new(FakeConnector::new("spotify")));
+    #[cfg(windows)]
+    map.insert(
+        "dnd".into(),
+        Arc::new(jitmo_connectors::dnd::Dnd::new(Arc::new(
+            jitmo_connectors::system_controls::PowerShell,
+        ))),
+    );
+    #[cfg(not(windows))]
+    map.insert("dnd".into(), Arc::new(FakeConnector::new("dnd")));
     #[cfg(windows)]
     map.insert(
         "system_controls".into(),
