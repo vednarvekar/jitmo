@@ -1,4 +1,4 @@
-id: music.pause                 # task A3
+id: music.control               # task A3
 task: A3
 version: 1
 category: apps
@@ -13,11 +13,16 @@ examples:
   - "pause the music"
   - "pause"
   - "pause spotify"
+  - "skip this song"
+  - "next song"
+  - "resume the music"
 slots: {}
 steps:
   - connector: spotify
-    action: pause
+    action: control
+    args: { text: "{request}" }
 check:
   connector: spotify
-  action: is_paused
+  action: control
+  args: { text: "{request}" }
 undo: none

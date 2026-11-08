@@ -386,7 +386,7 @@ mod tests {
     fn router() -> Router {
         let skills = [
             include_str!("../../../skills/apps.open.yaml"),
-            include_str!("../../../skills/music.pause.yaml"),
+            include_str!("../../../skills/music.control.yaml"),
             include_str!("../../../skills/whatsapp.send_file.yaml"),
         ]
         .iter()
@@ -424,14 +424,14 @@ mod tests {
     #[test]
     fn exact_literal_example_scores_one() {
         let u = router().route("pause the music");
-        assert_eq!(u.tasks[0].id, "music.pause");
+        assert_eq!(u.tasks[0].id, "music.control");
         assert_eq!(u.tasks[0].score, 1.0);
     }
 
     #[test]
     fn fuzzy_match_never_runs_directly() {
         let u = router().route("please could you pause the music now");
-        assert_eq!(u.tasks[0].id, "music.pause");
+        assert_eq!(u.tasks[0].id, "music.control");
         assert!(u.tasks[0].score < RUN_DIRECTLY);
         assert!(!matches!(decide(&u), RouteDecision::Run { .. }));
     }

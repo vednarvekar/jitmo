@@ -1,0 +1,24 @@
+id: music.play                  # task A2
+task: A2
+version: 1
+category: apps
+capabilities:
+  - media.control
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 10
+risk: safe
+examples:
+  - "play arijit singh on spotify"
+  - "play some jazz"
+slots: {}
+steps:
+  - connector: spotify
+    action: search
+    args: { text: "{request}" }
+check:
+  connector: spotify
+  action: search
+  args: { text: "{request}" }
+undo: none

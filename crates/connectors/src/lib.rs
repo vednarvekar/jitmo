@@ -9,6 +9,7 @@ pub mod fake;
 pub mod files;
 pub mod local_calc;
 pub mod reminders;
+pub mod spotify;
 pub mod system_controls;
 #[cfg(windows)]
 pub mod windows_system;

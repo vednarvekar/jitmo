@@ -1,0 +1,355 @@
+//! `spotify`: control playback and search (tasks A2 and A3).
+//!
+//! Control (pause, resume, next, previous) goes through the Windows media
+//! controls, the same ones the keyboard media keys use, aimed at the Spotify
+//! session only. No keys or clicks are sent.
+//!
+//! Playing a named song or artist is only partly possible: the SP6 spike found
+//! that opening a Spotify link does not reliably start playback, and the
+//! Spotify web API needs a sign-in. So `search` opens Spotify on the search for
+//! the name, and the user presses Play. The answer says so.
+
+use crate::system_controls::ScriptRunner;
+use crate::{ActionSpec, Args, ConnError, Connector, Health, Output};
+use std::sync::Arc;
+
+/// Media session control. Env: `JITMO_OP` = status | pause | play | next | previous.
+/// Prints the playback status after the call (Playing, Paused, ...).
+pub const MEDIA_SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+function Await($op, $type) {
+  $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result
+}
+$mgrType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
+$mgr = Await ($mgrType::RequestAsync()) ($mgrType)
+$s = $mgr.GetSessions() | Where-Object { $_.SourceAppUserModelId -like '*Spotify*' } | Select-Object -First 1
+if ($null -eq $s) { throw 'no spotify session' }
+switch ($env:JITMO_OP) {
+  'pause' { Await ($s.TryPauseAsync()) ([bool]) | Out-Null }
+  'play' { Await ($s.TryPlayAsync()) ([bool]) | Out-Null }
+  'next' { Await ($s.TrySkipNextAsync()) ([bool]) | Out-Null }
+  'previous' { Await ($s.TrySkipPreviousAsync()) ([bool]) | Out-Null }
+}
+Start-Sleep -Milliseconds 400
+"$($s.GetPlaybackInfo().PlaybackStatus)"
+"#;
+
+/// Open a Spotify link. Env: `JITMO_URL`.
+pub const OPEN_SCRIPT: &str = "Start-Process $env:JITMO_URL";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Control {
+    Pause,
+    Resume,
+    Next,
+    Previous,
+}
+
+/// "pause the music", "music off", "skip this song", "play the previous one", "resume".
+pub fn parse_control(text: &str) -> Option<Control> {
+    let t = text.to_lowercase();
+    let words: Vec<&str> = t
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let has = |w: &[&str]| words.iter().any(|x| w.contains(x));
+    if has(&["previous", "prev", "back", "last"]) && !has(&["pause", "stop"]) {
+        Some(Control::Previous)
+    } else if has(&["skip", "next"]) {
+        Some(Control::Next)
+    } else if has(&["pause", "stop", "mute"])
+        || (has(&["off"]) && has(&["music", "song", "spotify"]))
+    {
+        Some(Control::Pause)
+    } else if has(&["resume", "continue", "unpause"]) || (has(&["play"]) && !has(&["something"])) {
+        Some(Control::Resume)
+    } else {
+        None
+    }
+}
+
+fn op_name(c: Control) -> &'static str {
+    match c {
+        Control::Pause => "pause",
+        Control::Resume => "play",
+        Control::Next => "next",
+        Control::Previous => "previous",
+    }
+}
+
+/// What to search for in "play Arijit Singh on Spotify", "put on some arijit".
+pub fn parse_search(text: &str) -> Option<String> {
+    let mut t = format!(" {} ", text.trim().trim_end_matches(['.', '!', '?']));
+    let lower = t.to_lowercase();
+    // Cut trailing "on spotify" / "in spotify".
+    for tail in [
+        " on spotify ",
+        " in spotify ",
+        " using spotify ",
+        " with spotify ",
+    ] {
+        if let Some(i) = lower.rfind(tail) {
+            t.truncate(i);
+            t.push(' ');
+            break;
+        }
+    }
+    let lower = t.to_lowercase();
+    let mut start = 0;
+    for lead in [
+        " please play ",
+        " can you play ",
+        " could you play ",
+        " put on some ",
+        " put on ",
+        " play some ",
+        " play me some ",
+        " play me ",
+        " play ",
+        " listen to ",
+        " throw on ",
+    ] {
+        if lower.starts_with(lead) {
+            start = lead.len();
+            break;
+        }
+    }
+    let q = t[start..].trim();
+    let q = q
+        .trim_start_matches("some ")
+        .trim_start_matches("the ")
+        .trim();
+    (!q.is_empty() && q.len() < 120).then(|| q.to_string())
+}
+
+fn encode(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+pub struct Spotify {
+    runner: Arc<dyn ScriptRunner>,
+}
+
+impl Spotify {
+    pub fn new(runner: Arc<dyn ScriptRunner>) -> Self {
+        Spotify { runner }
+    }
+
+    fn media(&self, op: &str) -> Result<String, ConnError> {
+        self.runner
+            .run(MEDIA_SCRIPT, &[("JITMO_OP", op)])
+            .map_err(|e| {
+                if e.contains("no spotify session") {
+                    ConnError::Failed("Spotify isn't playing anything right now.".into())
+                } else {
+                    ConnError::Failed("I couldn't control Spotify.".into())
+                }
+            })
+    }
+}
+
+fn text_arg(args: &Args) -> Result<&String, ConnError> {
+    args.get("text")
+        .ok_or_else(|| ConnError::MissingArg("text".into()))
+}
+
+impl Connector for Spotify {
+    fn id(&self) -> &str {
+        "spotify"
+    }
+
+    fn actions(&self) -> Vec<ActionSpec> {
+        ["control", "search"]
+            .iter()
+            .map(|n| ActionSpec {
+                name: n.to_string(),
+                required_args: vec!["text".into()],
+            })
+            .collect()
+    }
+
+    fn health(&self) -> Health {
+        Health::Ready
+    }
+
+    fn execute(&self, action: &str, args: &Args) -> Result<Output, ConnError> {
+        let msg = |m: String| Output([("message".to_string(), m)].into());
+        match action {
+            "control" => {
+                let c = parse_control(text_arg(args)?)
+                    .ok_or_else(|| ConnError::Failed("Should I pause, resume or skip?".into()))?;
+                self.media(op_name(c))?;
+                Ok(msg(match c {
+                    Control::Pause => "Paused.",
+                    Control::Resume => "Playing.",
+                    Control::Next => "Skipped to the next song.",
+                    Control::Previous => "Back to the previous song.",
+                }
+                .into()))
+            }
+            "search" => {
+                let q = parse_search(text_arg(args)?)
+                    .ok_or_else(|| ConnError::Failed("What should I look for?".into()))?;
+                let url = format!("spotify:search:{}", encode(&q));
+                self.runner
+                    .run(OPEN_SCRIPT, &[("JITMO_URL", &url)])
+                    .map_err(|_| ConnError::NotInstalled("Spotify".into()))?;
+                Ok(msg(format!(
+                    "Opened Spotify on a search for {q}. Press Play on the first result."
+                )))
+            }
+            other => Err(ConnError::UnknownAction(other.to_string())),
+        }
+    }
+
+    fn check(&self, action: &str, args: &Args) -> Result<bool, ConnError> {
+        match action {
+            "control" => {
+                let Some(c) = parse_control(text_arg(args)?) else {
+                    return Ok(false);
+                };
+                let status = self.media("status")?;
+                Ok(match c {
+                    Control::Pause => status == "Paused",
+                    Control::Resume => status == "Playing",
+                    // A skip cannot be told apart from the status alone; the session answering is the proof.
+                    Control::Next | Control::Previous => !status.is_empty(),
+                })
+            }
+            // Opening a link cannot be read back.
+            "search" => Ok(parse_search(text_arg(args)?).is_some()),
+            other => Err(ConnError::UnknownAction(other.to_string())),
+        }
+    }
+
+    fn undo(&self, _: &str, _: &Output) -> Option<Result<(), ConnError>> {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct Rec {
+        calls: Mutex<Vec<(String, String)>>,
+        reply: Result<String, String>,
+    }
+
+    impl ScriptRunner for Rec {
+        fn run(&self, script: &str, env: &[(&str, &str)]) -> Result<String, String> {
+            let key = env.first().map(|(_, v)| v.to_string()).unwrap_or_default();
+            self.calls.lock().unwrap().push((script.to_string(), key));
+            self.reply.clone()
+        }
+    }
+
+    fn spotify(reply: Result<&str, &str>) -> (Spotify, Arc<Rec>) {
+        let r = Arc::new(Rec {
+            calls: Mutex::new(Vec::new()),
+            reply: reply.map(String::from).map_err(String::from),
+        });
+        (Spotify::new(r.clone()), r)
+    }
+
+    fn args(t: &str) -> Args {
+        [("text".to_string(), t.to_string())].into()
+    }
+
+    #[test]
+    fn controls_are_understood() {
+        use Control::*;
+        for (t, want) in [
+            ("Pause the music.", Pause),
+            ("music off", Pause),
+            ("pause spotify", Pause),
+            ("skip this song", Next),
+            ("next song", Next),
+            ("play the previous song", Previous),
+            ("resume the music", Resume),
+        ] {
+            assert_eq!(parse_control(t), Some(want), "{t}");
+        }
+        assert_eq!(parse_control("how are you"), None);
+    }
+
+    #[test]
+    fn search_text_is_cut_to_the_name() {
+        assert_eq!(
+            parse_search("Play Arijit Singh on Spotify.").unwrap(),
+            "Arijit Singh"
+        );
+        assert_eq!(parse_search("put on some arijit").unwrap(), "arijit");
+        assert_eq!(parse_search("play some jazz").unwrap(), "jazz");
+        assert_eq!(parse_search("play").as_deref(), None);
+    }
+
+    #[test]
+    fn t03_pause_runs_the_pause_op_and_check_reads_the_status() {
+        let (s, r) = spotify(Ok("Paused"));
+        let out = s.execute("control", &args("Pause the music.")).unwrap();
+        assert_eq!(out.0["message"], "Paused.");
+        assert_eq!(r.calls.lock().unwrap()[0].1, "pause");
+        assert!(s.check("control", &args("Pause the music.")).unwrap());
+        let (playing, _) = spotify(Ok("Playing"));
+        assert!(!playing.check("control", &args("Pause the music.")).unwrap());
+    }
+
+    #[test]
+    fn no_spotify_session_is_a_plain_message() {
+        let (s, _) = spotify(Err("no spotify session"));
+        let e = s.execute("control", &args("pause")).unwrap_err();
+        assert_eq!(e.to_string(), "Spotify isn't playing anything right now.");
+    }
+
+    #[test]
+    fn search_opens_a_spotify_link_with_the_name_encoded_and_is_honest_about_it() {
+        let (s, r) = spotify(Ok(""));
+        let out = s
+            .execute("search", &args("Play Arijit Singh on Spotify."))
+            .unwrap();
+        assert_eq!(
+            r.calls.lock().unwrap()[0].1,
+            "spotify:search:Arijit%20Singh"
+        );
+        assert!(out.0["message"].contains("Press Play"));
+    }
+
+    #[test]
+    fn nothing_runs_for_an_unclear_control() {
+        let (s, r) = spotify(Ok("Paused"));
+        assert!(s.execute("control", &args("hmm")).is_err());
+        assert!(r.calls.lock().unwrap().is_empty());
+    }
+}
+
+#[cfg(all(test, windows))]
+mod live {
+    use super::*;
+    use crate::system_controls::PowerShell;
+
+    /// Read-only: asks Spotify's media session for its status; changes nothing.
+    #[test]
+    #[ignore]
+    fn live_status_of_the_spotify_session() {
+        let r = PowerShell.run(MEDIA_SCRIPT, &[("JITMO_OP", "status")]);
+        println!("spotify status: {r:?}");
+        // Either a status, or the plain "no session" error when Spotify is closed.
+        assert!(
+            r.is_ok() || r.as_ref().unwrap_err().contains("no spotify session"),
+            "{r:?}"
+        );
+    }
+}

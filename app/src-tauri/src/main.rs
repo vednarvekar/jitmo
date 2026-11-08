@@ -190,7 +190,8 @@ fn router() -> Router {
 fn load_skills() -> Vec<Skill> {
     [
         include_str!("../../../skills/apps.open.yaml"),
-        include_str!("../../../skills/music.pause.yaml"),
+        include_str!("../../../skills/music.control.yaml"),
+        include_str!("../../../skills/music.play.yaml"),
         include_str!("../../../skills/calc.math.yaml"),
         include_str!("../../../skills/calc.moon.yaml"),
         include_str!("../../../skills/calc.time_in.yaml"),
@@ -263,7 +264,7 @@ fn downloads_dir() -> std::path::PathBuf {
 }
 
 fn connectors(db: &std::path::Path) -> HashMap<String, Arc<dyn Connector>> {
-    let mut map: HashMap<String, Arc<dyn Connector>> = ["spotify", "stub_messenger"]
+    let mut map: HashMap<String, Arc<dyn Connector>> = ["stub_messenger"]
         .iter()
         .map(|id| {
             (
@@ -272,6 +273,15 @@ fn connectors(db: &std::path::Path) -> HashMap<String, Arc<dyn Connector>> {
             )
         })
         .collect();
+    #[cfg(windows)]
+    map.insert(
+        "spotify".into(),
+        Arc::new(jitmo_connectors::spotify::Spotify::new(Arc::new(
+            jitmo_connectors::system_controls::PowerShell,
+        ))),
+    );
+    #[cfg(not(windows))]
+    map.insert("spotify".into(), Arc::new(FakeConnector::new("spotify")));
     #[cfg(windows)]
     map.insert(
         "system_controls".into(),

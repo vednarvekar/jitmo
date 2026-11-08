@@ -15,9 +15,9 @@ T01:
 T03:
   request: "Pause the music."
   expect: ran
-  skill: music.pause
+  skill: music.control
   calls:
-    - { connector: spotify, action: pause }
+    - { connector: spotify, action: control, args: { text: "Pause the music." } }
 
 # T95 uses the Phase 1 stub send skill until the real WhatsApp skill exists.
 T95:

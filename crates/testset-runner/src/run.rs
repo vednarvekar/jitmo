@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn the_wrong_skill_is_a_failure_with_a_reason() {
         let mut s = specs()["T01"].clone();
-        s.skill = Some("music.pause".into());
+        s.skill = Some("music.control".into());
         let r = run_case(&skills(), &s, false);
         assert!(!r.passed);
         assert!(

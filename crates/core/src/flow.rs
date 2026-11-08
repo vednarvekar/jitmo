@@ -598,7 +598,7 @@ mod tests {
     use jitmo_connectors::fake::{Call, FakeConnector};
 
     const OPEN: &str = include_str!("../../../skills/apps.open.yaml");
-    const PAUSE: &str = include_str!("../../../skills/music.pause.yaml");
+    const PAUSE: &str = include_str!("../../../skills/music.control.yaml");
     const SEND: &str = include_str!("../../../skills/stub.send.yaml");
 
     /// Scripted user: answers confirms from a list and records what it was shown.
@@ -810,11 +810,11 @@ mod tests {
         let sp = Arc::new(FakeConnector::new("spotify"));
         let mut flow = flow_with(&[PAUSE], vec![("spotify", sp.clone())]);
         let mut u = TestUser {
-            choice: Some("music.pause".into()),
+            choice: Some("music.control".into()),
             ..TestUser::default()
         };
         assert_eq!(done(&flow.handle(13, "pause music", &mut u)).0, "Done.");
-        assert_eq!(u.choices_seen, vec!["music.pause"]);
+        assert_eq!(u.choices_seen, vec!["music.control"]);
         assert_eq!(sp.execute_count(), 1);
         // Dismissing the question does nothing.
         let mut dismiss = TestUser::default();
@@ -1239,7 +1239,7 @@ mod tests {
         let needs_resolver = ["whatsapp.send_file"];
         for yaml in [OPEN, PAUSE, SEND, WHATSAPP] {
             let skill = Skill::parse(yaml).unwrap();
-            let slots: Slots = skill
+            let mut slots: Slots = skill
                 .slots
                 .iter()
                 .map(|(n, s)| {
@@ -1250,6 +1250,8 @@ mod tests {
                     (n.clone(), SlotValue::from_text(&text))
                 })
                 .collect();
+            // The flow always supplies the built-in `request` slot.
+            slots.insert("request".into(), SlotValue::from_text("sample request"));
             let filled = check_templates(&skill, &slots);
             if needs_resolver.contains(&skill.id.as_str()) {
                 assert!(
