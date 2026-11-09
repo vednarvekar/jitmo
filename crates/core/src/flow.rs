@@ -30,6 +30,9 @@ pub trait Prompter {
     fn confirm(&mut self, text: &str) -> bool;
     /// Ask one question. `None` means the user dismissed it.
     fn choose(&mut self, question: &str, choices: &[Choice]) -> Option<String>;
+    /// Ask one short free-text question (a required slot the extractor missed).
+    /// `hint` is a placeholder for the answer field. `None` means the user dismissed it.
+    fn ask_text(&mut self, question: &str, hint: &str) -> Option<String>;
 }
 
 /// What Undo needs: every step that ran (Undo walks them backwards) and when
@@ -545,7 +548,7 @@ fn resolve_slots(
                     .iter()
                     .enumerate()
                     .find(|(i, s)| !used[*i] && s.kind == sp.kind);
-                let said = found.map(|(i, s)| {
+                let mut said = found.map(|(i, s)| {
                     used[i] = true;
                     s.text.as_str()
                 });
@@ -555,7 +558,21 @@ fn resolve_slots(
                     .ok()
                     .flatten()
                     .or_else(|| store.usual_for(&sp.kind).ok().flatten());
-                match resolver::resolve_with(&sp.resolve, said, ctx, usual.as_deref(), known) {
+                let mut resolution =
+                    resolver::resolve_with(&sp.resolve, said, ctx, usual.as_deref(), known);
+                // A required free-text slot with no words at all: ask once instead of
+                // failing. The answer is then handled as if it had been said.
+                let answer;
+                if sp.required
+                    && sp.is_free_text()
+                    && matches!(resolution, Resolution::NotFound(None))
+                {
+                    answer = ask_for_text(p, &sp.question(name))?;
+                    said = Some(answer.as_str());
+                    resolution =
+                        resolver::resolve_with(&sp.resolve, said, ctx, usual.as_deref(), known);
+                }
+                match resolution {
                     Resolution::Found(v) => {
                         // A set of files is not one thing to remember.
                         if let (Some(words), false) = (said, v.fields.contains_key("paths")) {
@@ -611,6 +628,23 @@ fn resolve_slots(
         }
     }
     Ok((out, learned))
+}
+
+/// Ask the question; an empty answer is asked once more, then the task is cancelled.
+/// Dismissing (`None`) cancels at once. Returns the trimmed, non-empty words.
+fn ask_for_text(p: &mut dyn Prompter, question: &str) -> Result<String, SlotError> {
+    let hints = [
+        "Type your answer, or Esc to cancel",
+        "Type something, or Esc to cancel",
+    ];
+    for hint in hints {
+        let said = p.ask_text(question, hint).ok_or(SlotError::Cancelled)?;
+        let said = said.trim();
+        if !said.is_empty() {
+            return Ok(said.to_string());
+        }
+    }
+    Err(SlotError::Cancelled)
 }
 
 /// A choice made by words, to remember if the task succeeds (FR10).
@@ -816,6 +850,8 @@ mod tests {
         shown: Vec<String>,
         choice: Option<String>,
         choices_seen: Vec<String>,
+        text_answers: Vec<String>,
+        questions: Vec<String>,
     }
 
     impl Prompter for TestUser {
@@ -830,6 +866,14 @@ mod tests {
         fn choose(&mut self, _q: &str, choices: &[Choice]) -> Option<String> {
             self.choices_seen = choices.iter().map(|c| c.id.clone()).collect();
             self.choice.clone()
+        }
+        fn ask_text(&mut self, q: &str, _hint: &str) -> Option<String> {
+            self.questions.push(q.to_string());
+            if self.text_answers.is_empty() {
+                None
+            } else {
+                Some(self.text_answers.remove(0))
+            }
         }
     }
 
@@ -918,6 +962,108 @@ mod tests {
         assert_eq!(done(&ev).0, "Cancelled.");
         assert!(m.calls().is_empty(), "nothing may be called after Cancel");
         assert_eq!(log_decisions(&flow), vec!["cancelled"]);
+    }
+
+    // --- asking for a missing free-text slot ------------------------------------
+
+    /// The stub send skill with an extra way to say it that leaves the text out.
+    fn without_ask(yaml: &str) -> String {
+        let kept: Vec<&str> = yaml
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("ask:"))
+            .collect();
+        kept.join(
+            "
+",
+        ) + "
+"
+    }
+
+    fn send_without_text() -> String {
+        SEND.replace("examples:\n", "examples:\n  - \"message {contact}\"\n")
+    }
+
+    #[test]
+    fn a_missing_text_is_asked_for_and_used_as_if_said() {
+        let m = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut flow = flow_with(&[&send_without_text()], vec![("stub_messenger", m.clone())]);
+        let mut u = user(&[true]);
+        u.text_answers = vec!["  see you at six ".into()];
+        let ev = flow.handle(60, "message ved", &mut u);
+        assert_eq!(u.questions, vec!["What do you want to say?"]);
+        assert_eq!(u.shown, vec!["Send \"see you at six\" to ved?"]);
+        assert_eq!(done(&ev).0, "Done.");
+        assert_eq!(m.execute_count(), 1);
+    }
+
+    #[test]
+    fn the_default_question_is_used_without_an_ask_line() {
+        let yaml = without_ask(&send_without_text());
+        let m = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut flow = flow_with(&[&yaml], vec![("stub_messenger", m.clone())]);
+        let mut u = user(&[true]);
+        u.text_answers = vec!["hi".into()];
+        flow.handle(61, "message ved", &mut u);
+        assert_eq!(u.questions, vec!["What should it say?"]);
+    }
+
+    #[test]
+    fn an_empty_answer_is_asked_once_more_then_the_second_is_used() {
+        let m = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut flow = flow_with(&[&send_without_text()], vec![("stub_messenger", m.clone())]);
+        let mut u = user(&[true]);
+        u.text_answers = vec!["   ".into(), "hello".into()];
+        let ev = flow.handle(62, "message ved", &mut u);
+        assert_eq!(u.questions.len(), 2);
+        assert_eq!(u.shown, vec!["Send \"hello\" to ved?"]);
+        assert_eq!(done(&ev).0, "Done.");
+    }
+
+    #[test]
+    fn two_empty_answers_cancel_and_nothing_runs() {
+        let m = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut flow = flow_with(&[&send_without_text()], vec![("stub_messenger", m.clone())]);
+        let mut u = user(&[true]);
+        u.text_answers = vec!["".into(), " ".into(), "late".into()];
+        let ev = flow.handle(63, "message ved", &mut u);
+        assert_eq!(done(&ev).0, "Cancelled.");
+        assert_eq!(u.questions.len(), 2, "asks once more, not a third time");
+        assert!(u.shown.is_empty() && m.calls().is_empty());
+        assert_eq!(log_decisions(&flow), vec!["cancelled"]);
+    }
+
+    #[test]
+    fn dismissing_the_question_cancels() {
+        let m = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut flow = flow_with(&[&send_without_text()], vec![("stub_messenger", m.clone())]);
+        let mut u = user(&[true]);
+        let ev = flow.handle(64, "message ved", &mut u);
+        assert_eq!(done(&ev).0, "Cancelled.");
+        assert_eq!(u.questions.len(), 1);
+        assert!(m.calls().is_empty());
+    }
+
+    #[test]
+    fn a_slot_resolved_from_a_list_is_never_asked_in_words() {
+        // The same skill with its text slot turned into a file slot: it still fails
+        // with the old message and never shows a question.
+        let yaml = without_ask(&send_without_text()).replace("type: text", "type: file_ref");
+        let m = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut flow = flow_with(&[&yaml], vec![("stub_messenger", m.clone())]);
+        let mut u = user(&[true]);
+        u.text_answers = vec!["x".into()];
+        let ev = flow.handle(65, "message ved", &mut u);
+        assert!(u.questions.is_empty());
+        assert_eq!(failed(&ev), "I'm missing the text.");
+    }
+
+    #[test]
+    fn a_text_said_in_the_request_is_not_asked_again() {
+        let m = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut flow = flow_with(&[&send_without_text()], vec![("stub_messenger", m.clone())]);
+        let mut u = user(&[true]);
+        flow.handle(66, "send hello to ved", &mut u);
+        assert!(u.questions.is_empty());
     }
 
     // --- policy ---------------------------------------------------------------

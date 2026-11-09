@@ -612,7 +612,11 @@ impl WebLookup {
             now: Box::new(chrono::Utc::now),
             cache: Cache::default(),
             geocoders: vec![Box::new(WikipediaGeocoder), Box::new(PhotonGeocoder)],
-            forecasters: vec![Box::new(MetNoForecaster), Box::new(NwsForecaster)],
+            forecasters: vec![
+                Box::new(MetNoForecaster),
+                Box::new(crate::web_weather::FmiEcmwfForecaster),
+                Box::new(NwsForecaster),
+            ],
             facts: vec![Box::new(WikipediaFacts), Box::new(WikipediaRestFacts)],
         }
     }

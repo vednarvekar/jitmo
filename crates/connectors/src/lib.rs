@@ -16,7 +16,9 @@ pub mod settings;
 pub mod spotify;
 pub mod sun;
 pub mod system_controls;
+pub mod web_facts;
 pub mod web_lookup;
+pub mod web_weather;
 #[cfg(windows)]
 pub mod windows_system;
 

@@ -9,6 +9,7 @@ export type CoreEvent =
   | { type: "started"; id: number }
   | { type: "confirm_needed"; id: number; text: string }
   | { type: "choice_needed"; id: number; question: string; choices: Choice[] }
+  | { type: "text_needed"; id: number; question: string; hint: string }
   | { type: "done"; id: number; message: string; undoable: boolean }
   | { type: "failed"; id: number; message: string };
 
@@ -17,6 +18,7 @@ export type BarState =
   | { phase: "working"; id: number }
   | { phase: "confirm"; id: number; text: string; shownAt: number }
   | { phase: "choice"; id: number; question: string; choices: Choice[] }
+  | { phase: "asking"; id: number; question: string; hint: string }
   | { phase: "done"; id: number; message: string; undoable: boolean }
   | { phase: "failed"; id: number; message: string };
 
@@ -51,6 +53,8 @@ export function reduce(state: BarState, action: Action): BarState {
           return { phase: "confirm", id: e.id, text: e.text, shownAt: action.now };
         case "choice_needed":
           return { phase: "choice", id: e.id, question: e.question, choices: e.choices };
+        case "text_needed":
+          return { phase: "asking", id: e.id, question: e.question, hint: e.hint };
         case "done":
           return { phase: "done", id: e.id, message: e.message, undoable: e.undoable };
         case "failed":
@@ -82,7 +86,8 @@ function readingTime(message: string): number {
 }
 
 /** Milliseconds until the bar should close by itself, or null if it must stay
- *  (the user is mid-task: working, confirming or choosing, or nothing is shown). */
+ *  (the user is mid-task: working, confirming, choosing or answering a question, or
+ *  nothing is shown). */
 export function autoHideMs(s: BarState): number | null {
   switch (s.phase) {
     case "done":
@@ -92,6 +97,17 @@ export function autoHideMs(s: BarState): number | null {
     default:
       return null;
   }
+}
+
+/** Does the input line take typing? Yes when idle, after a result, and while a free-text
+ *  question is open (what is typed is then the answer, not a new request). */
+export function acceptsTyping(s: BarState): boolean {
+  return s.phase === "idle" || s.phase === "done" || s.phase === "failed" || s.phase === "asking";
+}
+
+/** Is the typed text an answer to Core's question rather than a new request? */
+export function isAnswering(s: BarState): boolean {
+  return s.phase === "asking";
 }
 
 /** Should losing focus close the bar? Not while a task needs the user. */

@@ -16,6 +16,9 @@ pub enum Expect {
     Cancelled,
     /// One question was asked and nothing ran before the answer.
     AsksQuestion,
+    /// A free-text question was asked and nothing ran before it was answered (no
+    /// `text_answers`, so it is dismissed). With `text_answers`, use `ran` instead.
+    AsksText,
 }
 
 /// A saved contact that exists for one test.
@@ -49,6 +52,10 @@ pub struct Spec {
     /// Answers to confirm cards, in order. `true` approves. Default: approve.
     #[serde(default)]
     pub confirm_answers: Vec<bool>,
+    /// Typed answers to free-text questions ("Which song?"), in order. When they run
+    /// out the question is dismissed.
+    #[serde(default)]
+    pub text_answers: Vec<String>,
     /// Only meaningful with the model worker (the rule-based router cannot route
     /// loose wording). Without `--worker` the test is left as not built.
     #[serde(default)]

@@ -7,6 +7,7 @@ The command bar: a Tauri 2 shell (`src-tauri/`) and a React + TypeScript page (`
 - The shell opens the bar from a global hotkey (default `ctrl+alt+j`; change it with the `hotkey` row in the `settings` table).
 - Core runs behind a per-user named pipe; the page talks to it only through the Tauri commands in `src-tauri/src/commands.rs`.
 - The bar window sits on the taskbar edge. The page slides the bar up from behind the taskbar and back down before the window is hidden.
+- When a required free-text slot (a song, a message, a search) comes out empty, Core asks one short question (`text_needed` event). The state machine goes to the `asking` phase: the card shows the question, the input line becomes the answer field (Enter answers through the `answer` command, Esc cancels) and the bar does not auto-hide or close on blur. An empty answer is asked once more, then the request is cancelled.
 - Per SP11 the web view is destroyed 60 seconds after the bar is hidden, so idle memory stays small.
 - The reminder scheduler runs in the shell and shows Windows notifications.
 
@@ -17,7 +18,7 @@ src/
   main.tsx, App.tsx      entry and the bar itself (state wiring, keys, window animation)
   state.ts               pure state machine (no React, no Tauri), with its tests
   bridge.ts              the only file that talks to Tauri
-  components/            Cards (confirm, choice), Suggestions, VoiceButtons, Icons
+  components/            Cards (confirm, choice, question), Suggestions, VoiceButtons, Icons
   orbs/                  GreyOrb (used), AiOrb and RingOrb (kept as alternatives)
   styles/                tokens, glass, controls, motion (imported in that order)
 src-tauri/src/

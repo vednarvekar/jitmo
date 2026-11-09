@@ -6,7 +6,9 @@
 //! such as the per-user named pipe ([`serve_connection`]).
 //!
 //! A request that needs the user (confirm card, choice) pauses the flow thread
-//! until the matching answer arrives. Cancel while waiting counts as "no".
+//! until the matching answer arrives. Cancel while waiting counts as "no" (and as
+//! dismissed for a typed question). There is no timeout: like the confirm card, a
+//! question waits until it is answered, cancelled or the UI goes away.
 
 use crate::flow::{Flow, Prompter};
 use jitmo_ipc::{read_message, write_message, Choice, CoreEvent, FrameError, RequestId, UiRequest};
@@ -113,7 +115,10 @@ fn run(flow: &mut Flow, rx: Receiver<UiRequest>, emit: impl Fn(CoreEvent)) {
                 });
             }
             // Answers or cancels with nothing waiting for them: ignore.
-            UiRequest::Confirm { .. } | UiRequest::Choose { .. } | UiRequest::Cancel { .. } => {}
+            UiRequest::Confirm { .. }
+            | UiRequest::Choose { .. }
+            | UiRequest::Answer { .. }
+            | UiRequest::Cancel { .. } => {}
         }
     }
 }
@@ -150,6 +155,22 @@ impl<E: Fn(CoreEvent)> Prompter for ChannelPrompter<'_, E> {
         loop {
             match self.rx.recv() {
                 Ok(UiRequest::Choose { id, choice_id }) if id == self.id => return Some(choice_id),
+                Ok(UiRequest::Cancel { id }) if id == self.id => return None,
+                Ok(_) => {}
+                Err(_) => return None,
+            }
+        }
+    }
+
+    fn ask_text(&mut self, question: &str, hint: &str) -> Option<String> {
+        (self.emit)(CoreEvent::TextNeeded {
+            id: self.id,
+            question: question.into(),
+            hint: hint.into(),
+        });
+        loop {
+            match self.rx.recv() {
+                Ok(UiRequest::Answer { id, text }) if id == self.id => return Some(text),
                 Ok(UiRequest::Cancel { id }) if id == self.id => return None,
                 Ok(_) => {}
                 Err(_) => return None,
@@ -310,6 +331,78 @@ mod tests {
         drop(svc); // channel closes while the flow waits
         assert_eq!(msg.execute_count(), 0);
         drop(rx);
+    }
+
+    fn asking_service() -> (CoreService, Receiver<CoreEvent>, Arc<FakeConnector>) {
+        let yaml = include_str!("../../../skills/stub.send.yaml")
+            .replace("examples:\n", "examples:\n  - \"message {contact}\"\n");
+        let skills = vec![Skill::parse(&yaml).unwrap()];
+        let msg = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut conns: HashMap<String, Arc<dyn Connector>> = HashMap::new();
+        conns.insert("stub_messenger".into(), msg.clone());
+        let flow = Flow::new(Router::new(skills), Store::open_in_memory().unwrap(), conns);
+        let (etx, erx) = mpsc::channel();
+        let etx = std::sync::Mutex::new(etx);
+        let svc = CoreService::spawn(flow, move |e| {
+            let _ = etx.lock().unwrap().send(e);
+        });
+        (svc, erx, msg)
+    }
+
+    #[test]
+    fn a_missing_text_waits_for_the_typed_answer() {
+        let (svc, rx, msg) = asking_service();
+        svc.send(UiRequest::Submit {
+            id: 10,
+            text: "message ved".into(),
+        });
+        assert_eq!(next(&rx), CoreEvent::Started { id: 10 });
+        assert!(matches!(
+            next(&rx),
+            CoreEvent::TextNeeded { id: 10, ref question, .. } if question == "What do you want to say?"
+        ));
+        svc.send(UiRequest::Answer {
+            id: 99,
+            text: "wrong request".into(),
+        }); // not for this request: ignored
+        svc.send(UiRequest::Answer {
+            id: 10,
+            text: "hello".into(),
+        });
+        assert_eq!(
+            next(&rx),
+            CoreEvent::ConfirmNeeded {
+                id: 10,
+                text: "Send \"hello\" to ved?".into()
+            }
+        );
+        svc.send(UiRequest::Confirm {
+            id: 10,
+            approved: true,
+        });
+        assert!(matches!(next(&rx), CoreEvent::Done { id: 10, .. }));
+        assert_eq!(msg.execute_count(), 1);
+    }
+
+    #[test]
+    fn cancel_while_a_question_is_open_ends_the_request() {
+        let (svc, rx, msg) = asking_service();
+        svc.send(UiRequest::Submit {
+            id: 11,
+            text: "message ved".into(),
+        });
+        next(&rx);
+        next(&rx); // TextNeeded
+        svc.send(UiRequest::Cancel { id: 11 });
+        assert_eq!(
+            next(&rx),
+            CoreEvent::Done {
+                id: 11,
+                message: "Cancelled.".into(),
+                undoable: false
+            }
+        );
+        assert_eq!(msg.execute_count(), 0);
     }
 
     #[test]

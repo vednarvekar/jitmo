@@ -20,6 +20,7 @@ slots:
     type: place
     required: true
     resolve: [named_place]
+    ask: "Which city or place?"
 steps:
   - connector: settings
     action: set_place

@@ -33,3 +33,21 @@ export function ChoiceCard({ id, question, choices }: { id: number; question: st
     </div>
   );
 }
+
+/** One short free-text question. The answer is typed in the bar's input line above it
+ *  (Enter sends, Esc cancels); the buttons do the same for the mouse. */
+export function AskCard({ id, question, answer }: { id: number; question: string; answer: string }) {
+  return (
+    <div className="card">
+      <div className="line">{question}</div>
+      <div className="buttons">
+        <button className="primary" onClick={() => bridge.answer(id, answer)}>
+          Answer <kbd>Enter</kbd>
+        </button>
+        <button onClick={() => bridge.cancel(id)}>
+          Cancel <kbd>Esc</kbd>
+        </button>
+      </div>
+    </div>
+  );
+}

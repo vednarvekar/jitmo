@@ -30,7 +30,9 @@ mod registry;
 mod scheduler;
 mod storage;
 
-use commands::{bar_ready, cancel, choose, confirm, hide_bar, resize_bar, submit, undo, AppState};
+use commands::{
+    answer, bar_ready, cancel, choose, confirm, hide_bar, resize_bar, submit, undo, AppState,
+};
 use core_client::CoreClient;
 
 const DEFAULT_HOTKEY: &str = "ctrl+alt+j"; // Ctrl+Alt+Space was already taken on the dev PC (SP11)
@@ -39,7 +41,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
-            submit, confirm, choose, cancel, undo, hide_bar, resize_bar, bar_ready
+            submit, confirm, choose, answer, cancel, undo, hide_bar, resize_bar, bar_ready
         ])
         .setup(|app| {
             // Own the per-user Core pipe first. If another jitmo already does,

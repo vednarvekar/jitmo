@@ -56,6 +56,8 @@ struct Recorder {
     answers: VecDeque<bool>,
     confirms: Vec<String>,
     asked_question: bool,
+    text_answers: VecDeque<String>,
+    text_questions: Vec<String>,
 }
 
 impl Prompter for Recorder {
@@ -66,6 +68,10 @@ impl Prompter for Recorder {
     fn choose(&mut self, _question: &str, _choices: &[Choice]) -> Option<String> {
         self.asked_question = true;
         None // dismiss: nothing may happen before an answer
+    }
+    fn ask_text(&mut self, question: &str, _hint: &str) -> Option<String> {
+        self.text_questions.push(question.to_string());
+        self.text_answers.pop_front() // none left: dismiss
     }
 }
 
@@ -190,6 +196,8 @@ pub fn run_case_with(
         answers: spec.confirm_answers.iter().copied().collect(),
         confirms: Vec::new(),
         asked_question: false,
+        text_answers: spec.text_answers.iter().cloned().collect(),
+        text_questions: Vec::new(),
     };
 
     let handle_started = Instant::now();
@@ -304,12 +312,22 @@ pub fn run_case_with(
             if skill_risk == Some(Risk::SendsOrShares) && user.confirms.is_empty() {
                 why.push("no confirm was shown before a send".into());
             }
+            if !spec.text_answers.is_empty() && user.text_questions.is_empty() {
+                why.push("a typed answer was scripted but no question was asked".into());
+            }
+            if !user.text_answers.is_empty() {
+                why.push("a scripted answer was never used".into());
+            }
         }
         Expect::Declined => {
             if is_done {
                 why.push(format!("expected a clear decline, but got: {message}"));
             }
-            if !executes.is_empty() || !user.confirms.is_empty() || user.asked_question {
+            if !executes.is_empty()
+                || !user.confirms.is_empty()
+                || user.asked_question
+                || !user.text_questions.is_empty()
+            {
                 why.push("something happened although the request should be declined".into());
             }
         }
@@ -322,6 +340,14 @@ pub fn run_case_with(
             }
             if !executes.is_empty() {
                 why.push("something ran after Cancel".into());
+            }
+        }
+        Expect::AsksText => {
+            if user.text_questions.is_empty() {
+                why.push("no free-text question was asked".into());
+            }
+            if !executes.is_empty() {
+                why.push("something ran before the question was answered".into());
             }
         }
         Expect::AsksQuestion => {
@@ -413,6 +439,36 @@ mod tests {
         let r = run_case(&skills(), &specs()["T95"], false);
         assert!(r.passed, "{:?}", r.reasons);
         assert!(!r.sent_without_confirm);
+    }
+
+    /// A request that leaves the message out: the engine asks, the scripted answer is
+    /// used, and the send is confirmed with the answer in it. Uses a made-up test id
+    /// because the 100-test list has no such case; the runner capability is what is tested.
+    fn asking_skills() -> Vec<Skill> {
+        let mut skills = skills();
+        for s in &mut skills {
+            if s.id == "stub.send" {
+                s.examples.push("message {contact}".into());
+            }
+        }
+        skills
+    }
+
+    #[test]
+    fn a_scripted_typed_answer_fills_a_missing_slot() {
+        let specs = spec::load(
+            "T95: { request: \"message ved\", expect: ran, skill: stub.send, text_answers: [\"hello\"], confirm_contains: hello, calls: [{ connector: stub_messenger, action: send, args: { text: hello, contact: ved } }] }",
+        )
+        .unwrap();
+        let r = run_case(&asking_skills(), &specs["T95"], false);
+        assert!(r.passed, "{:?}", r.reasons);
+    }
+
+    #[test]
+    fn an_unanswered_typed_question_runs_nothing() {
+        let specs = spec::load("T95: { request: \"message ved\", expect: asks_text }").unwrap();
+        let r = run_case(&asking_skills(), &specs["T95"], false);
+        assert!(r.passed, "{:?}", r.reasons);
     }
 
     #[test]

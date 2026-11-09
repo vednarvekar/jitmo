@@ -7,6 +7,7 @@ import type { CoreEvent } from "./state";
 export const submit = (id: number, text: string) => invoke<void>("submit", { id, text });
 export const confirm = (id: number, approved: boolean) => invoke<void>("confirm", { id, approved });
 export const choose = (id: number, choiceId: string) => invoke<void>("choose", { id, choiceId });
+export const answer = (id: number, text: string) => invoke<void>("answer", { id, text });
 export const cancel = (id: number) => invoke<void>("cancel", { id });
 export const undo = (id: number) => invoke<void>("undo", { id });
 export const hideBar = () => invoke<void>("hide_bar");

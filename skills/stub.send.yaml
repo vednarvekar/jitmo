@@ -15,6 +15,7 @@ slots:
     type: text
     required: true
     resolve: [named_text]
+    ask: "What do you want to say?"
   contact:
     type: contact
     required: true

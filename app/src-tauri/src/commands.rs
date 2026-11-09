@@ -31,6 +31,11 @@ pub(crate) fn choose(state: State<AppState>, id: u64, choice_id: String) {
 }
 
 #[tauri::command]
+pub(crate) fn answer(state: State<AppState>, id: u64, text: String) {
+    state.core.send(UiRequest::Answer { id, text });
+}
+
+#[tauri::command]
 pub(crate) fn cancel(state: State<AppState>, id: u64) {
     state.core.send(UiRequest::Cancel { id });
 }

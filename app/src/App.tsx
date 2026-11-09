@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as bridge from "./bridge";
-import { ChoiceCard, ConfirmCard } from "./components/Cards";
+import { AskCard, ChoiceCard, ConfirmCard } from "./components/Cards";
 import { Chevron, Cross } from "./components/Icons";
 import Suggestions from "./components/Suggestions";
 import VoiceButtons from "./components/VoiceButtons";
 import { GreyOrb, type GreyMood } from "./orbs";
 import {
   UNDO_WINDOW_MS,
+  acceptsTyping,
   autoHideMs,
   canConfirmNow,
   currentId,
@@ -147,7 +148,8 @@ export default function App() {
       const id = currentId(s);
       if (e.key === "Escape") {
         e.preventDefault();
-        if (id !== null && (s.phase === "working" || s.phase === "confirm" || s.phase === "choice")) {
+        const busy = ["working", "confirm", "choice", "asking"].includes(s.phase);
+        if (id !== null && busy) {
           bridge.cancel(id);
         } else {
           closeBar();
@@ -176,20 +178,31 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const typing = state.phase === "idle" || state.phase === "done" || state.phase === "failed";
+  const typing = acceptsTyping(state);
+  const answering = state.phase === "asking";
   const undoLeft = Math.max(0, Math.ceil((undoUntil - now) / 1000));
   const showUndo = state.phase === "done" && state.undoable && undoLeft > 0;
   const canSend = typing && text.trim().length > 0;
 
+  // While a question is open, what is typed answers it (even an empty answer is sent, so
+  // Core can ask once more and then cancel). The input is cleared for the next question.
+  const sendAnswer = useCallback((id: number, value: string) => {
+    setText("");
+    bridge.answer(id, value);
+  }, []);
+
   const onInputKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && typing) {
+    if (e.key === "Enter" && state.phase === "asking") {
+      e.preventDefault();
+      sendAnswer(state.id, text);
+    } else if (e.key === "Enter" && typing) {
       e.preventDefault();
       send(text);
-    } else if (e.key === "ArrowUp" && typing && history.current.length > 0) {
+    } else if (e.key === "ArrowUp" && typing && !answering && history.current.length > 0) {
       e.preventDefault();
       historyAt.current = Math.min(historyAt.current + 1, history.current.length - 1);
       setText(history.current[historyAt.current]);
-    } else if (e.key === "ArrowDown" && typing && historyAt.current >= 0) {
+    } else if (e.key === "ArrowDown" && typing && !answering && historyAt.current >= 0) {
       e.preventDefault();
       historyAt.current -= 1;
       setText(historyAt.current >= 0 ? history.current[historyAt.current] : "");
@@ -204,7 +217,10 @@ export default function App() {
   // The "+" opens a row of one-tap suggestions. Off by default, to keep the bar clean.
   const [showChips, setShowChips] = useState(false);
   const mood: GreyMood =
-    state.phase === "working" || state.phase === "confirm" || state.phase === "choice"
+    state.phase === "working" ||
+    state.phase === "confirm" ||
+    state.phase === "choice" ||
+    state.phase === "asking"
       ? "working"
       : state.phase === "done"
         ? "done"
@@ -270,8 +286,8 @@ export default function App() {
                   className="input"
                   autoFocus
                   spellCheck={false}
-                  aria-label="Ask AI"
-                  placeholder="Ask AI"
+                  aria-label={answering ? "Your answer" : "Ask AI"}
+                  placeholder={state.phase === "asking" ? state.hint : "Ask AI"}
                   value={text}
                   disabled={!typing}
                   onChange={(e) => {
@@ -283,7 +299,12 @@ export default function App() {
               )}
 
               {canSend ? (
-                <button className="go" aria-label="Run" title="Run (Enter)" onClick={() => send(text)}>
+                <button
+                  className="go"
+                  aria-label={answering ? "Answer" : "Run"}
+                  title={answering ? "Answer (Enter)" : "Run (Enter)"}
+                  onClick={() => (state.phase === "asking" ? sendAnswer(state.id, text) : send(text))}
+                >
                   <Chevron />
                 </button>
               ) : (
@@ -291,12 +312,13 @@ export default function App() {
               )}
             </div>
 
-            {(state.phase === "confirm" || state.phase === "choice") && (
+            {(state.phase === "confirm" || state.phase === "choice" || state.phase === "asking") && (
               <div className="result" role="status" aria-live="polite" data-tauri-drag-region>
                 {state.phase === "confirm" && <ConfirmCard id={state.id} text={state.text} />}
                 {state.phase === "choice" && (
                   <ChoiceCard id={state.id} question={state.question} choices={state.choices} />
                 )}
+                {state.phase === "asking" && <AskCard id={state.id} question={state.question} answer={text} />}
               </div>
             )}
           </div>

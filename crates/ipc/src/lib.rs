@@ -55,6 +55,8 @@ pub enum UiRequest {
     Confirm { id: RequestId, approved: bool },
     /// Answer to a [`CoreEvent::ChoiceNeeded`] question.
     Choose { id: RequestId, choice_id: String },
+    /// Answer to a [`CoreEvent::TextNeeded`] question: the words the user typed.
+    Answer { id: RequestId, text: String },
     /// Cancel a request that is still running.
     Cancel { id: RequestId },
     /// Undo the last undoable action of a finished request (SR3).
@@ -77,6 +79,13 @@ pub enum CoreEvent {
         id: RequestId,
         question: String,
         choices: Vec<Choice>,
+    },
+    /// A required free-text slot came out empty (extraction missed it): ask one short
+    /// question and wait for typed words. `hint` is a placeholder for the answer field.
+    TextNeeded {
+        id: RequestId,
+        question: String,
+        hint: String,
     },
     /// Final one-line result. Every request ends with exactly one of `Done` or `Failed`.
     Done {
@@ -210,6 +219,25 @@ mod tests {
         assert!(buf.ends_with(b"\n"));
         let back: UiRequest = read_message(&mut Cursor::new(buf)).unwrap().unwrap();
         assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn text_question_and_answer_round_trip() {
+        let ask = CoreEvent::TextNeeded {
+            id: 3,
+            question: "Which song?".into(),
+            hint: "Type an answer".into(),
+        };
+        let json = serde_json::to_string(&ask).unwrap();
+        assert!(json.contains(r#""type":"text_needed""#));
+        assert_eq!(serde_json::from_str::<CoreEvent>(&json).unwrap(), ask);
+        let ans = UiRequest::Answer {
+            id: 3,
+            text: "blinding lights".into(),
+        };
+        let json = serde_json::to_string(&ans).unwrap();
+        assert!(json.contains(r#""type":"answer""#));
+        assert_eq!(serde_json::from_str::<UiRequest>(&json).unwrap(), ans);
     }
 
     #[test]

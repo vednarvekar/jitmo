@@ -56,6 +56,41 @@ pub struct SlotParam {
     /// Sources to try, in order (selected, named, recent, usual, fuzzy...).
     #[serde(default)]
     pub resolve: Vec<String>,
+    /// The short question to ask when this slot is required, free text, and the user
+    /// said nothing for it ("Which song?"). Optional: a default is made from the kind.
+    #[serde(default)]
+    pub ask: Option<String>,
+}
+
+/// Slot kinds whose value is whatever the user types. Only these can be asked for
+/// in words when missing; files, folders, contacts and apps must come from lists.
+pub const FREE_TEXT_KINDS: &[&str] = &[
+    "query", "media", "message", "event", "note", "text", "place",
+];
+
+impl SlotParam {
+    /// True when a missing value can be asked for as plain text.
+    pub fn is_free_text(&self) -> bool {
+        FREE_TEXT_KINDS.contains(&self.kind.as_str())
+    }
+
+    /// The question to show when this slot is missing: the skill's `ask:` text, or a
+    /// default made from the kind.
+    pub fn question(&self, slot_name: &str) -> String {
+        if let Some(q) = self.ask.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
+            return q.to_string();
+        }
+        match self.kind.as_str() {
+            "query" => "What should I search for?".to_string(),
+            "media" => "Which one should I play?".to_string(),
+            "message" => "What do you want to say?".to_string(),
+            "event" => "What should I remind you about?".to_string(),
+            "note" => "What should I note down?".to_string(),
+            "place" => "Which place?".to_string(),
+            "text" => "What should it say?".to_string(),
+            _ => format!("What is the {}?", slot_name.replace(['_', '.'], " ")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -151,6 +186,12 @@ impl Skill {
             if let Slot::Param(sp) = slot {
                 if sp.resolve.is_empty() {
                     p.push(format!("slot `{name}` must list its resolve order"));
+                }
+                if sp.ask.is_some() && !sp.is_free_text() {
+                    p.push(format!(
+                        "slot `{name}` has `ask:` but type `{}` comes from a list, not typed words",
+                        sp.kind
+                    ));
                 }
             }
         }
@@ -365,6 +406,45 @@ mod tests {
         assert!(problems(&yaml)
             .iter()
             .any(|m| m.contains("slot `contact` must list its resolve order")));
+    }
+
+    #[test]
+    fn ask_is_optional_free_text_only_and_has_defaults() {
+        let sp = |kind: &str, ask: Option<&str>| SlotParam {
+            kind: kind.into(),
+            required: true,
+            resolve: vec!["named_text".into()],
+            ask: ask.map(str::to_string),
+        };
+        assert_eq!(
+            sp("media", None).question("song"),
+            "Which one should I play?"
+        );
+        assert_eq!(
+            sp("media", Some("Which song?")).question("song"),
+            "Which song?"
+        );
+        assert_eq!(
+            sp("media", Some("  ")).question("song"),
+            "Which one should I play?"
+        );
+        assert_eq!(sp("odd", None).question("my_slot"), "What is the my slot?");
+        for k in [
+            "query", "media", "message", "event", "note", "text", "place",
+        ] {
+            assert!(sp(k, None).is_free_text(), "{k}");
+        }
+        for k in ["file_ref", "folder", "contact", "app"] {
+            assert!(!sp(k, None).is_free_text(), "{k}");
+        }
+        // `ask:` parses on a text slot and is refused on a list-resolved one.
+        let ok = SAMPLE.replace(
+            "resolve: [named_contact, usual_contact]",
+            "resolve: [named_contact, usual_contact]\n    ask: \"Who?\"",
+        );
+        assert!(problems(&ok)
+            .iter()
+            .any(|m| m.contains("slot `contact` has `ask:`")));
     }
 
     #[test]
