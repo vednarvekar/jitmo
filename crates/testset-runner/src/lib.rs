@@ -6,6 +6,7 @@
 //! - `run`: resets, runs one test, judges it.
 //! - `report`: the metrics table and the text report.
 
+pub mod audit;
 pub mod doc;
 pub mod report;
 pub mod run;

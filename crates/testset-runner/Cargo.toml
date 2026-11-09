@@ -16,6 +16,13 @@ jitmo-model-worker = { path = "../model-worker", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [target.'cfg(windows)'.dependencies]
 jitmo-adapter-windows = { path = "../adapter-windows" }
+
+# The skills audit: drives the real Flow and router over a corpus of messy inputs
+# (docs/03-delivery/9 - Skills Audit.md). Deterministic, no network.
+[[bin]]
+name = "jitmo-audit"
+path = "src/bin/audit.rs"

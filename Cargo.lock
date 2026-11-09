@@ -1929,6 +1929,7 @@ dependencies = [
 name = "jitmo-testset-runner"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "jitmo-adapter-windows",
  "jitmo-connectors",
  "jitmo-core",
