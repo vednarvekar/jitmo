@@ -1,0 +1,1 @@
+F035|drag [file|my invoices] into the [folder|Accounts] folder

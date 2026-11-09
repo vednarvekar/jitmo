@@ -1,0 +1,60 @@
+E01|quit [app|Discord]
+E02|can you boot up [app|Blender]
+E03|take me to [website|Etsy]
+E04|hop onto [website|Pinterest]
+E05|i feel like hearing [media|Nucleya]
+E06|stick on some [media|Radiohead]
+E07|crank up the [setting|volume] to [number|80]
+E08|bump the [setting|brightness] to [number|40]
+E09|turn [setting|wifi] on
+E10|what does [query|photosynthesis] mean
+E11|find out [query|who won the cricket world cup in 2011]
+E12|look into [query|cheap flights to Goa in december]
+E13|forward [file|the lease agreement] to [contact|Nikhil]
+E14|attach [file|the signed contract.pdf] and mail it to [contact|Alok]
+E15|where is [file|the wifi password note]
+E16|put [file|these screenshots] in the [folder|Memes] folder
+E17|zip up [file|the project files] and send them to [contact|Gauri]
+E18|text [contact|my brother] [message|call me when you land]
+E19|tell [contact|Naina] [message|I am stuck in traffic]
+E20|send [contact|Harsh] a [app|whatsapp] saying [message|party is at 8]
+E21|reply [message|yes please] to [contact|Ritu]
+E22|what's the weather like in [place|Chennai] [date_time|this weekend]
+E23|is it going to be cold in [place|Shimla] [date_time|tomorrow]
+E24|what time is it in [place|Tokyo]
+E25|set a timer for [duration|25 minutes]
+E26|wake me up at [date_time|6:30 am]
+E27|remind me to [message|pick up the dry cleaning] [date_time|on Saturday]
+E28|cancel the [event|team lunch] [date_time|tomorrow]
+E29|schedule [event|a haircut] for [date_time|Sunday at 11am]
+E30|move the [event|sprint planning] to [date_time|Wednesday]
+E31|am i free [date_time|next Monday afternoon]
+E32|what's [number|15%] of [number|2400]
+E33|what is [number|12] times [number|13]
+E34|mute the [setting|sound]
+E35|turn off [setting|do not disturb]
+E36|take a screenshot
+E37|lock the pc
+E38|show me [file|my latest payslip]
+E39|open [file|the project plan.docx]
+E40|read me the latest email from [contact|Ananya]
+E41|any messages from [contact|Dr. Mehta]
+E42|search [website|Amazon] for [query|noise cancelling headphones]
+E43|play [media|Hotel California] by [media|Eagles] on [app|Spotify]
+E44|skip this song
+E45|watch the latest video from [media|Mark Rober]
+E46|pull up [contact|Karan]'s last message
+E47|share [file|the trip itinerary] with [contact|Pooja] and [contact|Vikram]
+E48|create a reminder for [date_time|Friday at 5pm] to [message|submit the timesheet]
+E49|quiet the phone for [duration|two hours]
+E50|invite [contact|the whole team] to [event|the launch party] [date_time|next Friday]
+E51|check [app|Gmail]
+E52|jump to [website|Wikipedia] and look up [query|the Mughal empire]
+E53|send [contact|Zoya] a note that [message|the meeting is moved to four]
+E54|how much is [number|45] dollars in rupees
+E55|how many tablespoons are in [number|4] ounces
+E56|empty the recycle bin
+E57|pause playback
+E58|what's playing right now
+E59|say to [contact|Raj] [message|happy birthday]
+E60|add [event|yoga class] to my calendar for [date_time|every Tuesday at 7am]

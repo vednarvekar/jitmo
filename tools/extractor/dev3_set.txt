@@ -1,0 +1,32 @@
+D01|bring up [website|Zillow] real quick
+D02|launch [app|Postman] please
+D03|what's the latest thing from [media|MKBHD]
+D05|show me the newest video from [media|Marques Brownlee]
+D06|let [contact|Meera] know on [app|Slack] that [message|I'm running late]
+D07|message [contact|Dev] on [app|Telegram] saying [message|I'll call tonight]
+D08|text [contact|Anita] on [app|WhatsApp]: [message|reached the venue]
+D09|how many grams in [number|3] ounces
+D10|convert [number|5] miles to kilometres
+D11|what's [number|72] fahrenheit in celsius
+D12|how many ml in [number|2] cups
+D13|move [file|the report] to the [folder|Client Contracts] folder
+D14|open the [folder|Tax Documents] folder
+D15|mute [setting|notifications] for [duration|the next hour]
+D16|pause updates for [duration|the next half hour]
+D17|put the phone on [setting|silent mode]
+D18|put the screen on [setting|dark mode]
+D19|summarize the conversation with [contact|Priya] about [query|the budget]
+D20|find the chat with [contact|Rohan] about [query|the flat deposit]
+D21|put [media|Prateek Kuhad] on [app|Spotify]
+D22|invite [contact|Meera] to [event|the standup] [date_time|tomorrow]
+D23|invite [contact|Sam] to [event|lunch]
+D24|invite [contact|Dev] to [event|the offsite] on [date_time|Friday]
+D25|put [event|dentist] on my calendar for [date_time|Tuesday at 4pm]
+D26|put the kettle on
+D27|put my sister on speaker
+D29|move [file|the invoices] into the [folder|Receipts] folder
+D30|pull up [website|Reddit] for me
+D31|ping [contact|the design team] [message|standup moved to 11]
+D32|what's the latest email from [contact|Kavya]
+D34|silence the phone for [duration|the next hour]
+D35|remind me to [message|call the bank] [date_time|tomorrow at 10am]

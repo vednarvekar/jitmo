@@ -19,7 +19,7 @@
 //! not go through here.
 
 use crate::rules::{
-    closed_spans, Ent, Gazetteer, ModelEnt, APPS, FAMILY, NOT_NAME, SETTINGS, SITES, WD,
+    closed_spans, Ent, Gazetteer, ModelEnt, APPS, FAMILY, NOT_APP, NOT_NAME, SETTINGS, SITES, WD,
 };
 use fancy_regex::{Captures, Regex};
 use std::collections::HashSet;
@@ -54,8 +54,10 @@ const DET: &str = r"(?:the|my|that|this|these|those|our|his|her)";
 /// Words that end a noun phrase.
 const STOP: &str = r"(?:to|with|from|on|in|into|at|for|by|and|before|after|via|as|over|using|folder|please|pls|plz|tomorrow|today|yesterday|tonight|tmrw|that|which|i|we)";
 const ROLES: &str = r"(?:vendor|client|customer|supplier|contractor|accountant|manager|boss|landlord|lawyer|doctor|teacher|sister|brother|wife|husband|friend|colleague|assistant|secretary|recruiter|roommate|neighbou?r|cousin|uncle|aunt|grandma|grandpa|principal|professor|supervisor|dad|mom|mum|team)";
+/// Units of measure for "N <unit> in <unit>" conversions.
+const UNITS: &str = r"(?:km|kms|kilomet(?:er|re)s?|miles?|met(?:er|re)s?|cm|centimet(?:er|re)s?|mm|millimet(?:er|re)s?|inch(?:es)?|ft|feet|foot|yards?|kgs?|kilograms?|grams?|lbs?|pounds?|ounces?|oz|lit(?:er|re)s?|ml|gallons?|cups?|tbsp|tsp|celsius|fahrenheit|kelvin|°c|°f|mph|kmph|kph|bytes?|kb|mb|gb|tb|dollars?|usd|rupees?|inr|euros?|eur|gbp)";
 /// Extra file nouns beyond the first pass list.
-const FILE_NOUN2: &str = r"(?:sheet|deck|report|resume|cv|contract|proposal|invoices?|documents?|docs?|pdfs?|photos?|pictures?|pics?|images?|screenshots?|receipts?|letter|ticket|agreement|attachments?|notes|slides|spreadsheet|files?|slip|lease|scan|return|pass|policy|bills?|statements?|forms?|certificates?|presentation|plan|itinerary|manual|brochure|transcript|payslip|licen[sc]e|summary|minutes|draft|ppt|essay|assignment|timetable|budget|memo|mock-?ups?|albums?|backups?|wireframes?|logos?|roadmap|portfolio|templates?|scripts?|recordings?|spreadsheets?|worksheets?|brief|invoice|checklist|manuscript|thesis|paper|ebook|catalog|catalogue|screenshot)";
+const FILE_NOUN2: &str = r"(?:sheet|deck|report|resume|cv|contract|proposal|invoices?|documents?|docs?|pdfs?|photos?|pictures?|pics?|images?|screenshots?|receipts?|letter|ticket|agreement|attachments?|notes|slides|spreadsheet|files?|slip|lease|scan|return|pass|policy|bills?|statements?|forms?|certificates?|presentation|plan|itinerary|manual|brochure|transcript|payslip|licen[sc]e|summary|minutes|draft|ppt|essay|assignment|timetable|budget|memo|mock-?ups?|albums?|backups?|wireframes?|logos?|roadmap|portfolio|templates?|scripts?|recordings?|spreadsheets?|worksheets?|brief|invoice|checklist|manuscript|thesis|paper|ebook|catalog|catalogue|screenshot|notes?)";
 const NOT_FILE_HEAD: &[&str] = &[
     "it",
     "app",
@@ -177,6 +179,8 @@ struct R {
     det_start: Regex,
     q_google: Regex,
     q_lookup: Regex,
+    q_define: Regex,
+    ms_say_to2: Regex,
     q_search: Regex,
     q_search_on: Regex,
     q_site: Regex,
@@ -202,6 +206,19 @@ struct R {
     ms_know: Regex,
     ms_say_to: Regex,
     ms_saying: Regex,
+    ms_colon: Regex,
+    m_newest_from: Regex,
+    m_put_music: Regex,
+    ev_invite: Regex,
+    conv_how_many: Regex,
+    conv_convert: Regex,
+    conv_units: Regex,
+    dur_next: Regex,
+    num_to2: Regex,
+    folder_into: Regex,
+    folder_verbs: Regex,
+    ms_get_back: Regex,
+    open_ctx: Regex,
     rm_to: Regex,
     rm_mid: Regex,
     ev_cancel: Regex,
@@ -239,7 +256,11 @@ struct R {
 static R: LazyLock<R> = LazyLock::new(|| {
     let a = appsite();
     let name_cap = r"(?-i:[A-Z])[\w'-]*";
-    let fverb = r"(?:send|share|email|mail|attach|print|forward|move|copy|rename|zip|upload|delete|open|find|show(?:\s+me)?|pull\s+up|where(?:'s|s|\s+is|\s+are)|where\s+did\s+i\s+(?:put|save|leave|store)|get(?:\s+me)?|fetch|look\s+for|bring\s+up|give)";
+    let setting_rx: Vec<String> = SETTINGS
+        .iter()
+        .map(|w| fancy_regex::escape(w).to_string())
+        .collect();
+    let fverb = r"(?:send|share|email|mail|attach|print|forward|move|copy|rename|zip|upload|delete|open|find|show(?:\s+me)?|pull\s+up|where(?:'s|s|\s+is|\s+are)|where\s+did\s+i\s+(?:put|save|leave|store)|get(?:\s+me)?|fetch|look\s+for|bring\s+up|give|put|drop|throw|toss|stick|dump|store|save|drag|stash|slide|park)";
     R {
         trail_filler: rx(
             r"\s+(?:please|pls|plz|for me|thanks|thank you|online|right now|asap|real quick)$",
@@ -252,7 +273,12 @@ static R: LazyLock<R> = LazyLock::new(|| {
         q_google: rx(&format!(
             r"{LEAD}(?:google|bing|duckduckgo|ddg)\s+(?:for\s+)?(.+)$"
         )),
-        q_lookup: rx(r"\b(?:look\s?up|look\s+for|research|lookup)\s+(?:up\s+)?(.+)$"),
+        q_lookup: rx(
+            r"\b(look\s?up|look\s+for|research|lookup|find\s+out|look\s+into|read\s+up\s+on|dig\s+up|hunt\s+down|check\s+(?:online|the\s+web|the\s+internet)\s+for)\s+(?:up\s+|about\s+)?(.+)$",
+        ),
+        q_define: rx(
+            r"\bwhat\s+does\s+(.+?)\s+mean\b|\b(?:define|meaning\s+of|definition\s+of)\s+(.+)$",
+        ),
         q_search: rx(&format!(
             r"\bsearch(?:\s+(?:the\s+)?(?:web|internet|net|online)|\s+{a})?\s+for\s+(.+)$"
         )),
@@ -262,7 +288,9 @@ static R: LazyLock<R> = LazyLock::new(|| {
         q_site: rx(&format!(
             r"{LEAD}(?:youtube|yt|amazon|flipkart|wikipedia|wiki|reddit)\s+(?!for\b|and\b|app\b)(.+)$"
         )),
-        q_about: rx(r"\b(?:emails?|mails?|messages?|texts?)\b.*?\babout\s+(.+)$"),
+        q_about: rx(
+            r"\b(?:emails?|mails?|messages?|texts?|threads?|conversations?|convos?|chats?|discussions?|correspondence)\b.*?\babout\s+(.+)$",
+        ),
         q_online: rx(r"\bfind\s+me\s+(.+?)\s+(?:online|on the web|on the internet)\s*[.?!]*$"),
         q_find: rx(
             r"\bfind\s+(?:me\s+)?(?:some\s+)?(?:videos?|articles?|pages?|tutorials?|results?|posts?|blogs?|info(?:rmation)?|recipes?|reviews?|news|images?|pictures?|photos?)\s+(?:about|on|of|for|regarding)\s+(.+)$",
@@ -274,7 +302,7 @@ static R: LazyLock<R> = LazyLock::new(|| {
             r"{LEAD}(?:play|put\s+on|throw\s+on|queue(?:\s+up)?|cue\s+up|shuffle|blast|stream|spin)\s+(?:me\s+)?(.+)$"
         )),
         m_hear: rx(
-            r"\b(?:wanna|want\s+to|like\s+to|let\s+me|gonna|going\s+to)\s+(?:hear|listen\s+to)\s+(.+)$",
+            r"\b(?:wanna|want\s+to|like\s+to|let\s+me|let'?s|gonna|going\s+to|feel\s+like|in\s+the\s+mood\s+to)\s+(?:hear|hearing|listen\s+to|listening\s+to)\s+(.+)$",
         ),
         m_latest: rx(r"^(?:the\s+)?(?:latest|newest|new|recent)\s+(?:\w+\s+)?(?:from|by)\s+(.+)$"),
         m_from: rx(
@@ -302,15 +330,61 @@ static R: LazyLock<R> = LazyLock::new(|| {
         )),
         ms_reply_to_end: rx(&format!(r"\breply\s+(.+?)\s+to\s+({NAME})\s*[.?!]*$")),
         ms_know: rx(&format!(
-            r"\blet\s+({NAME})\s+know\s+(?:that\s+)?(.+?)\s*[.?!]*$"
+            r"\blet\s+({NAME})\s+know(?:\s+(?:on|via|over|in)\s+{a})?\s+(?:that\s+)?(.+?)\s*[.?!]*$"
         )),
         ms_say_to: rx(&format!(r"\bsay\s+(.+?)\s+to\s+({NAME})\s*[.?!]*$")),
         ms_saying: rx(&format!(
-            r"\b(?:text|message|msg|dm|ping|email|mail|tell)\s+({NAME})\s+(?:saying|that|to say)\s+(.+?)\s*[.?!]*$"
+            r"\b(?:text|message|msg|dm|ping|email|mail|tell)\s+({NAME})(?:\s+(?:on|via|over|in)\s+{a})?\s+(?:saying|that|to say)\s+(.+?)\s*[.?!]*$"
         )),
-        rm_to: rx(
-            r"\b(?:remind\s+(?:me|us)|ping\s+me|nudge\s+me|set\s+(?:a\s+)?(?:reminder|alarm)(?:\s+for\s+.+?)?)\s+(?:to|about|abt|that)\s+(.+)$",
+        // "message the family group on WhatsApp: dinner at 9"
+        ms_colon: rx(&format!(
+            r"\b(?:text|message|msg|dm|ping|email|mail|tell|whatsapp|telegram|signal|slack)\s+({NAME})(?:\s+(?:on|via|over|in)\s+{a})?\s*:\s*(.+?)\s*[.?!]*$"
+        )),
+        // "the newest thing from Fireship", "anything new by Veritasium"
+        m_newest_from: rx(
+            r"\b(?:newest|latest|new|recent)\s+(?:thing|stuff|one|upload|release|drop|episode|video|vid|song|track|single|album)s?\s+(?:from|by)\s+(.+)$",
         ),
+        // "put <artist> on Spotify"
+        m_put_music: rx(&format!(
+            r"{LEAD}(?:put|throw|stick)\s+(.+?)\s+on\s+(?:spotify|youtube\s+music|apple\s+music|gaana|jio\s?saavn|wynk|deezer|tidal|amazon\s+music|soundcloud|pandora)\b"
+        )),
+        // "invite Karthik to the retro"
+        ev_invite: rx(&format!(
+            r"\binvite\s+(?:{NAME})(?:\s*(?:,|and)\s*(?:{NAME}))*\s+(?:to|for)\s+(?:the\s+|my\s+|our\s+|a\s+|an\s+)?(.+)$"
+        )),
+        conv_how_many: rx(
+            r"\bhow\s+many\s+[\w-]+(?:\s+[\w-]+)?\s+(?:are\s+|is\s+)?(?:in|per|to)\s+(?:an?\s+|one\s+)?(\d+(?:\.\d+)?)\s+[a-z]",
+        ),
+        conv_convert: rx(
+            r"\b(?:convert|change|turn)\s+(\d+(?:\.\d+)?)\s*[a-z°]+\s+(?:to|into|in)\s+[a-z]",
+        ),
+        conv_units: rx(&format!(
+            r"\b(\d+(?:\.\d+)?)\s*{UNITS}\s+(?:in|to|into)\s+{UNITS}\b"
+        )),
+        dur_next: rx(
+            r"\bfor\s+((?:the\s+)?(?:next|coming|following)\s+(?:half\s+(?:an?\s+)?)?(?:hour|minute))\b",
+        ),
+        num_to2: rx(&format!(
+            r"\b(?:{})\s+(?:down|up)\s+to\s+(\d{{1,3}})\b",
+            setting_rx.join("|")
+        )),
+        // "throw these photos into Camera Roll": a capitalised folder name at the end
+        folder_into: rx(
+            r"\b(?:into|to|in)\s+(?:the\s+|my\s+)?((?-i:[A-Z][\w-]*(?:\s+[A-Z][\w-]*){0,2}))\s*[.?!]*$",
+        ),
+        folder_verbs: rx(
+            r"\b(?:move|copy|put|drop|throw|toss|stick|dump|store|save|drag|stash|slide|park|file)\b",
+        ),
+        ms_get_back: rx(&format!(
+            r"\bget\s+back\s+to\s+({NAME})\s+(?:with|saying|that)\s+(.+?)\s*[.?!]*$"
+        )),
+        open_ctx: rx(
+            r"\b(?:open|launch|start|run|go\s+to|visit|take\s+me\s+to|head\s+to|browse|load|switch\s+to|pull\s+up|fire\s+up|bring\s+up|boot\s+up|spin\s+up|navigate\s+to|hop\s+(?:on|onto)|jump\s+(?:on|onto|to)|head\s+over\s+to|check\s+out)\s+(?:up\s+)?(?:the\s+)?$",
+        ),
+        rm_to: rx(
+            r"\b(?:remind\s+(?:me|us)|ping\s+me|nudge\s+me|don'?t\s+let\s+me\s+forget|make\s+sure\s+(?:i|we)\s+(?:remember|don'?t\s+forget)|(?:set|create|add|make)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:reminder|alarm)(?:\s+for\s+.+?)?)\s+(?:to|about|abt|that)\s+(.+)$",
+        ),
+        ms_say_to2: rx(&format!(r"\bsay\s+to\s+({NAME})\s+(.+?)\s*[.?!]*$")),
         rm_mid: rx(
             r"\b(?:remind\s+(?:me|us)|ping\s+me|nudge\s+me)\s+(.+?)\s+(?:to|about|abt)\s+(.+)$",
         ),
@@ -319,7 +393,7 @@ static R: LazyLock<R> = LazyLock::new(|| {
         ),
         ev_no_to: rx(r"\bsay\s+no\s+to\s+(?:the\s+|my\s+)?(.+)$"),
         ev_add: rx(
-            r"\b(book|schedule|add|put|set\s+up|create|plan|arrange)\s+(?:(?:an?|my|the|our)\s+)?(.+)$",
+            r"\b(book|schedule|add|put|set\s+up|create|plan|arrange|pencil\s+in|slot\s+in|put\s+down)\s+(?:(?:an?|my|the|our)\s+)?(.+)$",
         ),
         ev_block: rx(r"\bblock\b.*?\bfor\s+(.+)$"),
         ev_cal_tail: rx(
@@ -345,7 +419,10 @@ static R: LazyLock<R> = LazyLock::new(|| {
         transfer_verb: rx(
             r"^(?:send|share|email|mail|attach|print|forward|move|copy|rename|zip|upload|delete|give)$",
         ),
-        folder: rx(r"(?:\bthe\s+|\bmy\s+|\b(?:open|show|go\s+to|browse)\s+)([\w-]+)\s+folder\b"),
+        // up to three words before "folder", none of them a function word
+        folder: rx(&format!(
+            r"(?:\bthe\s+|\bmy\s+|\b(?:open|show|go\s+to|browse)\s+)((?:(?!(?:{STOP}|the|my|an?|this)\b)[\w-]+\s+){{0,2}}(?!(?:{STOP}|the|my|an?|this)\b)[\w-]+)\s+folder\b"
+        )),
         role: rx(&format!(
             r"\b(?:to|with|from|for|tell|ask|text|email|mail|message|msg|ping|dm|call|cc|notify|invite)\s+(?:my\s+|the\s+|our\s+)?({ROLES})\b"
         )),
@@ -456,6 +533,8 @@ struct Ctx<'a> {
     closed: Vec<Ent>,
     /// Kinds whose first-pass spans were already replaced by a new frame.
     replaced: HashSet<&'static str>,
+    /// The model's spans (already above the score cut-off).
+    raw: &'a [ModelEnt],
 }
 
 fn overlaps(a: &Ent, s: usize, e: usize) -> bool {
@@ -659,10 +738,21 @@ fn query_frames(c: &mut Ctx) {
     }
     if hit.is_none() {
         if let Some(m) = caps(&r.q_lookup, text) {
-            let g = m.get(1).expect("g1");
+            let verb = m.get(1).expect("verb").as_str().to_lowercase();
+            let g = m.get(2).expect("g2");
             // "look for the invoice" is a file search, not a web query
             let rest = &text[g.start()..g.end()];
-            if !is(&r.det_start, rest) && !c.has("file") {
+            let file_search =
+                (verb.contains("for") || verb.contains("dig") || verb.contains("hunt"))
+                    && is(&r.det_start, rest);
+            if !file_search && !c.has("file") {
+                hit = Some((g.start(), g.end(), None));
+            }
+        }
+    }
+    if hit.is_none() {
+        if let Some(m) = caps(&r.q_define, text) {
+            if let Some(g) = m.get(1).or_else(|| m.get(2)) {
                 hit = Some((g.start(), g.end(), None));
             }
         }
@@ -743,6 +833,24 @@ fn media_frames(c: &mut Ctx) {
                 }
             }
             return;
+        }
+    }
+    if rest.is_none() {
+        if let Some(m) = caps(&r.m_newest_from, text) {
+            // the "thing" is not a file here: "the newest thing from Fireship"
+            let whole = m.get(0).expect("m0");
+            c.ents
+                .retain(|x| !(x.kind == "file" && x.end > whole.start() && x.end <= whole.end()));
+            let g = m.get(1).expect("g1");
+            rest = Some((g.start(), g.end()));
+        }
+    }
+    if rest.is_none() {
+        if let Some(m) = caps(&r.m_put_music, text) {
+            let g = m.get(1).expect("g1");
+            if !lower_in(CONTROL, g.as_str()) {
+                rest = Some((g.start(), g.end()));
+            }
         }
     }
     if rest.is_none() {
@@ -840,6 +948,14 @@ fn message_frames(c: &mut Ctx) {
         }
     }
     if found.is_none() {
+        if let Some(m) = caps(&r.ms_colon, text) {
+            let (n, b) = (m.get(1).expect("g1"), m.get(2).expect("g2"));
+            if name_ok(n.as_str()) {
+                found = Some((Some(rng(&n)), rng(&b)));
+            }
+        }
+    }
+    if found.is_none() {
         if let Some(m) = caps(&r.ms_reply_to, text) {
             let b = m.get(2).expect("g2");
             found = Some((m.get(1).map(|n| rng(&n)), rng(&b)));
@@ -850,6 +966,22 @@ fn message_frames(c: &mut Ctx) {
     }
     if found.is_none() {
         if let Some(m) = caps(&r.ms_know, text) {
+            let (n, b) = (m.get(1).expect("g1"), m.get(2).expect("g2"));
+            if name_ok(n.as_str()) {
+                found = Some((Some(rng(&n)), rng(&b)));
+            }
+        }
+    }
+    if found.is_none() {
+        if let Some(m) = caps(&r.ms_get_back, text) {
+            let (n, b) = (m.get(1).expect("g1"), m.get(2).expect("g2"));
+            if name_ok(n.as_str()) {
+                found = Some((Some(rng(&n)), rng(&b)));
+            }
+        }
+    }
+    if found.is_none() {
+        if let Some(m) = caps(&r.ms_say_to2, text) {
             let (n, b) = (m.get(1).expect("g1"), m.get(2).expect("g2"));
             if name_ok(n.as_str()) {
                 found = Some((Some(rng(&n)), rng(&b)));
@@ -953,6 +1085,13 @@ fn event_frames(c: &mut Ctx) {
             cand = Some((g.start(), g.end()));
         }
     }
+    if cand.is_none() {
+        if let Some(m) = caps(&r.ev_invite, text) {
+            let g = m.get(1).expect("g1");
+            cand = Some((g.start(), g.end()));
+            verb = "invite".into();
+        }
+    }
     let block = cand.is_none();
     if block {
         if let Some(m) = caps(&r.ev_block, text) {
@@ -1045,10 +1184,14 @@ fn event_frames(c: &mut Ctx) {
     let ok = match verb.as_str() {
         "reschedule" | "postpone" => !is(&r.ev_bad_start, &xl) && word_count(x) <= 4,
         "move" | "push" => is(&r.ev_words_end, &xl) || with_person,
-        "add" | "put" | "set up" | "create" | "plan" | "arrange" => {
-            (cal || after_date || is(&r.ev_words_end, &xl)) && !is(&rx(r"^on\b"), &xl)
-        }
+        "add" | "put" | "set up" | "pencil in" | "slot in" | "put down" | "create" | "plan"
+        | "arrange" => (cal || after_date || is(&r.ev_words_end, &xl)) && !is(&rx(r"^on\b"), &xl),
         "drop" => false,
+        "invite" => {
+            is(&r.ev_words_end, &xl)
+                || (word_count(x) <= 3
+                    && !is(&rx(r"^(?:join|follow|use|try|connect|download)\b"), &xl))
+        }
         _ => strong_verb && (cal || after_date || is(&r.ev_words_end, &xl) || word_count(x) <= 3),
     };
     if !ok {
@@ -1145,7 +1288,9 @@ fn contact_fixes(c: &mut Ctx) {
     // first-pass contacts that start with a verb or preposition ("add team")
     let bad_first = [
         "add", "in", "to", "for", "from", "of", "with", "on", "at", "by", "tell", "ask", "send",
-        "get", "make", "set", "start", "open", "a", "an", "our", "your",
+        "get", "make", "set", "start", "open", "a", "an", "our", "your", "ring", "call", "phone",
+        "dial", "buzz", "text", "message", "msg", "ping", "dm", "email", "mail", "invite",
+        "notify", "remind",
     ];
     let mut fixed: Vec<Ent> = Vec::new();
     for x in std::mem::take(&mut c.ents) {
@@ -1331,14 +1476,19 @@ fn misc_fixes(c: &mut Ctx) {
         }
         if c.ents
             .iter()
-            .any(|x| x.kind == "folder" && overlaps(x, g.start(), g.end()))
+            .any(|x| x.kind == "folder" && x.start == g.start() && x.end == g.end())
         {
             continue;
         }
+        // a fragment of the name found earlier ("Client" in "the Client Contracts folder")
+        // goes: the whole phrase is the folder
         c.ents.retain(|x| {
-            !(overlaps(x, g.start(), g.end() + 7)
+            let fragment = overlaps(x, g.start(), g.end())
+                && matches!(x.kind, "folder" | "contact" | "place" | "media" | "event");
+            let near = overlaps(x, g.start(), g.end() + 7)
                 && matches!(x.kind, "app" | "file" | "website")
-                && x.start <= g.end() + 7)
+                && x.start <= g.end() + 7;
+            !(fragment || near)
         });
         c.ents.push(Ent::new("folder", g.as_str(), g.start()));
     }
@@ -1362,6 +1512,94 @@ fn misc_fixes(c: &mut Ctx) {
             });
         }
     }
+    // "how many cm in 12 inches", "convert 5 miles to km": the quantity is a number
+    for re in [&r.conv_how_many, &r.conv_convert, &r.conv_units] {
+        if let Some(m) = caps(re, text) {
+            let g = m.get(1).expect("g1");
+            c.put_if_free(New {
+                kind: "number",
+                start: g.start(),
+                end: g.end(),
+            });
+        }
+    }
+    // "knock the brightness down to 20"
+    if let Some(m) = caps(&r.num_to2, text) {
+        let g = m.get(1).expect("g1");
+        c.put_if_free(New {
+            kind: "number",
+            start: g.start(),
+            end: g.end(),
+        });
+    }
+    // "throw these photos into Camera Roll": a capitalised name at the end after a file
+    // was moved or put somewhere is a folder
+    if c.has("file") && !c.has("folder") && is(&r.folder_verbs, text) {
+        if let Some(m) = caps(&r.folder_into, text) {
+            let g = m.get(1).expect("g1");
+            c.put_if_free(New {
+                kind: "folder",
+                start: g.start(),
+                end: g.end(),
+            });
+        }
+    }
+    // "text Mansi back sounds great": "back" belongs to the verb
+    let contact_ends: Vec<usize> = c
+        .ents
+        .iter()
+        .filter(|x| x.kind == "contact")
+        .map(|x| x.end)
+        .collect();
+    for x in &mut c.ents {
+        if x.kind == "message" && contact_ends.contains(&text[..x.start].trim_end().len()) {
+            if let Some(rest) = x.text.strip_prefix("back ") {
+                let ns = x.start + x.text.len() - rest.len();
+                *x = Ent::new("message", rest, ns);
+            }
+        }
+    }
+    // "for the next hour": a duration (with a number it is already one)
+    if let Some(m) = caps(&r.dur_next, text) {
+        let g = m.get(1).expect("g1");
+        c.ents.retain(|x| {
+            !(overlaps(x, g.start(), g.end()) && matches!(x.kind, "date_time" | "duration"))
+        });
+        c.put_if_free(New {
+            kind: "duration",
+            start: g.start(),
+            end: g.end(),
+        });
+    }
+    // an app or site the model found right after an opening verb ("pull up Airbnb"):
+    // the verb is evidence enough for a lower score than "on <name>" needs
+    let raw = c.raw;
+    for e in raw.iter().filter(|e| matches!(e.kind, "app" | "website")) {
+        if is(&r.open_ctx, &text[..e.start])
+            && !lower_in(NOT_APP, &e.text)
+            && !is(&r.file_head_ok, &e.text)
+            && !text[e.end..]
+                .trim_start()
+                .to_lowercase()
+                .starts_with("folder")
+        {
+            c.put_if_free(New {
+                kind: e.kind,
+                start: e.start,
+                end: e.end,
+            });
+        }
+    }
+    // "launch Postman please": filler is not part of an app or site name
+    for x in &mut c.ents {
+        if matches!(x.kind, "app" | "website") {
+            if let Some(m) = r.trail_filler.find(&x.text).ok().flatten() {
+                if m.start() > 0 {
+                    *x = Ent::new(x.kind, &x.text[..m.start()], x.start);
+                }
+            }
+        }
+    }
     // an unknown name after "go to / visit / take me to" is a site
     for x in &mut c.ents {
         if x.kind == "app"
@@ -1376,12 +1614,13 @@ fn misc_fixes(c: &mut Ctx) {
 /// Run the second rule pass over the first-pass spans `base`. `raw` is the model's spans
 /// (unused for now: the model only fills what the rules leave empty, which the first
 /// pass already did).
-pub fn refine(text: &str, base: Vec<Ent>, _raw: &[ModelEnt], gaz: &Gazetteer) -> Vec<Ent> {
+pub fn refine(text: &str, base: Vec<Ent>, raw: &[ModelEnt], gaz: &Gazetteer) -> Vec<Ent> {
     let mut c = Ctx {
         text,
         ents: base,
         closed: closed_spans(text, gaz),
         replaced: HashSet::new(),
+        raw,
     };
     c.closed.sort_by_key(|e| (e.start, e.end));
     fix_dates(&mut c);
@@ -1392,6 +1631,18 @@ pub fn refine(text: &str, base: Vec<Ent>, _raw: &[ModelEnt], gaz: &Gazetteer) ->
     event_frames(&mut c);
     contact_fixes(&mut c);
     misc_fixes(&mut c);
+
+    // An event the first pass found and no event frame here confirmed ("put the laptop on
+    // airplane mode", "put <artist> on Spotify") needs a calendar word, an event word, or
+    // a date after it; "put X on ..." alone is not enough.
+    if !c.replaced.contains("event") {
+        let r = &*R;
+        let cal = is(&r.ev_calendar_ctx, text);
+        let has_date = c.closed.iter().any(|x| x.kind == "date_time");
+        c.ents.retain(|x| {
+            x.kind != "event" || cal || has_date || is(&r.ev_words_end, &x.text.to_lowercase())
+        });
+    }
 
     // put back the dates, durations, apps and sites a wrong first-pass frame swallowed
     // (for instance "no to the all hands on Wednesday" read as a message)
@@ -1598,6 +1849,48 @@ mod tests {
             "share the pitch deck with Kunal and Rhea",
             "contact",
             "Rhea"
+        ));
+    }
+
+    #[test]
+    fn error_analysis_families() {
+        // message with an app between the name and the text, and a colon frame
+        assert!(has(
+            "let Meera know on Slack that I'm running late",
+            "message",
+            "I'm running late"
+        ));
+        assert!(has("let Meera know on Slack that I'm late", "app", "Slack"));
+        assert!(has(
+            "text Anita on WhatsApp: reached the venue",
+            "message",
+            "reached the venue"
+        ));
+        // unit conversions, "the next hour", multi-word folders
+        assert!(has("how many grams in 3 ounces", "number", "3"));
+        assert!(has("convert 5 miles to kilometres", "number", "5"));
+        assert!(has(
+            "mute notifications for the next hour",
+            "duration",
+            "the next hour"
+        ));
+        assert!(has(
+            "open the Tax Documents folder",
+            "folder",
+            "Tax Documents"
+        ));
+        // "put X on ..." without a calendar is not an event
+        assert_eq!(count("put the phone on silent mode", "event"), 0);
+        assert!(has(
+            "put Prateek Kuhad on Spotify",
+            "media",
+            "Prateek Kuhad"
+        ));
+        assert!(has("invite Sam to lunch", "event", "lunch"));
+        assert!(has(
+            "summarize the conversation with Priya about the budget",
+            "query",
+            "the budget"
         ));
     }
 
