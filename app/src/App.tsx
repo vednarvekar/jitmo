@@ -26,6 +26,21 @@ const HOVER_GRACE_MS = 2_500;
 const HISTORY_SIZE = 30;
 /** How long the pop-down animation runs before the window is hidden (see styles.css). */
 const POP_DOWN_MS = 260;
+/** Window width: compact by default, growing with the typed text up to a limit. */
+const BAR_MIN_WIDTH = 440;
+const BAR_MAX_WIDTH = 720;
+/** Everything in the row that is not the text: window margin, orb, send button, gaps. */
+const ROW_CHROME = 190;
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+function wantedWidth(text: string): number {
+  if (measureCtx === undefined) {
+    measureCtx = document.createElement("canvas").getContext("2d");
+    if (measureCtx) measureCtx.font = '500 14.5px "Segoe UI Variable Display", "Segoe UI", sans-serif';
+  }
+  const textPx = measureCtx ? measureCtx.measureText(text).width : text.length * 8;
+  return Math.round(Math.min(BAR_MAX_WIDTH, Math.max(BAR_MIN_WIDTH, textPx + ROW_CHROME)));
+}
+
 /** The round close button beside the bar. Hidden for now (Esc closes); the code stays. */
 const SHOW_CLOSE_BUTTON = false;
 /** One-tap ideas shown under an empty bar. */
@@ -59,6 +74,7 @@ export default function App() {
   const closeBar = useCallback(() => {
     if (closing.current) return;
     closing.current = true;
+    bridge.barSound("close");
     setAnim("out");
     setTimeout(() => bridge.hideBar(), POP_DOWN_MS);
   }, []);
@@ -94,8 +110,16 @@ export default function App() {
         if (hideOnBlur(stateRef.current)) closeBar();
       }),
     ];
+    // The page's own blur is a second signal for "clicked somewhere else", in case the
+    // window event does not arrive (the bar is a transparent always-on-top window).
+    const onWindowBlur = () => {
+      if (Date.now() < dragUntil.current) return;
+      if (hideOnBlur(stateRef.current)) closeBar();
+    };
+    window.addEventListener("blur", onWindowBlur);
     return () => {
       unlisten.forEach((p) => p.then((f) => f()));
+      window.removeEventListener("blur", onWindowBlur);
     };
   }, [resetBar, playIn, closeBar]);
 
@@ -122,14 +146,23 @@ export default function App() {
     return () => clearInterval(t);
   }, [undoUntil]);
 
-  // Keep the window as tall as the content.
+  // Keep the window as tall as the content, and as wide as the typed text needs
+  // (compact by default, wider only when the text would not fit).
+  const textRef = useRef(text);
+  textRef.current = text;
+  const syncSize = useCallback(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    bridge.resizeBar(Math.ceil(el.getBoundingClientRect().height), wantedWidth(textRef.current));
+  }, []);
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => bridge.resizeBar(Math.ceil(el.getBoundingClientRect().height)));
+    const ro = new ResizeObserver(syncSize);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [syncSize]);
+  useEffect(syncSize, [text, syncSize]);
 
   const send = useCallback((value: string) => {
     const trimmed = value.trim();
@@ -156,6 +189,16 @@ export default function App() {
         } else {
           closeBar();
         }
+      } else if (
+        (s.phase === "done" || s.phase === "failed") &&
+        (e.key === "Backspace" || e.key === "Delete")
+      ) {
+        // Backspace on a result (e.g. "I can't do that yet.") clears it and the line,
+        // so there is no need to click the bar first.
+        e.preventDefault();
+        dispatch({ type: "reset" });
+        setText("");
+        setTimeout(() => inputRef.current?.focus(), 0);
       } else if (
         (s.phase === "done" || s.phase === "failed") &&
         e.key.length === 1 &&

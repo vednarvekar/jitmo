@@ -15,7 +15,10 @@ body {
   margin: 0;
   background: transparent;
   color: var(--ink);
-  font: 14px "Segoe UI Variable Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Segoe UI Variable Display: the sleeker cut of the system font (installed on Windows 11). */
+  font: 500 13px "Segoe UI Variable Display", "Segoe UI Variable Text", system-ui, "Segoe UI", sans-serif;
+  letter-spacing: 0.1px;
+  -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
 }

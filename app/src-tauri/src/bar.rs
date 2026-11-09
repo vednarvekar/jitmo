@@ -10,8 +10,11 @@ use tauri::{
 pub(crate) const BAR: &str = "bar";
 /// Window size in logical pixels. The window is larger than the pill: the extra
 /// 14 px on every side is transparent and holds the pill's shadow (see `.shell` in styles.css).
-const BAR_WIDTH: f64 = 580.0;
-pub(crate) const BAR_START_HEIGHT: f64 = 80.0;
+/// The starting (and smallest) width. The page asks for more when the typed text needs it.
+pub(crate) const BAR_WIDTH: f64 = 440.0;
+/// The widest the bar may grow.
+pub(crate) const BAR_MAX_WIDTH: f64 = 720.0;
+pub(crate) const BAR_START_HEIGHT: f64 = 74.0;
 /// Gap between the pill's shadow margin and the taskbar, in logical pixels.
 const TASKBAR_GAP: f64 = 0.0;
 /// Ignore "moved" events this long after the app moved the window itself.
@@ -35,6 +38,7 @@ fn announce_shown(app: &AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(70));
         let _ = app.emit("bar-shown", ());
+        crate::sound::play(crate::sound::Cue::Open);
     });
 }
 
@@ -125,22 +129,23 @@ fn place_bar(app: &AppHandle, w: &WebviewWindow) {
 /// Change the height without the bar jumping: it keeps its bottom edge when it
 /// sits in the lower half of the screen (so it grows upward from the taskbar)
 /// and its top edge when it sits in the upper half.
-pub(crate) fn resize_keeping_anchor(w: &WebviewWindow, height_logical: f64) {
+pub(crate) fn resize_keeping_anchor(w: &WebviewWindow, width_logical: f64, height_logical: f64) {
     let scale = w.scale_factor().unwrap_or(1.0);
     let (Ok(pos), Ok(old)) = (w.outer_position(), w.outer_size()) else {
-        let _ = w.set_size(LogicalSize::new(BAR_WIDTH, height_logical));
+        let _ = w.set_size(LogicalSize::new(width_logical, height_logical));
         return;
     };
     let new_h = (height_logical * scale).round() as i32;
+    let new_w = (width_logical * scale).round() as i32;
     let old_h = old.height as i32;
-    if new_h == old_h {
+    if new_h == old_h && new_w == old.width as i32 {
         return;
     }
     let area = w.current_monitor().ok().flatten().map(|m| *m.work_area());
     let lower_half =
         area.is_none_or(|a| pos.y + old_h / 2 > a.position.y + a.size.height as i32 / 2);
     LAST_OWN_MOVE.store(now_ms(), Ordering::SeqCst);
-    let _ = w.set_size(LogicalSize::new(BAR_WIDTH, height_logical));
+    let _ = w.set_size(LogicalSize::new(width_logical, height_logical));
     if lower_half {
         move_to(w, pos.x, pos.y + old_h - new_h);
     }

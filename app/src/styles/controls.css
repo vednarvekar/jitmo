@@ -3,8 +3,8 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 46px;
+  gap: 6px;
+  min-height: 40px;
 }
 
 /* ---------- input and status ---------- */
@@ -13,10 +13,10 @@
   flex: 1;
   min-width: 0;
   box-sizing: border-box;
-  min-height: 34px;
+  min-height: 30px;
   padding: 6px 2px;
   font: inherit;
-  font-size: 16px;
+  font-size: 14.5px;
   color: var(--ink);
   background: transparent;
   border: 0;
@@ -66,8 +66,8 @@
   background: transparent;
 }
 .tool {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   cursor: default;
   opacity: 0.85;
 }
@@ -77,8 +77,8 @@
 }
 /* Send: the dark round button with a light chevron, as in the supplied design. */
 .go {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   color: #f5f5f5;
   background: #3e3e3e;
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);

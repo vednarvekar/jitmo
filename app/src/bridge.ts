@@ -11,7 +11,10 @@ export const answer = (id: number, text: string) => invoke<void>("answer", { id,
 export const cancel = (id: number) => invoke<void>("cancel", { id });
 export const undo = (id: number) => invoke<void>("undo", { id });
 export const hideBar = () => invoke<void>("hide_bar");
-export const resizeBar = (height: number) => invoke<void>("resize_bar", { height });
+/** The bar's two small sounds: "open" and "close". */
+export const barSound = (kind: "open" | "close") => invoke<void>("bar_sound", { kind });
+export const resizeBar = (height: number, width: number) =>
+  invoke<void>("resize_bar", { height, width });
 
 export const onCoreEvent = (cb: (e: CoreEvent) => void): Promise<UnlistenFn> =>
   listen<CoreEvent>("core-event", (e) => cb(e.payload));

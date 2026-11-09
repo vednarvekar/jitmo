@@ -227,6 +227,100 @@ impl Flow {
         }
     }
 
+    /// List or stop timers and reminders. Stopping is permanent (a stopped timer
+    /// is quick to set again), so there is no Undo.
+    fn run_timer_command(
+        &mut self,
+        id: RequestId,
+        text: &str,
+        cmd: TimerCommand,
+        p: &mut dyn Prompter,
+    ) -> CoreEvent {
+        let done = |flow: &Self, message: String| {
+            flow.log(text, None, Decision::Ran, &message, None);
+            CoreEvent::Done {
+                id,
+                message,
+                undoable: false,
+            }
+        };
+        let now = chrono::DateTime::parse_from_rfc3339(&(self.clock)())
+            .map(|t| t.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now());
+        let pending = match self.store.pending_reminders() {
+            Ok(list) => list,
+            Err(e) => {
+                return self.fail(id, text, None, &format!("I couldn't read your timers: {e}"))
+            }
+        };
+        let wanted: Vec<_> = pending
+            .into_iter()
+            .filter(|r| match cmd.kind {
+                TimerKind::Timers => r.text == "Timer",
+                TimerKind::Reminders => r.text != "Timer",
+                TimerKind::Both => true,
+            })
+            .collect();
+        let noun = cmd.kind.noun();
+        if wanted.is_empty() {
+            return done(self, format!("You have no {noun} set."));
+        }
+        let describe = |r: &jitmo_store::Reminder| -> String {
+            let due = chrono::DateTime::parse_from_rfc3339(&r.due_at)
+                .map(|t| t.with_timezone(&chrono::Utc));
+            let Ok(due) = due else {
+                return r.text.clone();
+            };
+            if r.text == "Timer" {
+                return format!("Timer: {} left", time_left(due - now));
+            }
+            let local = due.with_timezone(&chrono::Local);
+            format!("{} at {}", r.text, local.format("%-I:%M %p"))
+        };
+        if !cmd.cancel {
+            let lines: Vec<String> = wanted.iter().map(&describe).collect();
+            return done(self, lines.join(". ") + ".");
+        }
+        let targets: Vec<_> = if cmd.all || wanted.len() == 1 {
+            wanted
+        } else {
+            let mut choices: Vec<Choice> = wanted
+                .iter()
+                .map(|r| Choice {
+                    id: r.id.to_string(),
+                    label: describe(r),
+                })
+                .collect();
+            choices.push(Choice {
+                id: "all".into(),
+                label: format!("All of them ({})", wanted.len()),
+            });
+            match p.choose("Which one?", &choices) {
+                Some(c) if c == "all" => wanted,
+                Some(c) => wanted
+                    .into_iter()
+                    .filter(|r| r.id.to_string() == c)
+                    .collect(),
+                None => return self.cancelled(id, text, None),
+            }
+        };
+        let mut stopped = Vec::new();
+        for r in &targets {
+            if self.store.delete_reminder(r.id).is_ok() {
+                stopped.push(describe(r));
+            }
+        }
+        if stopped.is_empty() {
+            return self.fail(id, text, None, "I couldn't stop that.");
+        }
+        let message = if stopped.len() == 1 {
+            format!("Stopped. ({})", stopped[0])
+        } else {
+            format!("Stopped {} {noun}.", stopped.len())
+        };
+        done(self, message)
+    }
+
     fn cancelled(&self, id: RequestId, request: &str, skill_id: Option<&str>) -> CoreEvent {
         self.log(request, skill_id, Decision::Cancelled, "Cancelled.", None);
         CoreEvent::Done {
@@ -245,6 +339,11 @@ impl Flow {
                 message: HELP_MESSAGE.into(),
                 undoable: false,
             };
+        }
+        // 0b. "What timers do I have?" / "stop the timer": answered from the saved
+        // reminders, since the router has no label for them.
+        if let Some(cmd) = timer_command(text) {
+            return self.run_timer_command(id, text, cmd, p);
         }
         // 1. Route.
         let known = self.known();
@@ -659,8 +758,103 @@ fn ask_for_text(p: &mut dyn Prompter, question: &str) -> Result<String, SlotErro
 /// What the assistant can do today (only things that are built).
 const HELP_MESSAGE: &str = "I can open apps, play and pause music, set timers and reminders, \
 do quick math, find and move your files, change volume, brightness and Wi-Fi, take a screenshot, \
-lock the PC, check the weather and answer quick facts. Try: 'open Spotify', '10-minute timer', \
-'18% of 2,450'.";
+lock the PC, check the weather and answer quick facts. Say 'what timers do I have' or 'stop the \
+timer' to see or stop them. Try: 'open Spotify', '10-minute timer', '18% of 2,450'.";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TimerKind {
+    Timers,
+    Reminders,
+    Both,
+}
+
+impl TimerKind {
+    fn noun(self) -> &'static str {
+        match self {
+            TimerKind::Timers => "timers",
+            TimerKind::Reminders => "reminders",
+            TimerKind::Both => "timers or reminders",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TimerCommand {
+    /// Stop them (else just list).
+    cancel: bool,
+    /// "all" was said: no question when several match.
+    all: bool,
+    kind: TimerKind,
+}
+
+/// "what timers do I have", "how much time is left", "stop the timer",
+/// "cancel all reminders". Anything naming a time or a task ("cancel my 6pm
+/// meeting") is left to the router.
+fn timer_command(text: &str) -> Option<TimerCommand> {
+    let t = text.trim().trim_end_matches(['?', '!', '.']).to_lowercase();
+    let words: Vec<&str> = t
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let has = |names: &[&str]| words.iter().any(|w| names.contains(w));
+    let timers = has(&["timer", "timers", "alarm", "alarms", "stopwatch"]);
+    let reminders = has(&["reminder", "reminders"]);
+    let time_left = t.contains("time left") || t.contains("time is left");
+    if !timers && !reminders && !time_left {
+        return None;
+    }
+    let first = words.first().copied().unwrap_or("");
+    let cancel = matches!(
+        first,
+        "stop" | "cancel" | "clear" | "delete" | "remove" | "end" | "kill" | "dismiss" | "forget"
+    ) || t.starts_with("turn off")
+        || t.starts_with("get rid of");
+    let list = matches!(
+        first,
+        "what" | "which" | "show" | "list" | "any" | "check" | "do" | "how" | "my" | "whats"
+    ) || time_left
+        || words.len() <= 2;
+    if !cancel && !list {
+        return None;
+    }
+    // A clock time or a task in the sentence means a different request.
+    let other = words.iter().any(|w| {
+        w.chars().next().is_some_and(|c| c.is_ascii_digit())
+            || matches!(
+                *w,
+                "at" | "to" | "for" | "set" | "make" | "create" | "add" | "new" | "remind"
+            )
+    });
+    if other && !time_left {
+        return None;
+    }
+    let kind = match (timers || time_left, reminders) {
+        (true, false) => TimerKind::Timers,
+        (false, true) => TimerKind::Reminders,
+        _ => TimerKind::Both,
+    };
+    Some(TimerCommand {
+        cancel,
+        all: has(&["all", "every", "everything"]),
+        kind,
+    })
+}
+
+/// "7 min 30 s", "2 h 5 min".
+fn time_left(d: chrono::Duration) -> String {
+    let secs = d.num_seconds().max(0);
+    if secs < 60 {
+        return format!("{secs} s");
+    }
+    let (h, m, s) = (secs / 3600, secs % 3600 / 60, secs % 60);
+    if h > 0 {
+        format!("{h} h {m} min")
+    } else if m < 10 && s > 0 {
+        format!("{m} min {s} s")
+    } else {
+        format!("{m} min")
+    }
+}
 
 /// "help", "what can you do", "what can jitmo do" and close variants.
 fn is_help_request(text: &str) -> bool {
@@ -1159,6 +1353,69 @@ mod tests {
             failed(&flow.handle(7, "open spotify", &mut user(&[]))),
             "Couldn't open it."
         );
+    }
+
+    #[test]
+    fn timer_commands_are_recognised_narrowly() {
+        let c = |t| timer_command(t);
+        let stop = c("stop the timer").unwrap();
+        assert!(stop.cancel && stop.kind == TimerKind::Timers && !stop.all);
+        assert!(c("cancel all my reminders").unwrap().all);
+        let list = c("what timers do I have?").unwrap();
+        assert!(!list.cancel && list.kind == TimerKind::Timers);
+        assert!(c("show me my reminders").is_some());
+        assert!(c("how much time is left on my timer").is_some());
+        assert!(c("timers").is_some());
+        // Other requests stay with the router.
+        assert_eq!(c("set a 10 minute timer"), None);
+        assert_eq!(c("remind me to stop the timer at 6"), None);
+        assert_eq!(c("cancel my 6pm reminder"), None);
+        assert_eq!(c("open spotify"), None);
+        assert_eq!(c("stop the music"), None);
+    }
+
+    #[test]
+    fn stopping_and_listing_timers_works_from_the_saved_reminders() {
+        let mut flow = flow_with(&[OPEN], vec![]);
+        let base = chrono::DateTime::parse_from_rfc3339(&(flow.clock)()).unwrap();
+        let in_ten = (base + chrono::Duration::minutes(10))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        let in_hour = (base + chrono::Duration::hours(1))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        let say = |flow: &mut Flow, id, q: &str, pick: Option<&str>| match flow.handle(
+            id,
+            q,
+            &mut TestUser {
+                choice: pick.map(String::from),
+                ..TestUser::default()
+            },
+        ) {
+            CoreEvent::Done { message, .. } => message,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(
+            say(&mut flow, 1, "what timers do I have", None),
+            "You have no timers set."
+        );
+        flow.store.add_reminder(&in_ten, "Timer").unwrap();
+        let msg = say(&mut flow, 2, "what timers do I have", None);
+        assert!(
+            msg.starts_with("Timer: 9 min") || msg.starts_with("Timer: 10 min"),
+            "{msg}"
+        );
+        flow.store.add_reminder(&in_hour, "Timer").unwrap();
+        flow.store.add_reminder(&in_hour, "call mom").unwrap();
+        // Two timers and no "all": it asks which one.
+        let msg = say(&mut flow, 3, "stop the timer", Some("all"));
+        assert_eq!(msg, "Stopped 2 timers.");
+        // The reminder is untouched by "stop the timer".
+        let left = flow.store.pending_reminders().unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].text, "call mom");
+        assert!(say(&mut flow, 4, "cancel the reminder", None).starts_with("Stopped."));
+        assert!(flow.store.pending_reminders().unwrap().is_empty());
     }
 
     #[test]
