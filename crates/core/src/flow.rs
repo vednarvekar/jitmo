@@ -227,6 +227,41 @@ impl Flow {
         }
     }
 
+    /// Put the questions of a bare command to the user, one by one, and build the
+    /// completed sentence. `None` when the user dismisses a question or gives no
+    /// usable answer twice.
+    fn ask_clarify(&mut self, c: &crate::clarify::Clarify, p: &mut dyn Prompter) -> Option<String> {
+        use crate::clarify::{fill, Step};
+        let mut answers: Vec<String> = Vec::new();
+        for step in &c.steps {
+            let answer = match step {
+                Step::Choice {
+                    question,
+                    options,
+                    other_question,
+                    other_hint,
+                } => {
+                    let choices: Vec<Choice> = options
+                        .iter()
+                        .enumerate()
+                        .map(|(i, (label, _))| Choice {
+                            id: i.to_string(),
+                            label: (*label).into(),
+                        })
+                        .collect();
+                    let picked: usize = p.choose(question, &choices)?.parse().ok()?;
+                    match options.get(picked)?.1 {
+                        Some(value) => value.to_string(),
+                        None => ask_text_twice(p, other_question, other_hint)?,
+                    }
+                }
+                Step::Text { question, hint } => ask_text_twice(p, question, hint)?,
+            };
+            answers.push(answer);
+        }
+        Some(fill(c, &answers))
+    }
+
     /// Ask how long a timer should run: quick choices, or a custom length.
     /// `None` when the user dismissed the question.
     fn ask_timer_length(&mut self, p: &mut dyn Prompter) -> Option<String> {
@@ -393,6 +428,14 @@ impl Flow {
         if is_timer_without_length(text) {
             return match self.ask_timer_length(p) {
                 Some(length) => self.run(id, &format!("set a timer for {length}"), p),
+                None => self.cancelled(id, text, None),
+            };
+        }
+        // 0d. A bare command ("volume", "wifi", "remind me", "search"): ask what is
+        // missing, then run the completed sentence.
+        if let Some(c) = crate::clarify::clarify(text) {
+            return match self.ask_clarify(&c, p) {
+                Some(sentence) => self.run(id, &sentence, p),
                 None => self.cancelled(id, text, None),
             };
         }
@@ -584,10 +627,9 @@ impl Flow {
                     Ok(a) => a,
                     Err(msg) => return self.fail(id, text, Some(&skill.id), &msg),
                 };
-                let msg = format!(
-                    "I couldn't confirm that it worked. Please check {}.",
-                    check.connector
-                );
+                // No internal connector name in what the user reads.
+                let msg =
+                    "I couldn't confirm that it worked. Please check it yourself.".to_string();
                 if let Verdict::NotVerified { message } =
                     verify(conn.as_ref(), &check.action, &args, &msg)
                 {
@@ -813,6 +855,17 @@ const HELP_MESSAGE: &str = "I can open apps, play and pause music, set timers an
 do quick math, find and move your files, change volume, brightness and Wi-Fi, take a screenshot, \
 lock the PC, check the weather and answer quick facts. Say 'what timers do I have' or 'stop the \
 timer' to see or stop them. Try: 'open Spotify', '10-minute timer', '18% of 2,450'.";
+
+/// A typed answer; a blank one is asked for once more, then given up on.
+fn ask_text_twice(p: &mut dyn Prompter, question: &str, hint: &str) -> Option<String> {
+    for _ in 0..2 {
+        let a = p.ask_text(question, hint)?;
+        if !a.trim().is_empty() {
+            return Some(a.trim().to_string());
+        }
+    }
+    None
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TimerKind {
@@ -1529,6 +1582,36 @@ mod tests {
         assert_eq!(left[0].text, "call mom");
         assert!(say(&mut flow, 4, "cancel the reminder", None).starts_with("Stopped."));
         assert!(flow.store.pending_reminders().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_bare_command_asks_what_is_missing_then_runs_the_completed_sentence() {
+        let sys = Arc::new(FakeConnector::new("windows_system"));
+        let mut flow = flow_with(&[OPEN], vec![("windows_system", sys.clone())]);
+        // "open" alone: "Which app?" -> spotify -> "open spotify" runs.
+        let mut u = TestUser {
+            text_answers: vec!["spotify".into()],
+            ..TestUser::default()
+        };
+        let ev = flow.handle(30, "open", &mut u);
+        assert_eq!(u.questions, ["Which app?"]);
+        assert!(matches!(ev, CoreEvent::Done { .. }), "{ev:?}");
+        let ran = sys.calls().len();
+        assert!(ran >= 1, "the completed sentence must run");
+
+        // Dismissing the question runs nothing.
+        let mut u = TestUser::default();
+        let ev = flow.handle(31, "open", &mut u);
+        assert!(
+            matches!(ev, CoreEvent::Done { ref message, .. } if message == "Cancelled."),
+            "{ev:?}"
+        );
+        assert_eq!(sys.calls().len(), ran, "nothing more may run");
+
+        // A choice question: the options are offered by position.
+        let mut u = TestUser::default();
+        let _ = flow.handle(32, "wifi", &mut u);
+        assert_eq!(u.choices_seen, ["0", "1"]);
     }
 
     #[test]

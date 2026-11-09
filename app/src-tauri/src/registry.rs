@@ -1,5 +1,7 @@
 use crate::storage::open_store;
-use jitmo_connectors::{fake::FakeConnector, Connector};
+#[cfg(not(windows))]
+use jitmo_connectors::fake::FakeConnector;
+use jitmo_connectors::Connector;
 use jitmo_core::router::Router;
 use jitmo_model_worker::{WorkerClient, WorkerLauncher};
 use jitmo_skills::Skill;
@@ -90,7 +92,6 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/browser.youtube_latest.yaml"),
         include_str!("../../../skills/browser.search.yaml"),
         include_str!("../../../skills/browser.site.yaml"),
-        include_str!("../../../skills/stub.send.yaml"),
     ]
     .iter()
     .map(|y| Skill::parse(y).expect("built-in skill is invalid"))
@@ -136,14 +137,10 @@ pub(crate) fn connectors(
     db: &std::path::Path,
     key: Option<&jitmo_store::Key>,
 ) -> HashMap<String, Arc<dyn Connector>> {
-    // The test send skill (`stub.send`) only checks the confirm card. It must say
-    // so, or "Done." would look like a real message went out.
-    let mut map: HashMap<String, Arc<dyn Connector>> = HashMap::from([(
-        "stub_messenger".to_string(),
-        Arc::new(FakeConnector::new("stub_messenger").with_answer(
-            "This was a test: nothing was really sent. Real messaging is not built yet.",
-        )) as Arc<dyn Connector>,
-    )]);
+    // Messaging is not built (Phase 3), so there is no send skill here: the test skill
+    // `stub.send` lives in the test set only, where its pattern cannot hijack a real
+    // "send X to Y".
+    let mut map: HashMap<String, Arc<dyn Connector>> = HashMap::new();
     // The place for "will it rain tomorrow" when none is said (setting `default_place`).
     let default_place = open_store(db, key)
         .ok()

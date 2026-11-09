@@ -26,6 +26,9 @@ pub struct Parsed {
 
 const ASK_WHEN: &str = "When should I remind you? Try “remind me to call mom at 6pm”.";
 
+/// The longest length accepted in "in N hours" and timers: 7 days in seconds.
+const MAX_LENGTH_SECS: f64 = 7.0 * 86_400.0;
+
 fn dur_unit(unit: &str) -> Duration {
     match unit.chars().next() {
         Some('h') => Duration::hours(1),
@@ -50,8 +53,19 @@ fn durations(text: &str) -> Option<(Duration, Vec<(usize, usize)>)> {
             "an" | "a" | "one" => 1.0,
             x => x.parse::<f64>().ok()?,
         };
-        total += Duration::seconds((count * unit.num_seconds() as f64).round() as i64);
+        // Bounded: a typo such as 1000000000000000000000 minutes must not overflow time
+        // arithmetic (it used to panic), and a minus sign is not a length.
+        let secs = count * unit.num_seconds() as f64;
+        if !secs.is_finite() || secs < 0.0 || secs > MAX_LENGTH_SECS {
+            return None;
+        }
         let m = c.get(0)?;
+        if let Some(rest) = text[..m.start()].strip_suffix('-') {
+            if rest.is_empty() || rest.ends_with(char::is_whitespace) {
+                return None;
+            }
+        }
+        total += Duration::seconds(secs.round() as i64);
         spans.push((m.start(), m.end()));
     }
     (total > Duration::zero()).then_some((total, spans))
@@ -91,6 +105,9 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
     if let Some((total, spans)) = durations(text) {
         let relative = is_timer || lower.contains(" in ") || lower.starts_with("in ");
         if relative {
+            if is_timer && total > Duration::hours(24) {
+                return Err("A timer can run for up to 24 hours.".into());
+            }
             cut.extend(spans);
             if let Ok(re) = Regex::new(r"(?i)\b(?:in|for)\b") {
                 cut.extend(re.find_iter(text).map(|m| (m.start(), m.end())));
@@ -490,6 +507,27 @@ mod tests {
         // 2pm: "at 1" -> next time the clock reads 1 is 1am tomorrow.
         let r = p("remind me to stretch at 1");
         assert_eq!(hm(r.due), (9, 1, 0));
+    }
+
+    #[test]
+    fn absurd_or_negative_lengths_are_refused_not_panicked_on() {
+        // Used to panic inside chrono and take the engine down.
+        let huge = parse("set a timer for 1000000000000000000000 minutes", now());
+        assert!(huge.is_err(), "{huge:?}");
+        assert!(parse("timer for 9e9999 hours", now()).is_err());
+        // A minus sign is not a length.
+        assert!(parse("timer for -5 minutes", now()).is_err());
+        // Over a day is refused for a timer, with a reason.
+        let long = parse("timer for 99999 hours", now()).unwrap_err();
+        assert!(
+            long.contains("24 hours") || long.contains("How long"),
+            "{long}"
+        );
+        let day = parse("timer for 25 hours", now()).unwrap_err();
+        assert!(day.contains("24 hours"), "{day}");
+        // A hyphen inside "10-minute" is fine.
+        assert!(parse("set a 10-minute timer", now()).is_ok());
+        assert!(parse("remind me in 2 hours to stretch", now()).is_ok());
     }
 
     #[test]

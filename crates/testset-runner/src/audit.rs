@@ -1116,9 +1116,7 @@ impl Lane {
             ),
             rec(
                 "dnd",
-                Some(Arc::new(
-                    jitmo_connectors::dnd::Dnd::new(sim.clone()).with_clock(now),
-                )),
+                Some(Arc::new(jitmo_connectors::dnd::Dnd::new(sim.clone()))),
             ),
             rec(
                 "system_controls",

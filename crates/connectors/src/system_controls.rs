@@ -439,7 +439,7 @@ impl Connector for SystemControls {
             }
             "lock" => {
                 // The lock screen takes a moment to appear.
-                for _ in 0..6 {
+                for _ in 0..3 {
                     if self.run(IS_LOCKED_SCRIPT, &[])? == "locked" {
                         return Ok(true);
                     }

@@ -103,7 +103,15 @@ fn run(flow: &mut Flow, rx: Receiver<UiRequest>, emit: impl Fn(CoreEvent)) {
                     rx: &rx,
                     emit: &emit,
                 };
-                let done = flow.handle(id, &text, &mut prompter);
+                // A panic in any connector must not kill the engine: answer this request
+                // with a failure and keep serving the next one.
+                let done = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    flow.handle(id, &text, &mut prompter)
+                }))
+                .unwrap_or_else(|_| CoreEvent::Failed {
+                    id,
+                    message: "Something went wrong with that request.".into(),
+                });
                 emit(done);
             }
             UiRequest::Undo { id } => {

@@ -2,6 +2,7 @@
 //!
 //! No Windows-only code lives here, so it builds and tests anywhere.
 
+pub mod clarify;
 pub mod context;
 pub mod flow;
 pub mod known;

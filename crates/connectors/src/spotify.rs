@@ -333,7 +333,10 @@ impl Connector for Spotify {
                 })
             }
             // Opening a link cannot be read back; the media session can.
-            "search" => Ok(parse_search(text_arg(args)?).is_some() && self.is_playing_soon()),
+            // `execute` already read the playback state back and says honestly whether it
+            // is playing or only opened. Checking again would wait several more seconds
+            // and then turn that honest answer into a failure.
+            "search" => Ok(parse_search(text_arg(args)?).is_some()),
             other => Err(ConnError::UnknownAction(other.to_string())),
         }
     }
@@ -517,8 +520,15 @@ mod tests {
                 "Opened Spotify on a search for arijit. Press Play on the first result."
             );
         }
-        let (s, _) = seq(Err("no play button"), Ok("Paused"));
-        assert!(!s.check("search", &args("put on some arijit")).unwrap());
+        // The check no longer re-polls playback (execute already read it back and told
+        // the truth); it passes whenever there was something to search for, instantly.
+        let (s, r) = seq(Err("no play button"), Ok("Paused"));
+        assert!(s.check("search", &args("put on some arijit")).unwrap());
+        assert!(
+            r.calls.lock().unwrap().is_empty(),
+            "the check must not run scripts"
+        );
+        assert!(!s.check("search", &args("play")).unwrap());
     }
 
     #[test]

@@ -9,14 +9,12 @@
 //! The script is fixed and gets its value only through the `JITMO_STATE`
 //! environment variable.
 //!
-//! Durations: this connector does NOT schedule the turn-off. It turns DND on
-//! and returns an `until` timestamp (RFC 3339, local offset) in the Output.
-//! The app scheduler must turn DND off at that time (call `set` with "turn off
-//! do not disturb"). Settings opens visibly for 3 to 5 seconds on each call.
+//! Durations ("for an hour", "until 6pm") are understood but NOT honoured: nothing
+//! turns DND off by itself yet, so the answer says so and tells the user to turn it
+//! off. Settings opens visibly for 3 to 5 seconds on each call.
 
 use crate::system_controls::ScriptRunner;
 use crate::{ActionSpec, Args, ConnError, Connector, Health, Output};
-use chrono::{DateTime, Duration, Local, NaiveTime, TimeZone};
 use std::sync::Arc;
 
 /// Opens Settings > Notifications, finds the Do not disturb switch by its
@@ -188,36 +186,6 @@ pub fn parse_request(text: &str) -> Option<Request> {
     Some(Request { on, span })
 }
 
-/// When Do Not Disturb should end, from `now`.
-pub fn until_from(now: DateTime<Local>, span: Span) -> Option<DateTime<Local>> {
-    match span {
-        Span::Minutes(m) => Some(now + Duration::minutes(m)),
-        Span::At(h, m) => {
-            let t = NaiveTime::from_hms_opt(h, m, 0)?;
-            let today = Local
-                .from_local_datetime(&now.date_naive().and_time(t))
-                .earliest()?;
-            if today > now {
-                Some(today)
-            } else {
-                Local
-                    .from_local_datetime(&(now.date_naive() + Duration::days(1)).and_time(t))
-                    .earliest()
-            }
-        }
-    }
-}
-
-/// "3:40 PM", with "tomorrow" if it is not today.
-pub fn describe_time(now: DateTime<Local>, until: DateTime<Local>) -> String {
-    let clock = until.format("%-I:%M %p").to_string();
-    if until.date_naive() == now.date_naive() {
-        clock
-    } else {
-        format!("{clock} tomorrow")
-    }
-}
-
 /// Read the script output: `(was_on, now_on)`.
 pub fn parse_state(out: &str) -> Result<(bool, bool), ConnError> {
     if out.contains("switch-not-found") {
@@ -242,20 +210,11 @@ pub fn parse_state(out: &str) -> Result<(bool, bool), ConnError> {
 
 pub struct Dnd {
     runner: Arc<dyn ScriptRunner>,
-    now: Box<dyn Fn() -> DateTime<Local> + Send + Sync>,
 }
 
 impl Dnd {
     pub fn new(runner: Arc<dyn ScriptRunner>) -> Self {
-        Dnd {
-            runner,
-            now: Box::new(Local::now),
-        }
-    }
-
-    pub fn with_clock(mut self, now: impl Fn() -> DateTime<Local> + Send + Sync + 'static) -> Self {
-        self.now = Box::new(now);
-        self
+        Dnd { runner }
     }
 
     fn run(&self, state: &str) -> Result<(bool, bool), ConnError> {
@@ -298,7 +257,6 @@ impl Connector for Dnd {
             return Err(ConnError::UnknownAction(action.to_string()));
         }
         let req = parse_request(text(args)?).ok_or_else(ask)?;
-        let now = (self.now)();
         let (was, is) = self.run(if req.on { "On" } else { "Off" })?;
         if is != req.on {
             return Err(ConnError::Failed(
@@ -312,10 +270,9 @@ impl Connector for Dnd {
         ]
         .into();
         let mut message = format!("Do Not Disturb is {}.", if req.on { "on" } else { "off" });
-        if let Some(until) = req.span.and_then(|s| until_from(now, s)) {
-            message = format!("Do Not Disturb is on until {}.", describe_time(now, until));
-            // The app scheduler turns it off at this time.
-            out.insert("until".into(), until.to_rfc3339());
+        if req.span.is_some() {
+            // Nothing turns it off by itself yet, so never promise an end time.
+            message = "Do Not Disturb is on. I can't turn it off at a set time yet, so say 'turn off Do Not Disturb' when you're done.".into();
         }
         out.insert("message".into(), message);
         Ok(Output(out))
@@ -389,12 +346,8 @@ mod tests {
         }
     }
 
-    fn afternoon() -> DateTime<Local> {
-        Local.with_ymd_and_hms(2026, 11, 8, 14, 40, 0).unwrap()
-    }
-
     fn dnd(r: &Arc<Fake>) -> Dnd {
-        Dnd::new(r.clone()).with_clock(afternoon)
+        Dnd::new(r.clone())
     }
 
     fn args(t: &str) -> Args {
@@ -450,19 +403,6 @@ mod tests {
     }
 
     #[test]
-    fn until_wraps_to_tomorrow_when_the_time_has_passed() {
-        let now = afternoon();
-        assert_eq!(
-            describe_time(now, until_from(now, Span::Minutes(60)).unwrap()),
-            "3:40 PM"
-        );
-        let later = until_from(now, Span::At(18, 0)).unwrap();
-        assert_eq!(describe_time(now, later), "6:00 PM");
-        let tomorrow = until_from(now, Span::At(9, 0)).unwrap();
-        assert_eq!(describe_time(now, tomorrow), "9:00 AM tomorrow");
-    }
-
-    #[test]
     fn state_output_is_parsed() {
         assert_eq!(parse_state("was=Off now=On").unwrap(), (false, true));
         assert_eq!(parse_state("was=On now=On").unwrap(), (true, true));
@@ -474,14 +414,18 @@ mod tests {
     }
 
     #[test]
-    fn turning_on_for_an_hour_reports_the_end_time() {
+    fn turning_on_for_an_hour_does_not_promise_an_end_time() {
         let r = Fake::new(false, false);
         let out = dnd(&r)
             .execute("set", &args("Don't disturb me for an hour."))
             .unwrap();
-        assert_eq!(out.0["message"], "Do Not Disturb is on until 3:40 PM.");
+        // No end time is promised: nothing turns it off by itself yet.
+        assert_eq!(
+            out.0["message"],
+            "Do Not Disturb is on. I can't turn it off at a set time yet, so say 'turn off Do Not Disturb' when you're done."
+        );
         assert_eq!(out.0["was"], "false");
-        assert!(out.0["until"].starts_with("2026-11-08T15:40:00"));
+        assert!(!out.0.contains_key("until"));
         assert_eq!(*r.calls.lock().unwrap(), vec!["On"]);
     }
 
