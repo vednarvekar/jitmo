@@ -26,6 +26,8 @@ const HOVER_GRACE_MS = 2_500;
 const HISTORY_SIZE = 30;
 /** How long the pop-down animation runs before the window is hidden (see styles.css). */
 const POP_DOWN_MS = 260;
+/** The round close button beside the bar. Hidden for now (Esc closes); the code stays. */
+const SHOW_CLOSE_BUTTON = false;
 /** One-tap ideas shown under an empty bar. */
 const SUGGESTIONS = ["Open Spotify", "10-minute timer", "Pause music", "18% of 2,450"];
 
@@ -323,10 +325,12 @@ export default function App() {
             )}
           </div>
 
-          <button className="closer box" aria-label="Close" title="Close (Esc)" onClick={closeBar}>
-            <Cross />
-            <div className="circle-overlay" aria-hidden="true" />
-          </button>
+          {SHOW_CLOSE_BUTTON && (
+            <button className="closer box" aria-label="Close" title="Close (Esc)" onClick={closeBar}>
+              <Cross />
+              <div className="circle-overlay" aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
 

@@ -15,15 +15,54 @@ pub(crate) fn router() -> Router {
         .and_then(|exe| exe.parent().map(|d| d.join("jitmo-model-worker.exe")))
         .filter(|p| p.exists());
     match worker {
-        Some(program) => router.with_worker(WorkerClient::new(
-            WorkerLauncher {
-                program,
-                args: Vec::new(),
-            },
-            std::time::Duration::from_secs(10),
-        )),
-        None => router,
+        Some(program) => {
+            // Without model folders the worker exits and the app would silently fall
+            // back to the weak rule-based router, so say where they are.
+            let mut args = Vec::new();
+            for (flag, sub) in [("--models", "router"), ("--extractor", "ner")] {
+                match find_model_dir(sub) {
+                    Some(dir) => {
+                        args.push(flag.to_string());
+                        args.push(dir.to_string_lossy().into_owned());
+                    }
+                    None => eprintln!("jitmo: model folder models/{sub} not found"),
+                }
+            }
+            router.with_worker(WorkerClient::new(
+                WorkerLauncher { program, args },
+                std::time::Duration::from_secs(10),
+            ))
+        }
+        None => {
+            eprintln!(
+                "jitmo: jitmo-model-worker.exe not found next to the app: rule-based router only"
+            );
+            router
+        }
     }
+}
+
+/// The folder `models/<sub>`: next to the program (installed app), else in a
+/// folder above it (a development build in `target/debug` finds the repo's
+/// `models/`), else relative to the current folder. A folder counts only when
+/// it holds an ONNX model.
+fn find_model_dir(sub: &str) -> Option<std::path::PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(exe_dir) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|p| p.to_path_buf()))
+    {
+        candidates.extend(
+            exe_dir
+                .ancestors()
+                .take(5)
+                .map(|a| a.join("models").join(sub)),
+        );
+    }
+    candidates.push(std::path::PathBuf::from("models").join(sub));
+    candidates
+        .into_iter()
+        .find(|d| d.join("model_int8.onnx").exists())
 }
 
 fn load_skills() -> Vec<Skill> {

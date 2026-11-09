@@ -237,6 +237,15 @@ impl Flow {
     }
 
     fn run(&mut self, id: RequestId, text: &str, p: &mut dyn Prompter) -> CoreEvent {
+        // 0. "What can you do?" is answered here, without the router.
+        if is_help_request(text) {
+            self.log(text, None, Decision::Ran, HELP_MESSAGE, None);
+            return CoreEvent::Done {
+                id,
+                message: HELP_MESSAGE.into(),
+                undoable: false,
+            };
+        }
         // 1. Route.
         let known = self.known();
         let understanding = self.router.route_with(text, &known.note());
@@ -645,6 +654,41 @@ fn ask_for_text(p: &mut dyn Prompter, question: &str) -> Result<String, SlotErro
         }
     }
     Err(SlotError::Cancelled)
+}
+
+/// What the assistant can do today (only things that are built).
+const HELP_MESSAGE: &str = "I can open apps, play and pause music, set timers and reminders, \
+do quick math, find and move your files, change volume, brightness and Wi-Fi, take a screenshot, \
+lock the PC, check the weather and answer quick facts. Try: 'open Spotify', '10-minute timer', \
+'18% of 2,450'.";
+
+/// "help", "what can you do", "what can jitmo do" and close variants.
+fn is_help_request(text: &str) -> bool {
+    let t: String = text
+        .trim()
+        .trim_end_matches(['?', '!', '.'])
+        .trim()
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    matches!(
+        t.as_str(),
+        "help"
+            | "help me"
+            | "what can you do"
+            | "what can u do"
+            | "what can i do"
+            | "what can i ask"
+            | "what can i ask you"
+            | "what can jitmo do"
+            | "what do you do"
+            | "what are you capable of"
+            | "what are your abilities"
+            | "how does this work"
+            | "what can you even do"
+            | "what can it do"
+    )
 }
 
 /// A choice made by words, to remember if the task succeeds (FR10).
@@ -1115,6 +1159,23 @@ mod tests {
             failed(&flow.handle(7, "open spotify", &mut user(&[]))),
             "Couldn't open it."
         );
+    }
+
+    #[test]
+    fn what_can_you_do_lists_the_abilities() {
+        let mut flow = flow_with(&[OPEN], vec![]);
+        for q in ["what can you do?", "  Help ", "What can you even do"] {
+            match flow.handle(7, q, &mut user(&[])) {
+                CoreEvent::Done {
+                    message, undoable, ..
+                } => {
+                    assert!(message.contains("open apps"), "{message}");
+                    assert!(!undoable);
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+        assert!(!is_help_request("help me find my invoice"));
     }
 
     #[test]
