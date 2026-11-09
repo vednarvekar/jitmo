@@ -244,14 +244,25 @@ impl Engine for RouterEngine {
 mod tests {
     use super::*;
 
+    /// The ONNX runtime allows only one environment per process, so every test
+    /// shares one engine, loaded once and used one test at a time.
+    static ENGINE: std::sync::LazyLock<Option<std::sync::Mutex<RouterEngine>>> =
+        std::sync::LazyLock::new(|| {
+            let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/router");
+            if !dir.join("model_int8.onnx").exists() {
+                eprintln!("skipping: models/router not present");
+                return None;
+            }
+            Some(std::sync::Mutex::new(
+                RouterEngine::load(&dir).expect("load"),
+            ))
+        });
+
     /// Needs `models/router/` at the repo root; skipped if it is not there.
-    fn engine() -> Option<RouterEngine> {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/router");
-        if !dir.join("model_int8.onnx").exists() {
-            eprintln!("skipping: models/router not present");
-            return None;
-        }
-        Some(RouterEngine::load(&dir).expect("load"))
+    fn engine() -> Option<std::sync::MutexGuard<'static, RouterEngine>> {
+        ENGINE
+            .as_ref()
+            .map(|m| m.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
     fn top(e: &mut RouterEngine, text: &str) -> Understanding {
@@ -260,7 +271,9 @@ mod tests {
 
     #[test]
     fn routes_open_app_and_pause() {
-        let Some(mut e) = engine() else { return };
+        let Some(mut e) = engine() else {
+            return;
+        };
         let u = top(&mut e, "open spotify");
         assert_eq!(u.tasks[0].id, "A1");
         assert!(u.tasks[0].score >= 0.8, "{u:?}");
@@ -271,14 +284,18 @@ mod tests {
 
     #[test]
     fn unrelated_request_is_out_of_scope() {
-        let Some(mut e) = engine() else { return };
+        let Some(mut e) = engine() else {
+            return;
+        };
         let u = top(&mut e, "dim the lights in my living room");
         assert!(u.out_of_scope > 0.3 || u.tasks[0].score < 0.8, "{u:?}");
     }
 
     #[test]
     fn a_chain_is_split_into_its_tasks() {
-        let Some(mut e) = engine() else { return };
+        let Some(mut e) = engine() else {
+            return;
+        };
         let u = top(&mut e, "open spotify and then pause the music");
         if u.chained {
             let ids: Vec<&str> = u.tasks.iter().map(|t| t.id.as_str()).collect();

@@ -8,6 +8,7 @@
 
 pub mod client;
 pub mod engine;
+pub mod refine;
 pub mod rules;
 pub mod server;
 

@@ -57,13 +57,23 @@ impl LazyExtractor {
     /// Spans for `text`: rules plus model. If the model is missing or fails, the
     /// rules alone answer (never an error).
     pub fn extract(&mut self, env: &Environment, text: &str, gaz: &Gazetteer) -> Vec<Ent> {
-        let raw = match self.model(env) {
+        let raw = self.raw(env, text);
+        rules::extract_v2(text, &raw, THRESHOLD, gaz)
+    }
+
+    /// The first rule pass only (the port of the SP2 Python pipeline), for the parity test.
+    pub fn extract_classic(&mut self, env: &Environment, text: &str, gaz: &Gazetteer) -> Vec<Ent> {
+        let raw = self.raw(env, text);
+        rules::extract(text, &raw, THRESHOLD, gaz)
+    }
+
+    fn raw(&mut self, env: &Environment, text: &str) -> Vec<rules::ModelEnt> {
+        match self.model(env) {
             Some(m) => m.predict(text, THRESHOLD).unwrap_or_else(|e| {
                 tracing::warn!("extractor model failed, using rules only: {e}");
                 Vec::new()
             }),
             None => Vec::new(),
-        };
-        rules::extract(text, &raw, THRESHOLD, gaz)
+        }
     }
 }

@@ -141,7 +141,11 @@ struct Row {
 }
 
 fn load_set(name: &str) -> Vec<Row> {
-    let path = repo().join("spikes/sp2-extractor/data").join(name);
+    let path = if name.starts_with("dev") {
+        repo().join("tools/extractor").join(name)
+    } else {
+        repo().join("spikes/sp2-extractor/data").join(name)
+    };
     let ann = regex::Regex::new(r"\[(\w+)\|(.*?)\]").unwrap();
     std::fs::read_to_string(path)
         .expect("data")
@@ -249,7 +253,7 @@ fn parity_with_python_pipeline() {
     let mut diffs = Vec::new();
     for r in &rows {
         let got = bag(ex
-            .extract(&env, &r.text, &gaz)
+            .extract_classic(&env, &r.text, &gaz)
             .into_iter()
             .map(|e| (e.kind.to_string(), e.text)));
         let want = bag(r.spans.clone());
@@ -290,7 +294,14 @@ fn eval_sp2() {
     let gaz = Gazetteer::default();
     let show = std::env::var_os("SHOW").is_some();
     let mut all: Vec<Row> = Vec::new();
-    for set in ["doc4.txt", "val.txt", "val2.txt", "test.txt", "fresh.txt"] {
+    let sets: Vec<String> = std::env::var("SETS")
+        .map(|s| s.split(',').map(str::to_string).collect())
+        .unwrap_or_else(|_| {
+            ["doc4.txt", "val.txt", "val2.txt", "test.txt", "fresh.txt"]
+                .map(str::to_string)
+                .to_vec()
+        });
+    for set in sets.iter().map(String::as_str) {
         let rows = load_set(set);
         let mut lat = Vec::new();
         let s = score(
@@ -329,7 +340,168 @@ fn eval_sp2() {
             false,
         );
         println!("{}", r.line(&format!("{set} (rules only)")));
+        let r = score(
+            &rows,
+            |t| {
+                jitmo_model_worker::rules::extract_rules_classic(t, &gaz)
+                    .into_iter()
+                    .map(|e| (e.kind.to_string(), e.text))
+                    .collect()
+            },
+            false,
+        );
+        println!("{}", r.line(&format!("{set} (classic rules only)")));
+        let r = score(
+            &rows,
+            |t| {
+                ex.extract_classic(&env, t, &gaz)
+                    .into_iter()
+                    .map(|e| (e.kind.to_string(), e.text))
+                    .collect()
+            },
+            false,
+        );
+        println!("{}", r.line(&format!("{set} (classic + model)")));
         all.extend(rows);
     }
     let _ = all;
+}
+
+// ---------------------------------------------------------------------------
+// GLiNER label wording and per-type threshold sweep (tuning pool only, never `fresh`)
+// ---------------------------------------------------------------------------
+
+type Labels = Vec<(&'static str, &'static str)>;
+
+fn label_variants() -> Vec<(&'static str, Labels)> {
+    let base: Labels = jitmo_model_worker::gliner::LABELS.to_vec();
+    let with = |changes: &[(&'static str, &'static str)]| -> Labels {
+        base.iter()
+            .map(|&(k, l)| {
+                let l = changes.iter().find(|c| c.0 == k).map_or(l, |c| c.1);
+                (k, l)
+            })
+            .collect()
+    };
+    vec![
+        ("base", base.clone()),
+        (
+            "short",
+            with(&[
+                ("app", "app"),
+                ("contact", "person"),
+                ("file", "file"),
+                ("media", "music"),
+                ("query", "query"),
+                ("message", "message"),
+                ("event", "event"),
+                ("setting", "setting"),
+            ]),
+        ),
+        (
+            "media-artist",
+            with(&[
+                ("media", "artist or song name"),
+                ("event", "calendar event"),
+            ]),
+        ),
+        (
+            "long",
+            with(&[
+                ("query", "web search topic"),
+                ("message", "text message to send"),
+                ("media", "singer, band, song or youtuber"),
+                ("event", "calendar event title"),
+                ("file", "document or file name"),
+            ]),
+        ),
+        (
+            "reminder",
+            with(&[
+                ("message", "reminder or message content"),
+                ("query", "search terms"),
+                ("event", "meeting or appointment"),
+            ]),
+        ),
+    ]
+}
+
+fn kind_threshold(th: &BTreeMap<&str, f32>, k: &str) -> f32 {
+    th.get(k).copied().unwrap_or(0.3)
+}
+
+#[test]
+#[ignore]
+fn sweep_gliner() {
+    let Some(dir) = model_dir() else { return };
+    let env = env();
+    let mut g = Gliner::load(&env, &dir, 1).expect("load");
+    let gaz = Gazetteer::default();
+    let mut rows: Vec<Row> = Vec::new();
+    for set in ["dev_set.txt", "doc4.txt", "val.txt", "val2.txt", "test.txt"] {
+        rows.extend(load_set(set));
+    }
+    let n_dev = load_set("dev_set.txt").len();
+    for (name, labels) in label_variants() {
+        let cands: Vec<Vec<jitmo_model_worker::gliner::Cand>> = rows
+            .iter()
+            .map(|r| g.candidates(&r.text, &labels, 0.1).expect("cands"))
+            .collect();
+        let run = |th: &BTreeMap<&str, f32>, range: std::ops::Range<usize>| -> usize {
+            let mut ok = 0;
+            for i in range {
+                let raw =
+                    jitmo_model_worker::gliner::select(cands[i].clone(), |k| kind_threshold(th, k));
+                let got: Vec<(String, String)> =
+                    jitmo_model_worker::rules::extract(&rows[i].text, &raw, 0.0, &gaz)
+                        .into_iter()
+                        .map(|e| (e.kind.to_string(), e.text))
+                        .collect();
+                if bag(got) == bag(rows[i].gold.clone()) {
+                    ok += 1;
+                }
+            }
+            ok
+        };
+        let mut best = BTreeMap::new();
+        let global: Vec<(f32, usize)> = [0.2f32, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6]
+            .iter()
+            .map(|&t| {
+                let th: BTreeMap<&str, f32> = jitmo_model_worker::gliner::LABELS
+                    .iter()
+                    .map(|&(k, _)| (k, t))
+                    .collect();
+                (t, run(&th, 0..rows.len()))
+            })
+            .collect();
+        println!(
+            "{name:14} global thresholds (pool {}): {global:?}",
+            rows.len()
+        );
+        // coordinate descent per type on the whole pool
+        let mut cur: BTreeMap<&str, f32> = jitmo_model_worker::gliner::LABELS
+            .iter()
+            .map(|&(k, _)| (k, 0.3))
+            .collect();
+        let mut score = run(&cur, 0..rows.len());
+        for _ in 0..2 {
+            for &(k, _) in jitmo_model_worker::gliner::LABELS {
+                for t in [0.15f32, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95] {
+                    let mut trial = cur.clone();
+                    trial.insert(k, t);
+                    let s = run(&trial, 0..rows.len());
+                    if s > score {
+                        score = s;
+                        cur = trial;
+                    }
+                }
+            }
+        }
+        best.clone_from(&cur);
+        println!(
+            "{name:14} per-type best {score}/{}  (dev_set part {}/{n_dev})  {best:?}",
+            rows.len(),
+            run(&best, 0..n_dev)
+        );
+    }
 }

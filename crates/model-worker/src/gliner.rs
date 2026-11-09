@@ -105,6 +105,20 @@ impl Gliner {
     /// Spans the model finds in `text` above `threshold` (scores strictly greater),
     /// non-overlapping, in text order. Offsets are byte offsets into `text`.
     pub fn predict(&mut self, text: &str, threshold: f32) -> Result<Vec<ModelEnt>, String> {
+        let cands = self.candidates(text, LABELS, threshold)?;
+        Ok(select(cands, |_| threshold))
+    }
+
+    /// Every (span, label) pair scoring strictly above `min`, before overlap removal.
+    /// `labels` is `(type name, label text the model sees)`; its order fixes the
+    /// model's class order. Split from [`select`] so that thresholds can differ by type
+    /// and be swept without running the model again.
+    pub fn candidates(
+        &mut self,
+        text: &str,
+        labels: &[(&'static str, &str)],
+        min: f32,
+    ) -> Result<Vec<Cand>, String> {
         let words: Vec<(usize, usize)> = self
             .words
             .find_iter(text)
@@ -118,7 +132,7 @@ impl Gliner {
 
         // Prompt words, then the text words.
         let mut prompt: Vec<&str> = Vec::new();
-        for (_, label) in LABELS {
+        for (_, label) in labels {
             prompt.push(ENT_TOKEN);
             prompt.push(label);
         }
@@ -171,17 +185,11 @@ impl Gliner {
             .try_extract_tensor::<f32>()
             .map_err(|x| format!("extractor output: {x}"))?;
         let classes = *dims.last().ok_or("empty output")? as usize;
-        if classes != LABELS.len() || logits.len() != n * k * classes {
+        if classes != labels.len() || logits.len() != n * k * classes {
             return Err(format!("unexpected extractor output shape {dims:?}"));
         }
 
         // Candidates in (start, width, class) order, as torch.where would give them.
-        struct Cand {
-            start: usize,
-            end: usize,
-            class: usize,
-            score: f32,
-        }
         let mut cands: Vec<Cand> = Vec::new();
         for s in 0..n {
             for w in 0..k {
@@ -191,41 +199,66 @@ impl Gliner {
                 let base = (s * k + w) * classes;
                 for c in 0..classes {
                     let p = 1.0 / (1.0 + (-logits[base + c]).exp());
-                    if p > threshold {
+                    if p > min {
+                        let (bs, _) = words[s];
+                        let (_, be) = words[s + w];
                         cands.push(Cand {
-                            start: s,
-                            end: s + w,
-                            class: c,
+                            kind: labels[c].0,
+                            word_start: s,
+                            word_end: s + w,
+                            start: bs,
+                            end: be,
+                            text: text[bs..be].to_string(),
                             score: p,
                         });
                     }
                 }
             }
         }
-        // Greedy, highest score first (stable), no overlaps (flat NER).
-        let mut order: Vec<usize> = (0..cands.len()).collect();
-        order.sort_by(|&a, &b| cands[b].score.total_cmp(&cands[a].score));
-        let mut chosen: Vec<&Cand> = Vec::new();
-        for i in order {
-            let c = &cands[i];
-            if !chosen.iter().any(|o| !(c.start > o.end || o.start > c.end)) {
-                chosen.push(c);
-            }
-        }
-        chosen.sort_by_key(|c| c.start);
-        Ok(chosen
-            .into_iter()
-            .map(|c| {
-                let (s, _) = words[c.start];
-                let (_, e) = words[c.end];
-                ModelEnt {
-                    kind: LABELS[c.class].0,
-                    text: text[s..e].to_string(),
-                    start: s,
-                    end: e,
-                    score: c.score,
-                }
-            })
-            .collect())
+        Ok(cands)
     }
+}
+
+/// One scored (span, label) pair from the model, before overlap removal.
+#[derive(Debug, Clone)]
+pub struct Cand {
+    pub kind: &'static str,
+    pub word_start: usize,
+    pub word_end: usize,
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+    pub score: f32,
+}
+
+/// Keeps the candidates whose score is above the threshold for their type, then removes
+/// overlaps greedily, highest score first (stable), as flat NER. Text order.
+pub fn select(cands: Vec<Cand>, threshold: impl Fn(&str) -> f32) -> Vec<ModelEnt> {
+    let cands: Vec<Cand> = cands
+        .into_iter()
+        .filter(|c| c.score > threshold(c.kind))
+        .collect();
+    let mut order: Vec<usize> = (0..cands.len()).collect();
+    order.sort_by(|&a, &b| cands[b].score.total_cmp(&cands[a].score));
+    let mut chosen: Vec<&Cand> = Vec::new();
+    for i in order {
+        let c = &cands[i];
+        if !chosen
+            .iter()
+            .any(|o| !(c.word_start > o.word_end || o.word_start > c.word_end))
+        {
+            chosen.push(c);
+        }
+    }
+    chosen.sort_by_key(|c| c.word_start);
+    chosen
+        .into_iter()
+        .map(|c| ModelEnt {
+            kind: c.kind,
+            text: c.text.clone(),
+            start: c.start,
+            end: c.end,
+            score: c.score,
+        })
+        .collect()
 }

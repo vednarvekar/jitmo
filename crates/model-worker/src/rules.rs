@@ -27,7 +27,7 @@ pub struct Ent {
 }
 
 impl Ent {
-    fn new(kind: &'static str, text: &str, start: usize) -> Self {
+    pub(crate) fn new(kind: &'static str, text: &str, start: usize) -> Self {
         Ent {
             kind,
             text: text.to_string(),
@@ -152,7 +152,7 @@ fn word_hits(text: &str, lower: &str, word: &str) -> Vec<(usize, usize)> {
 // word lists and patterns
 // ---------------------------------------------------------------------------
 
-const APPS: &[&str] = &[
+pub(crate) const APPS: &[&str] = &[
     "spotify",
     "youtube",
     "whatsapp",
@@ -190,7 +190,7 @@ const APPS: &[&str] = &[
     "microsoft teams",
     "visual studio code",
 ];
-const SITES: &[&str] = &[
+pub(crate) const SITES: &[&str] = &[
     "amazon",
     "netflix",
     "github",
@@ -218,7 +218,7 @@ const SITES: &[&str] = &[
     "paytm",
     "x.com",
 ];
-const SETTINGS: &[&str] = &[
+pub(crate) const SETTINGS: &[&str] = &[
     "do not disturb",
     "volume",
     "brightness",
@@ -238,11 +238,11 @@ const SETTINGS: &[&str] = &[
     "battery saver",
     "focus assist",
 ];
-const FAMILY: &[&str] = &[
+pub(crate) const FAMILY: &[&str] = &[
     "mom", "mum", "mother", "dad", "father", "bhai", "didi", "boss", "manager", "hr", "wife",
     "husband",
 ];
-const NOT_NAME: &[&str] = &[
+pub(crate) const NOT_NAME: &[&str] = &[
     "me",
     "my",
     "it",
@@ -265,7 +265,7 @@ const NOT_NAME: &[&str] = &[
     "new",
     "latest",
 ];
-const NOT_APP: &[&str] = &[
+pub(crate) const NOT_APP: &[&str] = &[
     "it",
     "that",
     "this",
@@ -329,15 +329,15 @@ const NOT_MEDIA: &[&str] = &[
     "my focus playlist",
 ];
 
-const WD: &str = r"(?:mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?";
-const PART: &str = r"(?:morning|afternoon|evening|night)";
-const TIME: &str = r"(?:\d{1,2}(?::\d{2})?\s?(?:am|pm)|noon|midnight|\d{1,2}:\d{2})";
-const MONTH: &str = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+pub(crate) const WD: &str = r"(?:mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?";
+pub(crate) const PART: &str = r"(?:morning|afternoon|evening|night)";
+pub(crate) const TIME: &str = r"(?:\d{1,2}(?::\d{2})?\s?(?:am|pm)|noon|midnight|\d{1,2}:\d{2})";
+pub(crate) const MONTH: &str = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
 const AGO: &str = r"(?:(?:\d+|an?|one|two|three|four|five|six|a couple of|a few)\s+(?:days?|weeks?|months?|years?)\s+ago)";
-const NUMW: &str = r"(?:\d+(?:\.\d+)?|an?|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|forty[- ]five|sixty)";
+pub(crate) const NUMW: &str = r"(?:\d+(?:\.\d+)?|an?|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|forty[- ]five|sixty)";
 const NOT_TIME: &str = r"(?![\d:]|\s?(?:am|pm|st|nd|rd|th)\b)";
 const EXT: &str = r"(?:pdf|docx?|xlsx?|pptx?|txt|csv|png|jpe?g|zip)";
-const FILE_NOUN: &str = r"(?:sheet|deck|report|resume|cv|contract|proposal|invoices?|documents?|docs?|pdfs?|photos?|pictures?|pics?|images?|screenshots?|receipts?|letter|thing|ticket|agreement|attachments?|notes|slides|spreadsheet|file|files|slip|lease|scan|return|pass|policy|bills?|statements?|forms?|certificates?|presentation|plan|itinerary|manual|brochure|transcript|payslip|licen[sc]e|summary|minutes|draft|ppt|essay|assignment|timetable|budget|memo)";
+pub(crate) const FILE_NOUN: &str = r"(?:sheet|deck|report|resume|cv|contract|proposal|invoices?|documents?|docs?|pdfs?|photos?|pictures?|pics?|images?|screenshots?|receipts?|letter|thing|ticket|agreement|attachments?|notes|slides|spreadsheet|file|files|slip|lease|scan|return|pass|policy|bills?|statements?|forms?|certificates?|presentation|plan|itinerary|manual|brochure|transcript|payslip|licen[sc]e|summary|minutes|draft|ppt|essay|assignment|timetable|budget|memo)";
 const EVENT_WORDS: &str = r"(?:review|standup|stand-up|sync|lunch|dinner|appointment|interview|class|session|demo|retro|workshop|gym|yoga|1:1)";
 const LEAD: &str = r"^(?:(?:pls|please|yo|hey|can you|can u|could you|lemme|gimme)\s+)*";
 
@@ -978,8 +978,28 @@ pub fn extract(text: &str, raw: &[ModelEnt], threshold: f32, gaz: &Gazetteer) ->
     res
 }
 
+/// Closed-class spans (lists, dates, durations, numbers) as found before any frame
+/// claims or drops them. The second pass uses them to peel times and "on <app>" off
+/// open-ended spans, and to put back what a wrong first-pass frame swallowed.
+pub(crate) fn closed_spans(text: &str, gaz: &Gazetteer) -> Vec<Ent> {
+    let mut v = closed_class_spans(text, gaz);
+    v.extend(rule_spans(text));
+    v
+}
+
+/// The shipped extractor: the first pass above (a port of the SP2 spike, kept so it can
+/// be checked against the Python) followed by the second rule pass in `refine.rs`.
+pub fn extract_v2(text: &str, raw: &[ModelEnt], threshold: f32, gaz: &Gazetteer) -> Vec<Ent> {
+    crate::refine::refine(text, extract(text, raw, threshold, gaz), raw, gaz)
+}
+
 /// Rules only (no model): what is needed to fill slots without loading GLiNER.
 pub fn extract_rules(text: &str, gaz: &Gazetteer) -> Vec<Ent> {
+    extract_v2(text, &[], 0.3, gaz)
+}
+
+/// The first pass alone (rules only), for comparison.
+pub fn extract_rules_classic(text: &str, gaz: &Gazetteer) -> Vec<Ent> {
     extract(text, &[], 0.3, gaz)
 }
 
