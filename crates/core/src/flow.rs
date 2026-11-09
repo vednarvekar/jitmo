@@ -477,6 +477,26 @@ impl Flow {
                 }
             }
         };
+        // Weather with no place said and none saved: ask which city, then run it with
+        // the answer, instead of failing with a message that quotes an example city.
+        if skill_id == "web.weather"
+            && jitmo_connectors::web_lookup::parse_weather(text)
+                .place
+                .is_none()
+        {
+            let saved = self
+                .store
+                .get_setting("default_place")
+                .ok()
+                .flatten()
+                .is_some_and(|p| !p.trim().is_empty());
+            if !saved {
+                return match ask_text_twice(p, "Which city?", "For example: Pune") {
+                    Some(city) => self.run(id, &format!("{text} in {city}"), p),
+                    None => self.cancelled(id, text, Some(&skill_id)),
+                };
+            }
+        }
         let Some(skill) = self.router.skill(&skill_id).cloned() else {
             return self.fail(id, text, Some(&skill_id), "Something went wrong.");
         };
@@ -589,7 +609,33 @@ impl Flow {
                     Err(e) if multi => {
                         first_err.get_or_insert(e);
                     }
-                    Err(e) => return self.fail(id, text, Some(&skill.id), &e.to_string()),
+                    Err(e) => {
+                        let message = e.to_string();
+                        // A connector that could not tell what was meant fails with a question
+                        // ("Do you want it on or off?"): offer the answers as buttons instead of
+                        // a dead end, then run the completed sentence.
+                        if let Some((question, options)) =
+                            crate::clarify::question_for(&message, text)
+                        {
+                            let choices: Vec<Choice> = options
+                                .iter()
+                                .enumerate()
+                                .map(|(i, (label, _))| Choice {
+                                    id: i.to_string(),
+                                    label: (*label).into(),
+                                })
+                                .collect();
+                            return match p
+                                .choose(question, &choices)
+                                .and_then(|c| c.parse::<usize>().ok())
+                                .and_then(|i| options.get(i))
+                            {
+                                Some((_, sentence)) => self.run(id, sentence, p),
+                                None => self.cancelled(id, text, Some(&skill.id)),
+                            };
+                        }
+                        return self.fail(id, text, Some(&skill.id), &message);
+                    }
                 }
             }
             if multi {
@@ -1586,6 +1632,41 @@ mod tests {
         assert_eq!(left[0].text, "call mom");
         assert!(say(&mut flow, 4, "cancel the reminder", None).starts_with("Stopped."));
         assert!(flow.store.pending_reminders().unwrap().is_empty());
+    }
+
+    #[test]
+    fn weather_with_no_place_asks_which_city_then_uses_the_answer() {
+        const WEATHER: &str = include_str!("../../../skills/web.weather.yaml");
+        let web = Arc::new(FakeConnector::new("web_lookup"));
+        let mut flow = flow_with(&[WEATHER], vec![("web_lookup", web.clone())]);
+        let mut u = TestUser {
+            text_answers: vec!["Pune".into()],
+            // The rule-based router in this test may ask which skill once the city is added.
+            choice: Some("web.weather".into()),
+            ..TestUser::default()
+        };
+        let ev = flow.handle(40, "will it rain tomorrow", &mut u);
+        assert_eq!(u.questions, ["Which city?"]);
+        assert!(matches!(ev, CoreEvent::Done { .. }), "{ev:?}");
+        let Some(Call::Execute { args, .. }) = web
+            .calls()
+            .into_iter()
+            .find(|c| matches!(c, Call::Execute { .. }))
+        else {
+            panic!("the lookup must run with the answer")
+        };
+        assert!(args.values().any(|v| v.contains("in Pune")), "{args:?}");
+
+        // A place already in the sentence: no question.
+        let mut u = TestUser::default();
+        let _ = flow.handle(41, "what's the weather in Delhi this weekend", &mut u);
+        assert!(u.questions.is_empty());
+
+        // A saved city: no question either.
+        flow.store.set_setting("default_place", "Mumbai").unwrap();
+        let mut u = TestUser::default();
+        let _ = flow.handle(42, "will it rain tomorrow", &mut u);
+        assert!(u.questions.is_empty());
     }
 
     #[test]

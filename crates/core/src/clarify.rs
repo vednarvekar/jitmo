@@ -374,9 +374,124 @@ pub fn fill(c: &Clarify, asked: &[String]) -> String {
     out
 }
 
+/// A question a connector asked by failing ("Do you want it on or off?"), turned into
+/// buttons: the question and, for each button, the complete sentence to run when it is
+/// clicked. `None` when the message is not one of those questions, or the sentence does
+/// not say what it is about (which radio, which setting).
+pub fn question_for(
+    message: &str,
+    said: &str,
+) -> Option<(&'static str, Vec<(&'static str, String)>)> {
+    let lower = said.to_lowercase();
+    let squashed: String = lower.chars().filter(|c| c.is_alphanumeric()).collect();
+    let mentions = |names: &[&str]| names.iter().any(|n| squashed.contains(n));
+    let opts = |items: &[(&'static str, &str)]| -> Vec<(&'static str, String)> {
+        items.iter().map(|(l, s)| (*l, (*s).to_string())).collect()
+    };
+    if message == "Do you want it on or off?" {
+        // Which radio? Two at once ("wifi and bluetooth") is not a question one button answers.
+        let bluetooth = mentions(&["bluetooth", "blutooth", "bluetoth", "bluetoot"]);
+        let wifi = mentions(&["wifi", "wlan", "wireless"]);
+        return match (wifi, bluetooth) {
+            (true, false) => Some((
+                "Wi-Fi: on or off?",
+                opts(&[("Turn on", "turn on wifi"), ("Turn off", "turn off wifi")]),
+            )),
+            (false, true) => Some((
+                "Bluetooth: on or off?",
+                opts(&[
+                    ("Turn on", "turn on bluetooth"),
+                    ("Turn off", "turn off bluetooth"),
+                ]),
+            )),
+            _ => None,
+        };
+    }
+    if message == "Do you want Do Not Disturb on or off?" {
+        return Some((
+            "Do Not Disturb: on or off?",
+            opts(&[
+                ("Turn on", "turn on do not disturb"),
+                ("Turn off", "turn off do not disturb"),
+            ]),
+        ));
+    }
+    if message == "Should I pause, resume or skip?" {
+        return Some((
+            "What should I do with the music?",
+            opts(&[
+                ("Pause", "pause the music"),
+                ("Resume", "resume the music"),
+                ("Next song", "skip to the next song"),
+                ("Previous song", "go back to the previous song"),
+            ]),
+        ));
+    }
+    if message.starts_with("I'm not sure what to change") {
+        return Some(if mentions(&["bright", "screen", "dim"]) {
+            (
+                "What should I do with the brightness?",
+                opts(&[
+                    ("Brighter", "turn the brightness up"),
+                    ("Dimmer", "turn the brightness down"),
+                ]),
+            )
+        } else {
+            (
+                "What should I do with the volume?",
+                opts(&[
+                    ("Louder", "turn the volume up"),
+                    ("Quieter", "turn the volume down"),
+                    ("Mute", "mute the volume"),
+                ]),
+            )
+        });
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connector_questions_become_buttons_with_complete_sentences() {
+        let (q, opts) = question_for("Do you want it on or off?", "turn of blutooth").unwrap();
+        assert_eq!(q, "Bluetooth: on or off?");
+        assert_eq!(opts[1], ("Turn off", "turn off bluetooth".to_string()));
+        let (q, _) = question_for("Do you want it on or off?", "wi-fi chalu karo").unwrap();
+        assert_eq!(q, "Wi-Fi: on or off?");
+        // Two radios, or none named: nothing sensible to offer.
+        assert!(question_for(
+            "Do you want it on or off?",
+            "turn on wifi and off bluetooth"
+        )
+        .is_none());
+        assert!(question_for("Do you want it on or off?", "turn it off").is_none());
+        let (_, opts) = question_for("Should I pause, resume or skip?", "music?").unwrap();
+        assert_eq!(opts.len(), 4);
+        let (q, _) = question_for(
+            "I'm not sure what to change. Try “turn the volume down”.",
+            "dim it",
+        )
+        .unwrap();
+        assert!(q.contains("brightness"));
+        assert!(question_for("I couldn't find that.", "x").is_none());
+        // Every offered sentence is complete: not bare, so it can never loop.
+        for (msg, said) in [
+            ("Do you want it on or off?", "turn of wifi"),
+            ("Do you want Do Not Disturb on or off?", "dnd"),
+            ("Should I pause, resume or skip?", "music"),
+            (
+                "I'm not sure what to change. Try “turn the volume down”.",
+                "volume",
+            ),
+        ] {
+            for (_, sentence) in question_for(msg, said).unwrap().1 {
+                assert_eq!(clarify(&sentence), None, "{sentence}");
+            }
+        }
+    }
 
     fn first_question(said: &str) -> (&'static str, bool) {
         let c = clarify(said).unwrap_or_else(|| panic!("{said:?} should be clarified"));

@@ -380,9 +380,12 @@ pub enum Radio {
 /// "turn on bluetooth", "wifi off", "disable wi-fi".
 pub fn parse_radio(text: &str) -> Option<(Radio, bool)> {
     let t = text.to_lowercase().replace(['-', ' '], "");
-    let radio = if t.contains("bluetooth") {
+    let radio = if ["bluetooth", "blutooth", "bluetoth", "bluetoot", "bluetooh"]
+        .iter()
+        .any(|n| t.contains(n))
+    {
         Radio::Bluetooth
-    } else if t.contains("wifi") || t.contains("wireless") {
+    } else if t.contains("wifi") || t.contains("wlan") || t.contains("wireless") {
         Radio::WiFi
     } else {
         return None;
@@ -393,8 +396,21 @@ pub fn parse_radio(text: &str) -> Option<(Radio, bool)> {
         .map(str::to_string)
         .collect();
     let any = |w: &[&str]| words.iter().any(|x| w.contains(&x.as_str()));
-    let off = any(&["off", "disable", "disconnect", "kill"]);
-    let on = any(&["on", "enable", "connect", "activate"]);
+    // "turn of wifi" is a slip for "turn off wifi"; "band" is Hindi for off, "chalu" for on.
+    let slip = words.windows(2).any(|p| p[0] == "turn" && p[1] == "of");
+    let off = slip
+        || any(&[
+            "off",
+            "disable",
+            "disconnect",
+            "kill",
+            "band",
+            "bandh",
+            "bund",
+        ]);
+    let on = any(&[
+        "on", "enable", "connect", "activate", "chalu", "chaloo", "shuru", "start",
+    ]);
     match (on, off) {
         (true, false) => Some((radio, true)),
         (false, true) => Some((radio, false)),
@@ -758,6 +774,22 @@ mod tests {
         assert_eq!(parse_radio("turn wifi"), None);
         assert_eq!(parse_radio("turn on and off wifi"), None);
         assert_eq!(parse_radio("turn on the lights"), None);
+        // Typos and Hinglish are read, not asked about.
+        assert_eq!(parse_radio("turn of wifi"), Some((Radio::WiFi, false)));
+        assert_eq!(
+            parse_radio("turn off blutooth"),
+            Some((Radio::Bluetooth, false))
+        );
+        assert_eq!(parse_radio("blutooth on"), Some((Radio::Bluetooth, true)));
+        assert_eq!(parse_radio("wifi chalu karo"), Some((Radio::WiFi, true)));
+        assert_eq!(
+            parse_radio("bluetooth band karo"),
+            Some((Radio::Bluetooth, false))
+        );
+        assert_eq!(
+            parse_radio("turn off bluetooth"),
+            Some((Radio::Bluetooth, false))
+        );
     }
 
     #[test]
