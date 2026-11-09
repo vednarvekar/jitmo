@@ -1,4 +1,5 @@
-id: browser.search                  # task A5
+id: browser.search
+title: "Search the web"  # task A5
 task: A5
 version: 1
 category: apps

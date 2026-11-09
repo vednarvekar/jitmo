@@ -1,4 +1,5 @@
-id: stub.send                   # Phase 1 test skill: exercises the confirm card; not a real task
+id: stub.send
+title: "Send a message (test)"  # Phase 1 test skill: exercises the confirm card; not a real task
 version: 1
 category: testing
 capabilities:

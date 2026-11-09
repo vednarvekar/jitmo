@@ -1,4 +1,5 @@
-id: music.play                  # task A2
+id: music.play
+title: "Play music"  # task A2
 task: A2
 version: 1
 category: apps

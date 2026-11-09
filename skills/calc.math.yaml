@@ -1,4 +1,5 @@
-id: calc.math                  # task Q4
+id: calc.math
+title: "Do a calculation"  # task Q4
 task: Q4
 version: 1
 category: answers

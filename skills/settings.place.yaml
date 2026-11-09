@@ -1,4 +1,5 @@
-id: settings.place             # no task label: an exact example match is enough
+id: settings.place
+title: "Set my city"  # no task label: an exact example match is enough
 version: 1
 category: settings
 capabilities:

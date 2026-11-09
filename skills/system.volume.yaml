@@ -1,4 +1,5 @@
-id: system.volume                  # task S1
+id: system.volume
+title: "Change the volume"  # task S1
 task: S1
 version: 1
 category: system

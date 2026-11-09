@@ -1,4 +1,5 @@
-id: system.radio                  # task S3
+id: system.radio
+title: "Turn Wi-Fi or Bluetooth on or off"  # task S3
 task: S3
 version: 1
 category: system

@@ -120,6 +120,9 @@ pub enum Undo {
 #[serde(deny_unknown_fields)]
 pub struct Skill {
     pub id: String,
+    /// A short human name ("Play music"), used in "Did you mean: ...?" and choices.
+    #[serde(default)]
+    pub title: Option<String>,
     /// The task label from the task list (A1, M2, ...) that the model router predicts.
     #[serde(default)]
     pub task: Option<String>,

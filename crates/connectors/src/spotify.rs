@@ -48,6 +48,8 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
 $deadline = (Get-Date).AddSeconds(8)
 $btnCond = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)
+$stop = @('song','songs','track','tracks','music','by','the','a','an','of','on','spotify','play','some','me')
+$tokens = @(([string]$env:JITMO_QUERY).ToLower() -split '[^\p{L}\p{N}]+' | Where-Object { $_ -and ($stop -notcontains $_) } | Select-Object -Unique)
 $found = $null; $sawWindow = $false
 while ($null -eq $found -and (Get-Date) -lt $deadline) {
   $p = Get-Process Spotify -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
@@ -63,9 +65,16 @@ while ($null -eq $found -and (Get-Date) -lt $deadline) {
       # The player bar (play/pause) is the bottom strip of the window.
       if ($r.Y -gt ($win.Bottom - 120)) { continue }
       if (-not $b.Current.IsEnabled) { continue }
-      $cands += [pscustomobject]@{ El = $b; Name = $n; Y = $r.Y; X = $r.X }
+      # Only a button that names what was asked for. This skips tiles left over from
+      # the previous page and the top-result card of something else.
+      $low = $n.ToLower(); $score = 0
+      foreach ($t in $tokens) { if ($low.Contains($t)) { $score++ } }
+      if ($tokens.Count -gt 0 -and $score -eq 0) { continue }
+      $cands += [pscustomobject]@{ El = $b; Name = $n; Y = $r.Y; X = $r.X; Score = $score }
     }
-    if ($cands.Count -gt 0) { $found = $cands | Sort-Object Y, X | Select-Object -First 1 }
+    if ($cands.Count -gt 0) {
+      $found = $cands | Sort-Object @{ Expression = 'Score'; Descending = $true }, Y, X | Select-Object -First 1
+    }
   }
   if ($null -eq $found) { Start-Sleep -Milliseconds 500 }
 }
@@ -160,7 +169,39 @@ pub fn parse_search(text: &str) -> Option<String> {
         .trim_start_matches("some ")
         .trim_start_matches("the ")
         .trim();
+    let q = strip_media_nouns(q);
     (!q.is_empty() && q.len() < 120).then(|| q.to_string())
+}
+
+/// "janam janam song" -> "janam janam": the word "song" is not part of the title and
+/// makes the search worse. A query that is only such a word ("music") is kept.
+fn strip_media_nouns(q: &str) -> &str {
+    let mut q = q.trim();
+    loop {
+        let mut next = None;
+        for n in [" song", " songs", " track", " tracks"] {
+            if let Some(tail) = q.len().checked_sub(n.len()).and_then(|i| q.get(i..)) {
+                if tail.eq_ignore_ascii_case(n) {
+                    next = Some(&q[..q.len() - n.len()]);
+                    break;
+                }
+            }
+        }
+        if next.is_none() {
+            for n in ["the song ", "song ", "songs ", "track "] {
+                if let Some(head) = q.get(..n.len()) {
+                    if head.eq_ignore_ascii_case(n) {
+                        next = Some(&q[n.len()..]);
+                        break;
+                    }
+                }
+            }
+        }
+        match next.map(str::trim) {
+            Some(rest) if !rest.is_empty() => q = rest,
+            _ => return q,
+        }
+    }
 }
 
 fn encode(s: &str) -> String {
@@ -261,7 +302,10 @@ impl Connector for Spotify {
                     .run(OPEN_SCRIPT, &[("JITMO_URL", &url)])
                     .map_err(|_| ConnError::NotInstalled("Spotify".into()))?;
                 // Playback is only claimed after the media session reads Playing.
-                let invoked = self.runner.run(PLAY_FIRST_RESULT_SCRIPT, &[]).is_ok();
+                let invoked = self
+                    .runner
+                    .run(PLAY_FIRST_RESULT_SCRIPT, &[("JITMO_QUERY", &q)])
+                    .is_ok();
                 if invoked && self.is_playing_soon() {
                     Ok(msg(format!("Playing {q} on Spotify.")))
                 } else {
@@ -357,6 +401,26 @@ mod tests {
         assert_eq!(parse_search("put on some arijit").unwrap(), "arijit");
         assert_eq!(parse_search("play some jazz").unwrap(), "jazz");
         assert_eq!(parse_search("play").as_deref(), None);
+        // The word "song" is not part of the title.
+        assert_eq!(
+            parse_search("play janam janam song").unwrap(),
+            "janam janam"
+        );
+        assert_eq!(parse_search("play the song kesariya").unwrap(), "kesariya");
+        assert_eq!(
+            parse_search("play Arijit Singh songs").unwrap(),
+            "Arijit Singh"
+        );
+        // A query that is only such a word is kept.
+        assert_eq!(parse_search("play some music").unwrap(), "music");
+        assert_eq!(parse_search("play song").unwrap(), "song");
+    }
+
+    #[test]
+    fn the_play_script_is_told_what_to_match() {
+        // The button must be chosen by the words asked for, not by position alone.
+        assert!(PLAY_FIRST_RESULT_SCRIPT.contains("JITMO_QUERY"));
+        assert!(PLAY_FIRST_RESULT_SCRIPT.contains("$score -eq 0"));
     }
 
     #[test]
@@ -402,7 +466,9 @@ mod tests {
             let (tag, reply) = if script == OPEN_SCRIPT {
                 (format!("open {}", env[0].1), Ok(String::new()))
             } else if script == PLAY_FIRST_RESULT_SCRIPT {
-                assert!(env.is_empty(), "user words must not reach the UIA script");
+                // User words reach the fixed script only through its environment.
+                assert_eq!(env.len(), 1);
+                assert_eq!(env[0].0, "JITMO_QUERY");
                 ("play".to_string(), self.play.clone())
             } else {
                 (format!("media {}", env[0].1), self.status.clone())

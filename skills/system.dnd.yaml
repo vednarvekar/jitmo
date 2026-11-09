@@ -1,4 +1,5 @@
-id: system.dnd                    # task S4
+id: system.dnd
+title: "Do Not Disturb"  # task S4
 task: S4
 version: 1
 category: system

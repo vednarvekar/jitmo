@@ -1,4 +1,5 @@
-id: reminders.remind                  # task R1
+id: reminders.remind
+title: "Set a reminder"  # task R1
 task: R1
 version: 1
 category: reminders

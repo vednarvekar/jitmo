@@ -1,4 +1,5 @@
-id: browser.site                  # task A6
+id: browser.site
+title: "Open a website"  # task A6
 task: A6
 version: 1
 category: apps

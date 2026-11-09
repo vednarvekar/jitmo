@@ -1,4 +1,5 @@
-id: files.move                  # task F4
+id: files.move
+title: "Move files"  # task F4
 task: F4
 version: 1
 category: files

@@ -38,7 +38,7 @@ fn announce_shown(app: &AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(70));
         let _ = app.emit("bar-shown", ());
-        crate::sound::play(crate::sound::Cue::Open);
+        crate::sound::play_open_unless_early();
     });
 }
 
@@ -224,6 +224,12 @@ pub(crate) fn toggle(app: &AppHandle) {
         .get_webview_window(BAR)
         .is_some_and(|w| w.is_visible().unwrap_or(false))
     {
+        // Start the open sound at once, before the slower steps below: the audio device
+        // may be asleep and needs a moment to wake. (A destroyed window plays it later,
+        // when the new page is ready.)
+        if app.get_webview_window(BAR).is_some() {
+            crate::sound::play_open_early();
+        }
         note_selection(app); // the bar is about to open: remember what is selected now
     }
     match app.get_webview_window(BAR) {

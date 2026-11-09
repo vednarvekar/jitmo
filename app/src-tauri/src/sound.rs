@@ -36,14 +36,39 @@ impl Cue {
     }
 }
 
+static OPEN_EARLY: AtomicBool = AtomicBool::new(false);
+
+/// Play the open sound right now and remember that it was played, so the later "bar is
+/// shown" step does not play it twice.
+pub(crate) fn play_open_early() {
+    OPEN_EARLY.store(true, Ordering::Relaxed);
+    play(Cue::Open);
+}
+
+/// Play the open sound unless [`play_open_early`] already did for this opening.
+pub(crate) fn play_open_unless_early() {
+    if !OPEN_EARLY.swap(false, Ordering::Relaxed) {
+        play(Cue::Open);
+    }
+}
+
+/// Wake the audio device at startup with a silent clip. The first sound after the
+/// device has been idle can lose its first moments; this takes that hit instead.
+pub(crate) fn warm_up() {
+    static SILENCE: OnceLock<Vec<u8>> = OnceLock::new();
+    if ENABLED.load(Ordering::Relaxed) {
+        play_wav(SILENCE.get_or_init(|| wav_bytes(&vec![0i16; (RATE as usize) / 5])));
+    }
+}
+
 /// Play a cue in the background. Never blocks and never fails loudly.
 pub(crate) fn play(cue: Cue) {
     if !ENABLED.load(Ordering::Relaxed) {
         return;
     }
     let wav = match cue {
-        Cue::Open => UP.get_or_init(|| pop(430.0, 920.0, 0.26)),
-        Cue::Close => DOWN.get_or_init(|| pop(780.0, 360.0, 0.2)),
+        Cue::Open => UP.get_or_init(|| pop(430.0, 920.0, 0.26, 0.12)),
+        Cue::Close => DOWN.get_or_init(|| pop(780.0, 360.0, 0.2, 0.0)),
     };
     play_wav(wav);
 }
@@ -51,12 +76,14 @@ pub(crate) fn play(cue: Cue) {
 /// A rounded "bubble" pop: a sine that glides from `from` to `to` Hz over about 90 ms
 /// (a soft pitch curve, not a beep), with a quick attack, a smooth decay, a faint
 /// overtone, and one quiet echo for a glassy tail. About 0.22 s in all.
-fn pop(from: f32, to: f32, gain: f32) -> Vec<u8> {
+fn pop(from: f32, to: f32, gain: f32, lead_secs: f32) -> Vec<u8> {
     let pi2 = 2.0 * std::f32::consts::PI;
     let sweep = RATE as f32 * 0.09;
     let body = (RATE as f32 * 0.16) as usize;
     let echo_at = (RATE as f32 * 0.075) as usize;
-    let total = body + echo_at;
+    // A short silent lead-in: a sleeping audio device wakes during it, not during the pop.
+    let lead = (RATE as f32 * lead_secs) as usize;
+    let total = lead + body + echo_at;
     let mut dry = vec![0.0f32; body];
     let mut phase = 0.0f32;
     for (i, out) in dry.iter_mut().enumerate() {
@@ -71,8 +98,8 @@ fn pop(from: f32, to: f32, gain: f32) -> Vec<u8> {
     }
     let mut mixed = vec![0.0f32; total];
     for (i, v) in dry.iter().enumerate() {
-        mixed[i] += v;
-        mixed[i + echo_at] += v * 0.22;
+        mixed[lead + i] += v;
+        mixed[lead + i + echo_at] += v * 0.22;
     }
     let samples: Vec<i16> = mixed
         .iter()
@@ -132,13 +159,13 @@ mod tests {
 
     #[test]
     fn the_cues_are_valid_short_quiet_wav_files() {
-        for wav in [pop(430.0, 920.0, 0.26), pop(780.0, 360.0, 0.2)] {
+        for wav in [pop(430.0, 920.0, 0.26, 0.12), pop(780.0, 360.0, 0.2, 0.0)] {
             assert_eq!(&wav[..4], b"RIFF");
             assert_eq!(&wav[8..16], b"WAVEfmt ");
             let data_len = u32::from_le_bytes(wav[40..44].try_into().unwrap()) as usize;
             assert_eq!(wav.len(), 44 + data_len);
             let seconds = (data_len / 2) as f32 / RATE as f32;
-            assert!((0.1..0.3).contains(&seconds), "{seconds}");
+            assert!((0.1..0.45).contains(&seconds), "{seconds}");
             let peak = (44..wav.len() - 1)
                 .step_by(2)
                 .map(|i| i16::from_le_bytes([wav[i], wav[i + 1]]).unsigned_abs())

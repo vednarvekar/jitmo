@@ -1,4 +1,5 @@
-id: system.lock                  # task S2
+id: system.lock
+title: "Lock the PC"  # task S2
 task: S2
 version: 1
 category: system

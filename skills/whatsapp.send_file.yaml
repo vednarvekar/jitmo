@@ -1,4 +1,5 @@
-id: whatsapp.send_file          # task M2
+id: whatsapp.send_file
+title: "Send a file on WhatsApp"  # task M2
 task: M2
 version: 1
 category: messaging

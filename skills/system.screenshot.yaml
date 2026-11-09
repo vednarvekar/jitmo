@@ -1,4 +1,5 @@
-id: system.screenshot                  # task S5
+id: system.screenshot
+title: "Take a screenshot"  # task S5
 task: S5
 version: 1
 category: system

@@ -181,7 +181,11 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const s = stateRef.current;
       const id = currentId(s);
-      if (e.key === "Escape") {
+      if (e.key === "Tab") {
+        // Tab never moves focus to a button; the input keeps it.
+        e.preventDefault();
+        inputRef.current?.focus();
+      } else if (e.key === "Escape") {
         e.preventDefault();
         const busy = ["working", "confirm", "choice", "asking"].includes(s.phase);
         if (id !== null && busy) {
@@ -280,7 +284,12 @@ export default function App() {
         data-tauri-drag-region
         onMouseEnter={() => (hover.current = true)}
         onMouseLeave={() => (hover.current = false)}
-        onMouseDown={() => (dragUntil.current = Date.now() + 2_000)}
+        onMouseDown={(e) => {
+          dragUntil.current = Date.now() + 2_000;
+          // Keyboard focus stays in the input: clicking anywhere else in the bar
+          // (a card, a chip, empty space) must not take it.
+          if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
+        }}
       >
         <div className="fx-layer">
           <div className="bar box" data-phase={state.phase} data-tauri-drag-region>
@@ -338,6 +347,11 @@ export default function App() {
                   onChange={(e) => {
                     setText(e.target.value);
                     historyAt.current = -1;
+                  }}
+                  onBlur={() => {
+                    // Focus moving to another part of this page goes straight back to the
+                    // input. (Losing the whole window is handled elsewhere: it hides the bar.)
+                    if (document.hasFocus()) setTimeout(() => inputRef.current?.focus(), 0);
                   }}
                   onKeyDown={onInputKey}
                 />

@@ -1,4 +1,5 @@
-id: files.open                  # task F3
+id: files.open
+title: "Open a file"  # task F3
 task: F3
 version: 1
 category: files

@@ -227,6 +227,49 @@ impl Flow {
         }
     }
 
+    /// Ask how long a timer should run: quick choices, or a custom length.
+    /// `None` when the user dismissed the question.
+    fn ask_timer_length(&mut self, p: &mut dyn Prompter) -> Option<String> {
+        let presets = [
+            ("5", "5 minutes"),
+            ("10", "10 minutes"),
+            ("15", "15 minutes"),
+            ("30", "30 minutes"),
+            ("60", "1 hour"),
+        ];
+        let mut choices: Vec<Choice> = presets
+            .iter()
+            .map(|(id, label)| Choice {
+                id: (*id).into(),
+                label: (*label).into(),
+            })
+            .collect();
+        choices.push(Choice {
+            id: "custom".into(),
+            label: "Custom...".into(),
+        });
+        let picked = p.choose("How long should the timer run?", &choices)?;
+        if let Some((_, label)) = presets.iter().find(|(id, _)| *id == picked) {
+            return Some((*label).to_string());
+        }
+        // Custom: a free-text answer, asked once more if it is blank or has no number.
+        let mut hint = "For example 7 minutes, or 1h 30m";
+        for _ in 0..2 {
+            let answer = p.ask_text("How long?", hint)?;
+            let answer = answer.trim();
+            if answer.chars().any(|c| c.is_ascii_digit()) {
+                // A bare number means minutes.
+                return Some(if answer.chars().all(|c| c.is_ascii_digit()) {
+                    format!("{answer} minutes")
+                } else {
+                    answer.to_string()
+                });
+            }
+            hint = "Type a number, like 7 or 1h 30m";
+        }
+        None
+    }
+
     /// List or stop timers and reminders. Stopping is permanent (a stopped timer
     /// is quick to set again), so there is no Undo.
     fn run_timer_command(
@@ -344,6 +387,14 @@ impl Flow {
         // reminders, since the router has no label for them.
         if let Some(cmd) = timer_command(text) {
             return self.run_timer_command(id, text, cmd, p);
+        }
+        // 0c. "start a timer" with no length: offer 5, 10, 15, 30 minutes, an hour or a
+        // custom length, then run it as a normal timer request.
+        if is_timer_without_length(text) {
+            return match self.ask_timer_length(p) {
+                Some(length) => self.run(id, &format!("set a timer for {length}"), p),
+                None => self.cancelled(id, text, None),
+            };
         }
         // 1. Route.
         let known = self.known();
@@ -617,9 +668,11 @@ impl Flow {
 
     /// A short human label for a skill, used in questions.
     fn describe(&self, skill_id: &str) -> String {
+        // The skill's own title, never an example phrase: an example names a
+        // person or a song the user never typed.
         self.router
             .skill(skill_id)
-            .and_then(|s| s.examples.first().cloned())
+            .and_then(|s| s.title.clone())
             .unwrap_or_else(|| skill_id.to_string())
     }
 }
@@ -813,7 +866,7 @@ fn timer_command(text: &str) -> Option<TimerCommand> {
         first,
         "what" | "which" | "show" | "list" | "any" | "check" | "do" | "how" | "my" | "whats"
     ) || time_left
-        || words.len() <= 2;
+        || matches!(words.as_slice(), ["timers"] | ["reminders"] | ["alarms"]);
     if !cancel && !list {
         return None;
     }
@@ -838,6 +891,66 @@ fn timer_command(text: &str) -> Option<TimerCommand> {
         all: has(&["all", "every", "everything"]),
         kind,
     })
+}
+
+/// "start a timer", "set timer", "new timer", "timer", "begin a timer please": a
+/// request to set a timer that names no length.
+fn is_timer_without_length(text: &str) -> bool {
+    let t = text.trim().trim_end_matches(['?', '!', '.']).to_lowercase();
+    let words: Vec<&str> = t
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    if !words.contains(&"timer") {
+        return false;
+    }
+    let has_length = words.iter().any(|w| {
+        w.chars().any(|c| c.is_ascii_digit())
+            || matches!(
+                *w,
+                "hour"
+                    | "hours"
+                    | "hr"
+                    | "hrs"
+                    | "minute"
+                    | "minutes"
+                    | "min"
+                    | "mins"
+                    | "second"
+                    | "seconds"
+                    | "sec"
+                    | "secs"
+                    | "half"
+                    | "quarter"
+                    | "one"
+                    | "two"
+                    | "three"
+                    | "four"
+                    | "five"
+                    | "six"
+                    | "seven"
+                    | "eight"
+                    | "nine"
+                    | "ten"
+                    | "fifteen"
+                    | "twenty"
+                    | "thirty"
+                    | "forty"
+                    | "sixty"
+                    | "ninety"
+            )
+    });
+    if has_length {
+        return false;
+    }
+    // Only the plain "start/set/new timer" family; "stop the timer" and the like
+    // are handled earlier, and anything else with extra words goes to the router.
+    let fillers = [
+        "start", "set", "begin", "create", "make", "add", "new", "a", "an", "the", "my", "please",
+        "pls", "timer", "can", "you", "could", "i", "want", "need", "to", "me", "a", "run", "put",
+        "on", "launch", "kick", "off", "up",
+    ];
+    words.iter().all(|w| fillers.contains(w))
 }
 
 /// "7 min 30 s", "2 h 5 min".
@@ -1416,6 +1529,37 @@ mod tests {
         assert_eq!(left[0].text, "call mom");
         assert!(say(&mut flow, 4, "cancel the reminder", None).starts_with("Stopped."));
         assert!(flow.store.pending_reminders().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_timer_without_a_length_asks_how_long() {
+        assert!(is_timer_without_length("start a timer"));
+        assert!(is_timer_without_length("Set timer"));
+        assert!(is_timer_without_length("timer please"));
+        assert!(!is_timer_without_length("set a 10 minute timer"));
+        assert!(!is_timer_without_length("timer for an hour"));
+        assert!(!is_timer_without_length("stop the timer"));
+        assert!(!is_timer_without_length("open spotify"));
+
+        // A preset is turned into a normal timer request (no timer connector in this
+        // flow, so the request itself is what we look at: it must reach the router).
+        let mut flow = flow_with(&[OPEN], vec![]);
+        let mut u = TestUser {
+            choice: Some("10".into()),
+            ..TestUser::default()
+        };
+        let ev = flow.handle(5, "start a timer", &mut u);
+        assert_eq!(u.choices_seen, ["5", "10", "15", "30", "60", "custom"]);
+        // No timer skill is loaded here, so it is declined after asking.
+        assert!(matches!(ev, CoreEvent::Failed { .. }), "{ev:?}");
+
+        // Dismissing the question cancels.
+        let mut u = TestUser::default();
+        let ev = flow.handle(6, "start a timer", &mut u);
+        assert!(
+            matches!(ev, CoreEvent::Done { ref message, .. } if message == "Cancelled."),
+            "{ev:?}"
+        );
     }
 
     #[test]

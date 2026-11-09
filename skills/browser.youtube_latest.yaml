@@ -1,4 +1,5 @@
-id: browser.youtube_latest                  # task A4
+id: browser.youtube_latest
+title: "Open the latest YouTube video"  # task A4
 task: A4
 version: 1
 category: apps

@@ -1,4 +1,5 @@
-id: calc.moon                  # task Q1 (moon, sunrise, sunset: the connector reads the sentence)
+id: calc.moon
+title: "Moon phase"  # task Q1 (moon, sunrise, sunset: the connector reads the sentence)
 task: Q1
 version: 2
 category: answers

@@ -1,4 +1,5 @@
-id: web.fact                   # task Q3
+id: web.fact
+title: "Answer a quick question"  # task Q3
 task: Q3
 version: 1
 category: answers

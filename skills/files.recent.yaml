@@ -1,4 +1,5 @@
-id: files.recent                # task F2
+id: files.recent
+title: "Show recent files"  # task F2
 task: F2
 version: 1
 category: files
