@@ -104,17 +104,426 @@ impl Http for UreqHttp {
 }
 
 // ---------------------------------------------------------------------------
+// Providers and fallback chains
+// ---------------------------------------------------------------------------
+//
+// No single outside service may break an answer. Each need (geocoding,
+// forecast, fact) has an ordered list of providers; the first that answers
+// wins and a failure moves on to the next. The order can be changed (or a
+// dead provider dropped) by the `lookup_providers` setting, e.g.
+// `geocode=wikipedia;weather=metno;fact=wikipedia`, without a new app
+// release. The same setting is where a downloaded remote config would land.
+
+/// A place with coordinates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Place {
+    pub name: String,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+/// Finds coordinates for a place name.
+pub trait Geocoder: Send + Sync {
+    fn id(&self) -> &'static str;
+    fn find(&self, http: &dyn Http, place: &str) -> Result<Place, HttpError>;
+}
+
+/// Gives daily forecasts for coordinates.
+pub trait Forecaster: Send + Sync {
+    fn id(&self) -> &'static str;
+    /// The credit line the licence asks for.
+    fn credit(&self) -> &'static str;
+    fn days(
+        &self,
+        http: &dyn Http,
+        at: &Place,
+        offset_secs: i64,
+    ) -> Result<Vec<DayForecast>, HttpError>;
+}
+
+/// Answers a quick-fact question with a short text, credit included.
+pub trait FactSource: Send + Sync {
+    fn id(&self) -> &'static str;
+    fn fact(&self, http: &dyn Http, subject: &str) -> Result<String, HttpError>;
+}
+
+/// GET and parse JSON. Bad JSON counts as "nothing found", never a panic.
+fn get_json(http: &dyn Http, url: &str) -> Result<Value, HttpError> {
+    let body = http.get(url)?;
+    serde_json::from_str(&body).map_err(|_| HttpError::NotFound)
+}
+
+/// Geocoding by the coordinates of the best English Wikipedia article.
+pub struct WikipediaGeocoder;
+
+impl Geocoder for WikipediaGeocoder {
+    fn id(&self) -> &'static str {
+        "wikipedia"
+    }
+    fn find(&self, http: &dyn Http, place: &str) -> Result<Place, HttpError> {
+        let url = format!(
+            "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={}\
+             &gsrlimit=3&prop=coordinates&format=json&formatversion=2",
+            encode(place)
+        );
+        let (name, lat, lon) = parse_geocode(&get_json(http, &url)?).ok_or(HttpError::NotFound)?;
+        Ok(Place { name, lat, lon })
+    }
+}
+
+/// MET Norway locationforecast 2.0.
+pub struct MetNoForecaster;
+
+impl Forecaster for MetNoForecaster {
+    fn id(&self) -> &'static str {
+        "metno"
+    }
+    fn credit(&self) -> &'static str {
+        WEATHER_CREDIT
+    }
+    fn days(
+        &self,
+        http: &dyn Http,
+        at: &Place,
+        offset_secs: i64,
+    ) -> Result<Vec<DayForecast>, HttpError> {
+        // MET Norway rejects more than 4 decimals.
+        let url = format!(
+            "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat={:.4}&lon={:.4}",
+            at.lat, at.lon
+        );
+        daily_from_met(&get_json(http, &url)?, offset_secs).ok_or(HttpError::NotFound)
+    }
+}
+
+/// Facts from the English Wikipedia Action API (search plus intro in one call).
+pub struct WikipediaFacts;
+
+impl FactSource for WikipediaFacts {
+    fn id(&self) -> &'static str {
+        "wikipedia"
+    }
+    fn fact(&self, http: &dyn Http, subject: &str) -> Result<String, HttpError> {
+        let url = format!(
+            "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={}\
+             &gsrlimit=1&prop=extracts%7Cinfo&exintro=1&explaintext=1&exchars=700&inprop=url\
+             &format=json&formatversion=2",
+            encode(subject)
+        );
+        render_fact(&get_json(http, &url)?).ok_or(HttpError::NotFound)
+    }
+}
+
+/// Backup geocoder: the public Photon server (OpenStreetMap data, ODbL). Fair
+/// use only, which is fine because it is asked only when Wikipedia fails.
+pub struct PhotonGeocoder;
+
+impl Geocoder for PhotonGeocoder {
+    fn id(&self) -> &'static str {
+        "photon"
+    }
+    fn find(&self, http: &dyn Http, place: &str) -> Result<Place, HttpError> {
+        let url = format!(
+            "https://photon.komoot.io/api/?q={}&limit=1&lang=en",
+            encode(place)
+        );
+        let v = get_json(http, &url)?;
+        let f = v.pointer("/features/0").ok_or(HttpError::NotFound)?;
+        let lon = f.pointer("/geometry/coordinates/0").and_then(Value::as_f64);
+        let lat = f.pointer("/geometry/coordinates/1").and_then(Value::as_f64);
+        let name = f.pointer("/properties/name").and_then(Value::as_str);
+        match (name, lat, lon) {
+            (Some(name), Some(lat), Some(lon)) => Ok(Place {
+                name: name.to_string(),
+                lat,
+                lon,
+            }),
+            _ => Err(HttpError::NotFound),
+        }
+    }
+}
+
+/// Backup forecaster for US points only: the National Weather Service
+/// (public domain, no key). Gives a chance of rain, not an amount. Anywhere
+/// outside the US it answers 404, which counts as "nothing found".
+pub struct NwsForecaster;
+
+impl Forecaster for NwsForecaster {
+    fn id(&self) -> &'static str {
+        "nws"
+    }
+    fn credit(&self) -> &'static str {
+        "(Data from the US National Weather Service)"
+    }
+    fn days(
+        &self,
+        http: &dyn Http,
+        at: &Place,
+        _offset_secs: i64,
+    ) -> Result<Vec<DayForecast>, HttpError> {
+        let points = get_json(
+            http,
+            &format!("https://api.weather.gov/points/{:.4},{:.4}", at.lat, at.lon),
+        )?;
+        let hourly = points
+            .pointer("/properties/forecastHourly")
+            .and_then(Value::as_str)
+            .filter(|u| u.starts_with("https://api.weather.gov/"))
+            .ok_or(HttpError::NotFound)?;
+        daily_from_nws(&get_json(http, hourly)?).ok_or(HttpError::NotFound)
+    }
+}
+
+/// Group the NWS hourly periods into local days (each period carries its own
+/// UTC offset, so its date is already the local one).
+fn daily_from_nws(forecast: &Value) -> Option<Vec<DayForecast>> {
+    let periods = forecast.pointer("/properties/periods")?.as_array()?;
+    let mut days: Vec<DayForecast> = Vec::new();
+    for p in periods {
+        let Some(start) = p
+            .get("startTime")
+            .and_then(Value::as_str)
+            .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+        else {
+            continue;
+        };
+        let Some(mut temp) = p.get("temperature").and_then(Value::as_f64) else {
+            continue;
+        };
+        if p.get("temperatureUnit").and_then(Value::as_str) != Some("C") {
+            temp = (temp - 32.0) * 5.0 / 9.0;
+        }
+        let chance = p
+            .pointer("/probabilityOfPrecipitation/value")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
+        let date = start.date_naive();
+        if days.last().map(|d| d.date) != Some(date) {
+            days.push(DayForecast {
+                date,
+                high: f64::NEG_INFINITY,
+                low: f64::INFINITY,
+                rain_mm: 0.0,
+                rain_chance: Some(0.0),
+            });
+        }
+        let d = days.last_mut()?;
+        d.high = d.high.max(temp);
+        d.low = d.low.min(temp);
+        d.rain_chance = Some(d.rain_chance.unwrap_or(0.0).max(chance));
+    }
+    days.retain(|d| d.high.is_finite() && d.low.is_finite());
+    (!days.is_empty()).then_some(days)
+}
+
+/// Backup facts: Wikipedia's REST search plus page summary. The same site as
+/// the primary but different endpoints, so it covers an Action API fault.
+pub struct WikipediaRestFacts;
+
+impl FactSource for WikipediaRestFacts {
+    fn id(&self) -> &'static str {
+        "wikipedia_rest"
+    }
+    fn fact(&self, http: &dyn Http, subject: &str) -> Result<String, HttpError> {
+        let search = get_json(
+            http,
+            &format!(
+                "https://en.wikipedia.org/w/rest.php/v1/search/page?q={}&limit=1",
+                encode(subject)
+            ),
+        )?;
+        let key = search
+            .pointer("/pages/0/key")
+            .and_then(Value::as_str)
+            .ok_or(HttpError::NotFound)?;
+        let s = get_json(
+            http,
+            &format!(
+                "https://en.wikipedia.org/api/rest_v1/page/summary/{}",
+                encode(key)
+            ),
+        )?;
+        if s.get("type").and_then(Value::as_str) == Some("disambiguation") {
+            return Err(HttpError::NotFound);
+        }
+        // Reuse the Action API renderer by giving it the same shape.
+        let shaped = serde_json::json!({"query": {"pages": [{
+            "index": 1,
+            "title": s.get("title").cloned().unwrap_or(Value::Null),
+            "extract": s.get("extract").cloned().unwrap_or(Value::Null),
+            "fullurl": s.pointer("/content_urls/desktop/page").cloned().unwrap_or(Value::Null),
+        }]}});
+        render_fact(&shaped).ok_or(HttpError::NotFound)
+    }
+}
+
+/// Combine the failures of a whole chain into the one that is told to the user.
+/// All offline: offline. Any real failure: a general failure. Otherwise: not found.
+fn combine(errors: Vec<HttpError>) -> HttpError {
+    if errors.is_empty() || errors.iter().all(|e| *e == HttpError::NotFound) {
+        return HttpError::NotFound;
+    }
+    if errors.iter().all(|e| *e == HttpError::Offline) {
+        return HttpError::Offline;
+    }
+    if errors.iter().any(|e| matches!(e, HttpError::Other(_))) {
+        return HttpError::Other("every provider failed".into());
+    }
+    HttpError::NotFound
+}
+
+/// Try each provider in order; the first success wins.
+fn chain<P: ?Sized, T>(
+    providers: &[&P],
+    mut call: impl FnMut(&P) -> Result<T, HttpError>,
+) -> Result<T, HttpError> {
+    let mut errors = Vec::new();
+    for p in providers {
+        match call(p) {
+            Ok(v) => return Ok(v),
+            Err(e) => errors.push(e),
+        }
+    }
+    Err(combine(errors))
+}
+
+/// The providers named for `key` in a `key=a,b;key2=c` config string, if any.
+fn parse_order(config: &str, key: &str) -> Option<Vec<String>> {
+    config.split(';').find_map(|part| {
+        let (k, v) = part.split_once('=')?;
+        if k.trim() != key {
+            return None;
+        }
+        let ids: Vec<String> = v
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+        (!ids.is_empty()).then_some(ids)
+    })
+}
+
+/// `all` ordered as the config says. Unknown ids are ignored; when nothing
+/// usable is named, the built-in order is used.
+fn ordered<'a, P: ?Sized>(
+    all: &'a [Box<P>],
+    order: Option<&[String]>,
+    id: impl Fn(&P) -> &'static str,
+) -> Vec<&'a P> {
+    let picked: Vec<&P> = match order {
+        Some(ids) => ids
+            .iter()
+            .filter_map(|want| all.iter().find(|p| id(p) == want).map(|p| &**p))
+            .collect(),
+        None => Vec::new(),
+    };
+    if picked.is_empty() {
+        all.iter().map(|p| &**p).collect()
+    } else {
+        picked
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cache (last good answers, shown when the network or every provider is down)
+// ---------------------------------------------------------------------------
+
+const CACHE_LIMIT: usize = 60;
+const WEATHER_FRESH_SECS: i64 = 20 * 60;
+const WEATHER_STALE_SECS: i64 = 12 * 3600;
+const FACT_FRESH_SECS: i64 = 24 * 3600;
+const FACT_STALE_SECS: i64 = 30 * 24 * 3600;
+
+/// Loads / saves the whole cache as one text value (the app keeps it in a setting).
+type CacheLoad = Box<dyn Fn() -> Option<String> + Send + Sync>;
+type CacheSave = Box<dyn Fn(&str) + Send + Sync>;
+
+#[derive(Default)]
+struct Cache {
+    /// key -> (unix seconds, answer)
+    entries: std::sync::Mutex<Option<std::collections::HashMap<String, (i64, String)>>>,
+    load: Option<CacheLoad>,
+    save: Option<CacheSave>,
+}
+
+impl Cache {
+    fn with_entries<R>(
+        &self,
+        f: impl FnOnce(&mut std::collections::HashMap<String, (i64, String)>) -> R,
+    ) -> R {
+        let mut guard = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        let map = guard.get_or_insert_with(|| {
+            self.load
+                .as_ref()
+                .and_then(|l| l())
+                .and_then(|text| serde_json::from_str(&text).ok())
+                .unwrap_or_default()
+        });
+        f(map)
+    }
+
+    /// An answer younger than `max_age` seconds.
+    fn get(&self, key: &str, now: i64, max_age: i64) -> Option<(i64, String)> {
+        self.with_entries(|m| {
+            m.get(key)
+                .filter(|(at, _)| now - at <= max_age && now >= *at)
+                .cloned()
+        })
+    }
+
+    fn put(&self, key: &str, now: i64, answer: &str) {
+        let text = self.with_entries(|m| {
+            m.insert(key.to_string(), (now, answer.to_string()));
+            while m.len() > CACHE_LIMIT {
+                let Some(oldest) = m
+                    .iter()
+                    .min_by_key(|(_, (at, _))| *at)
+                    .map(|(k, _)| k.clone())
+                else {
+                    break;
+                };
+                m.remove(&oldest);
+            }
+            serde_json::to_string(m).ok()
+        });
+        if let (Some(save), Some(text)) = (&self.save, text) {
+            save(&text);
+        }
+    }
+}
+
+/// "5 min ago", "3 h ago", "2 days ago".
+fn ago(secs: i64) -> String {
+    let secs = secs.max(0);
+    if secs < 3600 {
+        format!("{} min ago", (secs / 60).max(1))
+    } else if secs < 48 * 3600 {
+        format!("{} h ago", secs / 3600)
+    } else {
+        format!("{} days ago", secs / 86400)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Connector
 // ---------------------------------------------------------------------------
+
+type StringSource = Box<dyn Fn() -> Option<String> + Send + Sync>;
 
 pub struct WebLookup {
     http: Box<dyn Http>,
     /// The place saved in the app settings, used when the request names none.
     default_place: Option<String>,
     /// Reads the saved place each time, so "set my city" works without a restart.
-    place_source: Option<Box<dyn Fn() -> Option<String> + Send + Sync>>,
+    place_source: Option<StringSource>,
+    /// Reads the `lookup_providers` config each time (order / switch off providers).
+    config_source: Option<StringSource>,
     /// The clock, replaceable in tests.
     now: Box<dyn Fn() -> chrono::DateTime<chrono::Utc> + Send + Sync>,
+    cache: Cache,
+    geocoders: Vec<Box<dyn Geocoder>>,
+    forecasters: Vec<Box<dyn Forecaster>>,
+    facts: Vec<Box<dyn FactSource>>,
 }
 
 /// Credit required by the MET Norway licence (CC BY 4.0).
@@ -139,6 +548,41 @@ impl WebLookup {
         self
     }
 
+    /// Read the provider order live (the `lookup_providers` setting).
+    pub fn with_config_source(
+        mut self,
+        source: impl Fn() -> Option<String> + Send + Sync + 'static,
+    ) -> Self {
+        self.config_source = Some(Box::new(source));
+        self
+    }
+
+    /// Keep the answer cache across restarts: `load` returns the saved text,
+    /// `save` stores it.
+    pub fn with_cache_store(
+        mut self,
+        load: impl Fn() -> Option<String> + Send + Sync + 'static,
+        save: impl Fn(&str) + Send + Sync + 'static,
+    ) -> Self {
+        self.cache.load = Some(Box::new(load));
+        self.cache.save = Some(Box::new(save));
+        self
+    }
+
+    /// Add providers after the built-in ones (tests and later providers).
+    pub fn with_geocoder(mut self, g: Box<dyn Geocoder>) -> Self {
+        self.geocoders.push(g);
+        self
+    }
+    pub fn with_forecaster(mut self, f: Box<dyn Forecaster>) -> Self {
+        self.forecasters.push(f);
+        self
+    }
+    pub fn with_fact_source(mut self, f: Box<dyn FactSource>) -> Self {
+        self.facts.push(f);
+        self
+    }
+
     fn saved_place(&self) -> Option<String> {
         let live = self
             .place_source
@@ -146,6 +590,13 @@ impl WebLookup {
             .and_then(|f| f())
             .filter(|p| !p.trim().is_empty());
         live.or_else(|| self.default_place.clone())
+    }
+
+    fn config(&self) -> String {
+        self.config_source
+            .as_ref()
+            .and_then(|f| f())
+            .unwrap_or_default()
     }
 
     pub fn new(default_place: Option<String>) -> Self {
@@ -157,7 +608,12 @@ impl WebLookup {
             http,
             default_place: default_place.filter(|p| !p.trim().is_empty()),
             place_source: None,
+            config_source: None,
             now: Box::new(chrono::Utc::now),
+            cache: Cache::default(),
+            geocoders: vec![Box::new(WikipediaGeocoder), Box::new(PhotonGeocoder)],
+            forecasters: vec![Box::new(MetNoForecaster), Box::new(NwsForecaster)],
+            facts: vec![Box::new(WikipediaFacts), Box::new(WikipediaRestFacts)],
         }
     }
 
@@ -166,56 +622,85 @@ impl WebLookup {
         let place = q
             .place
             .clone()
-            .or_else(|| self.default_place.clone())
+            .or_else(|| self.saved_place())
             .ok_or_else(|| ConnError::Failed(NO_PLACE_MESSAGE.into()))?;
-
-        // Geocoding: the coordinates of the best-matching Wikipedia article.
-        let geo_url = format!(
-            "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={}\
-             &gsrlimit=3&prop=coordinates&format=json&formatversion=2",
-            encode(&place)
-        );
-        let geo = self.fetch_json(&geo_url)?;
-        let (name, lat, lon) = parse_geocode(&geo)
-            .ok_or_else(|| ConnError::Failed("I couldn't find that place.".into()))?;
-
-        // MET Norway rejects more than 4 decimals.
-        let url = format!(
-            "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat={lat:.4}&lon={lon:.4}"
-        );
-        let forecast = self.fetch_json(&url)?;
-        let offset_secs = solar_offset_secs(lon);
-        let today = (self.now)()
-            .checked_add_signed(chrono::Duration::seconds(offset_secs))
-            .map(|t| t.date_naive())
-            .ok_or_else(not_found)?;
-        let days = daily_from_met(&forecast, offset_secs).ok_or_else(not_found)?;
-        let text = render_weather(&q, &name, today, &days).ok_or_else(not_found)?;
-        Ok(format!("{text} {WEATHER_CREDIT}"))
+        let key = format!("weather|{}|{:?}|{:?}", place.to_lowercase(), q.day, q.kind);
+        self.cached(&key, WEATHER_FRESH_SECS, WEATHER_STALE_SECS, || {
+            self.fetch_weather(&q, &place)
+        })
     }
 
     fn fact(&self, text: &str) -> Result<String, ConnError> {
         let subject = parse_fact_subject(text).ok_or_else(not_found)?;
-        let url = format!(
-            "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={}\
-             &gsrlimit=1&prop=extracts%7Cinfo&exintro=1&explaintext=1&exchars=700&inprop=url\
-             &format=json&formatversion=2",
-            encode(&subject)
-        );
-        let found = self.fetch_json(&url)?;
-        render_fact(&found).ok_or_else(not_found)
+        let key = format!("fact|{subject}");
+        self.cached(&key, FACT_FRESH_SECS, FACT_STALE_SECS, || {
+            let config = self.config();
+            let order = parse_order(&config, "fact");
+            let sources = ordered(&self.facts, order.as_deref(), |p| p.id());
+            chain(&sources, |s| s.fact(&*self.http, &subject))
+        })
     }
 
-    /// GET and parse JSON. Bad JSON becomes "I couldn't find that.", never a panic.
-    fn fetch_json(&self, url: &str) -> Result<Value, ConnError> {
-        match self.http.get(url) {
-            Ok(body) => serde_json::from_str(&body).map_err(|_| not_found()),
-            Err(HttpError::Offline) => Err(ConnError::Failed(OFFLINE_MESSAGE.into())),
-            Err(HttpError::NotFound) => Err(not_found()),
-            Err(HttpError::Other(_)) => Err(ConnError::Failed(
-                "I couldn't get an answer from the internet just now.".into(),
-            )),
+    /// A fresh cached answer if there is one; else ask the providers; when
+    /// they all fail for a reason other than "not found", fall back to an
+    /// older answer and say how old it is.
+    fn cached(
+        &self,
+        key: &str,
+        fresh_secs: i64,
+        stale_secs: i64,
+        fetch: impl FnOnce() -> Result<String, HttpError>,
+    ) -> Result<String, ConnError> {
+        let now = (self.now)().timestamp();
+        if let Some((_, answer)) = self.cache.get(key, now, fresh_secs) {
+            return Ok(answer);
         }
+        match fetch() {
+            Ok(answer) => {
+                self.cache.put(key, now, &answer);
+                Ok(answer)
+            }
+            Err(HttpError::NotFound) => Err(not_found()),
+            Err(e) => match self.cache.get(key, now, stale_secs) {
+                Some((at, answer)) => Ok(format!(
+                    "{answer} (last checked {}, I can't reach the internet for a fresh one)",
+                    ago(now - at)
+                )),
+                None => Err(match e {
+                    HttpError::Offline => ConnError::Failed(OFFLINE_MESSAGE.into()),
+                    _ => ConnError::Failed(
+                        "I couldn't get an answer from the internet just now.".into(),
+                    ),
+                }),
+            },
+        }
+    }
+
+    fn fetch_weather(&self, q: &WeatherQuery, place: &str) -> Result<String, HttpError> {
+        let config = self.config();
+        let geocoders = ordered(
+            &self.geocoders,
+            parse_order(&config, "geocode").as_deref(),
+            |p| p.id(),
+        );
+        let forecasters = ordered(
+            &self.forecasters,
+            parse_order(&config, "weather").as_deref(),
+            |p| p.id(),
+        );
+
+        // Only the place name goes out. Tries each geocoder until one finds it.
+        let geo = chain(&geocoders, |g| g.find(&*self.http, place))?;
+        let offset_secs = solar_offset_secs(geo.lon);
+        let today = (self.now)()
+            .checked_add_signed(chrono::Duration::seconds(offset_secs))
+            .map(|t| t.date_naive())
+            .ok_or(HttpError::NotFound)?;
+        chain(&forecasters, |f| {
+            let days = f.days(&*self.http, &geo, offset_secs)?;
+            let text = render_weather(q, &geo.name, today, &days).ok_or(HttpError::NotFound)?;
+            Ok(format!("{text} {}", f.credit()))
+        })
     }
 }
 
@@ -413,6 +898,9 @@ pub struct DayForecast {
     pub high: f64,
     pub low: f64,
     pub rain_mm: f64,
+    /// Highest chance of rain (percent) when the source gives a chance instead
+    /// of an amount (US National Weather Service). `None` for amount sources.
+    pub rain_chance: Option<f64>,
 }
 
 /// Rough local time offset from longitude (solar time, nearest half hour).
@@ -477,6 +965,7 @@ fn daily_from_met(forecast: &Value, offset_secs: i64) -> Option<Vec<DayForecast>
                 high: f64::NEG_INFINITY,
                 low: f64::INFINITY,
                 rain_mm: 0.0,
+                rain_chance: None,
             });
         }
         let d = days.last_mut()?;
@@ -521,20 +1010,28 @@ fn render_weather(
     let low = picked.iter().map(|d| d.low).fold(f64::MAX, f64::min);
     let mm: f64 = picked.iter().map(|d| d.rain_mm).sum();
     let temps = format!("high {high:.0}\u{b0}C, low {low:.0}\u{b0}C");
-    let rain_part = if mm < 0.2 {
-        "no rain expected".to_string()
-    } else {
-        format!("about {mm:.1} mm of rain")
+    // A source that gives a chance (percent) instead of an amount.
+    let chance = picked
+        .iter()
+        .map(|d| d.rain_chance)
+        .collect::<Option<Vec<f64>>>()
+        .map(|c| c.into_iter().fold(0.0, f64::max));
+    let rain_part = match chance {
+        Some(c) if c < 10.0 => "no rain expected".to_string(),
+        Some(c) => format!("{c:.0}% chance of rain"),
+        None if mm < 0.2 => "no rain expected".to_string(),
+        None => format!("about {mm:.1} mm of rain"),
     };
 
     match q.kind {
         Kind::Rain => {
-            let word = if mm < 0.2 {
-                "unlikely"
-            } else if mm < 1.0 {
-                "possible"
-            } else {
-                "likely"
+            let word = match chance {
+                Some(c) if c < 20.0 => "unlikely",
+                Some(c) if c < 50.0 => "possible",
+                Some(_) => "likely",
+                None if mm < 0.2 => "unlikely",
+                None if mm < 1.0 => "possible",
+                None => "likely",
             };
             Some(format!(
                 "Rain is {word} in {place} {label}: {rain_part}, {temps}."
@@ -937,6 +1434,249 @@ mod tests {
                 t.elapsed().as_millis()
             );
         }
+    }
+
+    /// A second fact source that always answers the same text.
+    struct FixedFact(&'static str, Result<&'static str, HttpError>);
+    impl FactSource for FixedFact {
+        fn id(&self) -> &'static str {
+            self.0
+        }
+        fn fact(&self, _: &dyn Http, _: &str) -> Result<String, HttpError> {
+            self.1.clone().map(String::from)
+        }
+    }
+
+    #[test]
+    fn a_failing_provider_falls_through_to_the_next() {
+        // The primary (Wikipedia) errors; the backup answers.
+        let (c, _) = connector(vec![("", Err(HttpError::Other("503".into())))], None);
+        let c = c.with_fact_source(Box::new(FixedFact("backup", Ok("Canberra. (Backup)"))));
+        let out = c
+            .execute("fact", &args("what is the capital of Australia"))
+            .unwrap();
+        assert_eq!(out.0["message"], "Canberra. (Backup)");
+        // "Nothing found" also moves on to the next provider.
+        let (c, _) = connector(vec![("", Ok(r#"{"query":{"pages":[]}}"#.into()))], None);
+        let c = c.with_fact_source(Box::new(FixedFact("backup", Ok("Found. (Backup)"))));
+        assert_eq!(
+            c.execute("fact", &args("capital of peru")).unwrap().0["message"],
+            "Found. (Backup)"
+        );
+    }
+
+    #[test]
+    fn the_config_setting_orders_and_switches_off_providers() {
+        let (c, _) = connector(vec![("", Err(HttpError::Other("503".into())))], None);
+        let c = c
+            .with_fact_source(Box::new(FixedFact("backup", Ok("From backup."))))
+            .with_config_source(|| Some("fact=backup".into()));
+        assert_eq!(
+            c.execute("fact", &args("capital of peru")).unwrap().0["message"],
+            "From backup."
+        );
+        // An unknown id falls back to the built-in order.
+        assert_eq!(
+            parse_order("weather=metno;fact=nope", "fact"),
+            Some(vec!["nope".to_string()])
+        );
+        let (c, _) = connector(
+            vec![(
+                "prop=extracts",
+                Ok(r#"{"query":{"pages":[{"title":"Lima","index":1,"extract":"Lima is the capital of Peru."}]}}"#.into()),
+            )],
+            None,
+        );
+        let c = c.with_config_source(|| Some("fact=nope".into()));
+        assert!(c.execute("fact", &args("capital of peru")).is_ok());
+        assert_eq!(parse_order("fact=", "fact"), None);
+        assert_eq!(parse_order("", "fact"), None);
+    }
+
+    fn nws_hourly() -> String {
+        // Two local days; the offset in startTime decides the date.
+        let mut periods = Vec::new();
+        for (t, f, pop) in [
+            ("2026-11-04T20:00:00-05:00", 50.0, 10),
+            ("2026-11-05T02:00:00-05:00", 41.0, 20),
+            ("2026-11-05T14:00:00-05:00", 59.0, 60),
+            ("2026-11-05T22:00:00-05:00", 45.0, 30),
+        ] {
+            periods.push(serde_json::json!({
+                "startTime": t, "temperature": f, "temperatureUnit": "F",
+                "probabilityOfPrecipitation": {"value": pop}
+            }));
+        }
+        serde_json::json!({"properties": {"periods": periods}}).to_string()
+    }
+
+    #[test]
+    fn weather_falls_back_to_nws_when_met_norway_is_down() {
+        let (c, seen) = connector_at_clock(
+            vec![
+                ("prop=coordinates", Ok(GEO.into())),
+                ("api.met.no", Err(HttpError::Other("503".into()))),
+                (
+                    "api.weather.gov/points",
+                    Ok(r#"{"properties":{"forecastHourly":"https://api.weather.gov/gridpoints/X/1,2/forecast/hourly"}}"#.into()),
+                ),
+                ("forecast/hourly", Ok(nws_hourly())),
+            ],
+            Some("Pune"),
+        );
+        let out = c
+            .execute("weather", &args("will it rain tomorrow"))
+            .unwrap();
+        assert_eq!(
+            out.0["message"],
+            "Rain is likely in Pune tomorrow: 60% chance of rain, high 15\u{b0}C, low 5\u{b0}C. (Data from the US National Weather Service)"
+        );
+        assert!(seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|u| u.contains("api.met.no")));
+        // A forecastHourly link that points anywhere else is never fetched.
+        let (c, seen) = connector_at_clock(
+            vec![
+                ("prop=coordinates", Ok(GEO.into())),
+                ("api.met.no", Err(HttpError::Offline)),
+                (
+                    "api.weather.gov/points",
+                    Ok(r#"{"properties":{"forecastHourly":"https://evil.example/x"}}"#.into()),
+                ),
+            ],
+            Some("Pune"),
+        );
+        assert!(c
+            .execute("weather", &args("will it rain tomorrow"))
+            .is_err());
+        assert!(!seen.lock().unwrap().iter().any(|u| u.contains("evil")));
+    }
+
+    #[test]
+    fn geocoding_falls_back_to_photon() {
+        let (c, _) = connector_at_clock(
+            vec![
+                ("wikipedia.org", Err(HttpError::Other("503".into()))),
+                (
+                    "photon.komoot.io",
+                    Ok(r#"{"features":[{"geometry":{"coordinates":[73.8553,18.5196]},"properties":{"name":"Pune"}}]}"#.into()),
+                ),
+                ("api.met.no", Ok(met())),
+            ],
+            Some("Pune"),
+        );
+        let out = c
+            .execute("weather", &args("will it rain tomorrow"))
+            .unwrap();
+        assert!(out.0["message"].starts_with("Rain is likely in Pune tomorrow"));
+    }
+
+    #[test]
+    fn facts_fall_back_to_wikipedia_rest() {
+        let (c, _) = connector(
+            vec![
+                ("w/api.php", Err(HttpError::Other("503".into()))),
+                (
+                    "rest.php/v1/search/page",
+                    Ok(r#"{"pages":[{"key":"Canberra"}]}"#.into()),
+                ),
+                (
+                    "rest_v1/page/summary/Canberra",
+                    Ok(r#"{"type":"standard","title":"Canberra","extract":"Canberra is the capital city of Australia.","content_urls":{"desktop":{"page":"https://en.wikipedia.org/wiki/Canberra"}}}"#.into()),
+                ),
+            ],
+            None,
+        );
+        assert_eq!(
+            c.execute("fact", &args("capital of australia")).unwrap().0["message"],
+            "Canberra is the capital city of Australia. (Wikipedia, CC BY-SA 4.0: https://en.wikipedia.org/wiki/Canberra)"
+        );
+    }
+
+    #[test]
+    fn errors_combine_into_the_right_message() {
+        use HttpError::*;
+        assert_eq!(combine(vec![Offline, Offline]), Offline);
+        assert_eq!(combine(vec![NotFound, NotFound]), NotFound);
+        assert_eq!(combine(vec![Offline, NotFound]), NotFound);
+        assert!(matches!(
+            combine(vec![Offline, Other("x".into())]),
+            Other(_)
+        ));
+        assert_eq!(combine(vec![]), NotFound);
+    }
+
+    #[test]
+    fn an_older_answer_is_shown_when_the_network_is_down() {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        let secs = std::sync::Arc::new(AtomicI64::new(0));
+        let t = secs.clone();
+        let base: chrono::DateTime<chrono::Utc> = "2026-11-04T10:00:00Z".parse().unwrap();
+        let clock = move || base + chrono::Duration::seconds(t.load(Ordering::SeqCst));
+
+        let (c, _) = connector(routes_ok(), Some("Pune"));
+        let c = c.with_clock(clock);
+        let fresh = c
+            .execute("weather", &args("will it rain tomorrow"))
+            .unwrap();
+        let first = fresh.0["message"].clone();
+
+        // Within the fresh window the cache answers (no providers asked).
+        secs.store(60, Ordering::SeqCst);
+        let again = c
+            .execute("weather", &args("will it rain tomorrow"))
+            .unwrap();
+        assert_eq!(again.0["message"], first);
+
+        // Same cache, but every provider is now offline and the answer is old.
+        let cache_text = c.cache.with_entries(|m| serde_json::to_string(m).unwrap());
+        let (c2, _) = connector(vec![("", Err(HttpError::Offline))], Some("Pune"));
+        let t2 = secs.clone();
+        let c2 = c2
+            .with_clock(move || base + chrono::Duration::seconds(t2.load(Ordering::SeqCst)))
+            .with_cache_store(move || Some(cache_text.clone()), |_| {});
+        secs.store(3 * 3600, Ordering::SeqCst);
+        let stale = c2
+            .execute("weather", &args("will it rain tomorrow"))
+            .unwrap();
+        let msg = &stale.0["message"];
+        assert!(msg.starts_with(first.as_str()), "{msg}");
+        assert!(msg.contains("last checked 3 h ago"), "{msg}");
+
+        // Too old: the honest offline message.
+        secs.store(30 * 3600, Ordering::SeqCst);
+        assert_eq!(
+            c2.execute("weather", &args("will it rain tomorrow"))
+                .unwrap_err(),
+            ConnError::Failed(OFFLINE_MESSAGE.into())
+        );
+    }
+
+    #[test]
+    fn the_cache_is_saved_and_capped() {
+        let saved: std::sync::Arc<Mutex<Option<String>>> = Default::default();
+        let s = saved.clone();
+        let (c, _) = connector(
+            vec![(
+                "prop=extracts",
+                Ok(r#"{"query":{"pages":[{"title":"Lima","index":1,"extract":"Lima is the capital of Peru."}]}}"#.into()),
+            )],
+            None,
+        );
+        let c = c.with_cache_store(|| None, move |t| *s.lock().unwrap() = Some(t.to_string()));
+        c.execute("fact", &args("capital of peru")).unwrap();
+        assert!(saved
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .contains("fact|capital of peru"));
+        for i in 0..(CACHE_LIMIT + 10) {
+            c.cache.put(&format!("k{i}"), i as i64, "x");
+        }
+        assert!(c.cache.with_entries(|m| m.len()) <= CACHE_LIMIT);
     }
 
     #[test]

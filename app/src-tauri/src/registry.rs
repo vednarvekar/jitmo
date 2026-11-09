@@ -76,8 +76,23 @@ fn downloads_dir() -> std::path::PathBuf {
         .join("Downloads")
 }
 
-/// `windows_system` is real (it opens apps). The rest are still fakes that
-/// report success, until their connectors are built in Phase 2.
+/// A reader of one setting that opens the store on each call, so a change
+/// (such as "set my city to X") is seen at once without a restart.
+fn setting_reader(
+    db: &std::path::Path,
+    key: Option<&jitmo_store::Key>,
+    name: &'static str,
+) -> impl Fn() -> Option<String> + Send + Sync + 'static {
+    let (db, key) = (db.to_path_buf(), key.copied());
+    move || {
+        open_store(&db, key.as_ref())
+            .ok()
+            .and_then(|s| s.get_setting(name).ok().flatten())
+    }
+}
+
+/// The connectors the app runs: real ones where they exist, and a clearly
+/// labelled test connector for sending messages.
 pub(crate) fn connectors(
     db: &std::path::Path,
     key: Option<&jitmo_store::Key>,
@@ -97,15 +112,20 @@ pub(crate) fn connectors(
     map.insert(
         "web_lookup".into(),
         Arc::new(
-            jitmo_connectors::web_lookup::WebLookup::new(default_place).with_place_source({
-                // Read the saved place each time, so "set my city" works at once.
-                let (place_db, place_key) = (db.to_path_buf(), key.copied());
-                move || {
-                    open_store(&place_db, place_key.as_ref())
-                        .ok()
-                        .and_then(|s| s.get_setting("default_place").ok().flatten())
-                }
-            }),
+            jitmo_connectors::web_lookup::WebLookup::new(default_place)
+                .with_place_source(setting_reader(db, key, "default_place"))
+                // Provider order / switching one off, without an app update
+                // (e.g. `weather=metno,nws;fact=wikipedia_rest`).
+                .with_config_source(setting_reader(db, key, "lookup_providers"))
+                // Last good answers, shown when the internet is down.
+                .with_cache_store(setting_reader(db, key, "lookup_cache"), {
+                    let (cache_db, cache_key) = (db.to_path_buf(), key.copied());
+                    move |text: &str| {
+                        if let Ok(s) = open_store(&cache_db, cache_key.as_ref()) {
+                            let _ = s.set_setting("lookup_cache", text);
+                        }
+                    }
+                }),
         ),
     );
     #[cfg(windows)]
