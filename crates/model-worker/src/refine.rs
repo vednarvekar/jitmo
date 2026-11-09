@@ -15,8 +15,7 @@
 //!
 //! Every new span replaces what the first pass found in the same place, and anything
 //! inside a query or a message is not an entity of its own. Where no frame matches, the
-//! first pass result is returned unchanged. The Python-parity path (`rules::extract`) does
-//! not go through here.
+//! first pass result is returned unchanged.
 
 use crate::rules::{
     closed_spans, Ent, Gazetteer, ModelEnt, APPS, FAMILY, NOT_APP, NOT_NAME, SETTINGS, SITES, WD,

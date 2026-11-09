@@ -3,8 +3,7 @@
 //! sentence frames ("tell X <message>", "play X", "search for X", ...).
 //!
 //! This is a port of the SP2 spike rules (`spikes/sp2-extractor/extract2.py`),
-//! kept deliberately close to the Python so the two can be compared sentence by
-//! sentence (`tools/extractor/extractor_parity.json`). The rules generalise well for
+//! kept close to the Python. The rules generalise well for
 //! date/time/duration/number/setting/app and for contacts and apps from closed
 //! lists; open-ended spans (query, media, message, event, file) are weak. These rules are
 //! the fallback when the NER model (`ner.rs`) is not installed.
@@ -996,11 +995,6 @@ pub fn extract_v2(text: &str, raw: &[ModelEnt], threshold: f32, gaz: &Gazetteer)
 /// Rules only (no model): what fills slots when the NER model is not installed.
 pub fn extract_rules(text: &str, gaz: &Gazetteer) -> Vec<Ent> {
     extract_v2(text, &[], 0.3, gaz)
-}
-
-/// The first pass alone (rules only), for comparison.
-pub fn extract_rules_classic(text: &str, gaz: &Gazetteer) -> Vec<Ent> {
-    extract(text, &[], 0.3, gaz)
 }
 
 #[cfg(test)]

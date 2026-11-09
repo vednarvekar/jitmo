@@ -166,13 +166,6 @@ impl RouterEngine {
     }
 }
 
-impl RouterEngine {
-    /// True once the extractor model has been loaded into this process.
-    pub fn extractor_loaded(&self) -> bool {
-        self.extractor.is_loaded()
-    }
-}
-
 impl Engine for RouterEngine {
     fn extract(
         &mut self,

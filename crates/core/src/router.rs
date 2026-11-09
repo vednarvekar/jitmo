@@ -75,8 +75,6 @@ pub fn decide(u: &Understanding) -> RouteDecision {
 pub struct Router {
     skills: Vec<Skill>,
     worker: Option<Mutex<WorkerClient>>,
-    /// Closed lists (app names, contact names) the extractor may use.
-    known: ContextNote,
 }
 
 /// Asks the extractor for slot spans: (text, task label, context). `None` means it
@@ -94,7 +92,6 @@ impl Router {
         Router {
             skills,
             worker: None,
-            known: ContextNote::default(),
         }
     }
 
@@ -102,14 +99,6 @@ impl Router {
     /// rules cannot fill a slot, for the extractor.
     pub fn with_worker(mut self, worker: WorkerClient) -> Self {
         self.worker = Some(Mutex::new(worker));
-        self
-    }
-
-    /// Names of installed apps and known contacts, used by the extractor as closed
-    /// lists.
-    pub fn with_known(mut self, apps: Vec<String>, contacts: Vec<String>) -> Self {
-        self.known.apps = apps;
-        self.known.contacts = contacts;
         self
     }
 
@@ -127,15 +116,12 @@ impl Router {
     }
 
     /// Route one request, with what the user is looking at (`selected_item`, ...).
-    /// The router's own closed lists (apps, contacts) are added to `context`.
     pub fn route_with(&self, text: &str, context: &ContextNote) -> Understanding {
         let stub = self.route_by_examples(text);
         let Some(worker) = &self.worker else {
             return stub;
         };
-        let mut ctx = context.clone();
-        ctx.apps.extend(self.known.apps.iter().cloned());
-        ctx.contacts.extend(self.known.contacts.iter().cloned());
+        let ctx = context.clone();
         let reply = worker
             .lock()
             .unwrap_or_else(|e| e.into_inner())
