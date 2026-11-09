@@ -31,3 +31,14 @@ body {
 .dock {
   display: block;
 }
+
+/* Browser preview only (never in the app window, which is transparent): a stand-in desktop
+   behind the glass so its look can be judged. */
+html.preview,
+html.preview body {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 500px at 20% 0%, #3a3f4d, transparent 60%),
+    radial-gradient(900px 500px at 90% 100%, #2c2a33, transparent 60%),
+    #1b1c20;
+}

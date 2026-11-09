@@ -83,9 +83,15 @@
   padding: 0 10px 0 8px;
   --tr: 12%;
 }
+/* A question or a confirm needs room: the pill becomes a rounded panel (one glass
+   surface, the content sits straight on it). The radius eases between the two. */
+.bar {
+  transition: border-radius 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 .bar[data-phase="confirm"],
-.bar[data-phase="choice"] {
-  border-radius: 32px;
+.bar[data-phase="choice"],
+.bar[data-phase="asking"] {
+  border-radius: 26px;
   padding-bottom: 12px;
 }
 .bar > *:not(.circle-overlay) {
