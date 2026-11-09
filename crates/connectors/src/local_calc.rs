@@ -150,6 +150,78 @@ pub fn format_number(x: f64) -> String {
     )
 }
 
+/// "five plus twenty five" -> "5 plus 25": spelled-out numbers up to 999,999 become digits.
+fn number_words_to_digits(text: &str) -> String {
+    fn unit(w: &str) -> Option<u64> {
+        Some(match w {
+            "zero" => 0,
+            "one" => 1,
+            "two" => 2,
+            "three" => 3,
+            "four" => 4,
+            "five" => 5,
+            "six" => 6,
+            "seven" => 7,
+            "eight" => 8,
+            "nine" => 9,
+            "ten" => 10,
+            "eleven" => 11,
+            "twelve" => 12,
+            "thirteen" => 13,
+            "fourteen" => 14,
+            "fifteen" => 15,
+            "sixteen" => 16,
+            "seventeen" => 17,
+            "eighteen" => 18,
+            "nineteen" => 19,
+            "twenty" => 20,
+            "thirty" => 30,
+            "forty" => 40,
+            "fifty" => 50,
+            "sixty" => 60,
+            "seventy" => 70,
+            "eighty" => 80,
+            "ninety" => 90,
+            _ => return None,
+        })
+    }
+    let mut out: Vec<String> = Vec::new();
+    // A run of number words being added up: (total so far, current group).
+    let mut run: Option<(u64, u64)> = None;
+    let flush = |run: &mut Option<(u64, u64)>, out: &mut Vec<String>| {
+        if let Some((total, group)) = run.take() {
+            out.push((total + group).to_string());
+        }
+    };
+    for w in text.split_whitespace() {
+        let bare = w.trim_matches(|c: char| !c.is_alphanumeric());
+        if let Some(n) = unit(bare) {
+            let (total, group) = run.unwrap_or((0, 0));
+            if group == 0 {
+                run = Some((total, n));
+            } else if group >= 20 && group % 10 == 0 && n < 10 {
+                // "twenty five": a unit after tens joins them.
+                run = Some((total, group + n));
+            } else {
+                // "one two": two separate numbers.
+                flush(&mut run, &mut out);
+                run = Some((0, n));
+            }
+        } else if bare == "hundred" && run.is_some() {
+            let (total, group) = run.unwrap_or((0, 0));
+            run = Some((total, group.max(1) * 100));
+        } else if bare == "thousand" && run.is_some() {
+            let (total, group) = run.unwrap_or((0, 0));
+            run = Some((total + group.max(1) * 1000, 0));
+        } else {
+            flush(&mut run, &mut out);
+            out.push(w.to_string());
+        }
+    }
+    flush(&mut run, &mut out);
+    out.join(" ")
+}
+
 pub fn math(text: &str) -> Option<String> {
     let t = text.to_lowercase().replace(['$', '₹', '€', '£'], " ");
     // 1,234 -> 1234
@@ -158,11 +230,23 @@ pub fn math(text: &str) -> Option<String> {
     while digits_comma.is_match(&t) {
         t = digits_comma.replace_all(&t, "$1$2").into_owned();
     }
+    let t = number_words_to_digits(&t);
     let num = r"(\d+(?:\.\d+)?)";
 
-    // "18% of 2450", "15 percent tip on 1200"
+    // "sqrt of 144", "square root of 2"
+    let root = Regex::new(&format!(r"(?:sqrt|square\s*root)(?:\s*of)?\s*{num}")).ok()?;
+    if let Some(c) = root.captures(&t) {
+        let v: f64 = c[1].parse().ok()?;
+        return Some(format!(
+            "\u{221a}{} = {}",
+            format_number(v),
+            format_number(v.sqrt())
+        ));
+    }
+
+    // "18% of 2450", "15 percent tip on 1200" (and the usual misspellings of percent)
     let pct = Regex::new(&format!(
-        r"{num}\s*(?:%|percent|per cent)\s*(tip\s*)?(?:of|on|for)\s*{num}"
+        r"{num}\s*(?:%|percent|per cent|percnt|perecent|persent|precent|pct)\s*(tip\s*)?(?:of|on|for)\s*{num}"
     ))
     .ok()?;
     if let Some(c) = pct.captures(&t) {
@@ -204,6 +288,14 @@ pub fn math(text: &str) -> Option<String> {
 
     // Plain arithmetic: words for operators, then the longest sum-looking part.
     let mut e = t;
+    // "split 1200 by 3" is a division.
+    if let Ok(split) = Regex::new(&format!(r"split\s*{num}\s*by\s*{num}")) {
+        e = split.replace_all(&e, "$1 / $2").into_owned();
+    }
+    // "20 into 3" means 20 times 3 (the usual Indian-English reading).
+    if let Ok(into) = Regex::new(&format!(r"{num}\s*into\s*{num}")) {
+        e = into.replace_all(&e, "$1 * $2").into_owned();
+    }
     for (word, sym) in [
         ("multiplied by", "*"),
         ("divided by", "/"),
@@ -212,6 +304,7 @@ pub fn math(text: &str) -> Option<String> {
         ("minus", "-"),
         ("over", "/"),
         ("to the power of", "^"),
+        ("power", "^"),
     ] {
         e = e.replace(word, sym);
     }
@@ -769,6 +862,28 @@ mod tests {
         assert_eq!(math("calculate (2 + 3) * 4").unwrap(), "(2 + 3) * 4 = 20");
         assert_eq!(math("45 times 12").unwrap(), "45 * 12 = 540");
         assert_eq!(math("2 ^ 10").unwrap(), "2 ^ 10 = 1,024");
+    }
+
+    #[test]
+    fn words_roots_splits_powers_and_percent_typos_are_understood() {
+        assert_eq!(math("five plus five").unwrap(), "5 + 5 = 10");
+        assert_eq!(math("twenty five times four").unwrap(), "25 * 4 = 100");
+        assert_eq!(math("one hundred plus two").unwrap(), "100 + 2 = 102");
+        assert_eq!(math("sqrt of 144").unwrap(), "\u{221a}144 = 12");
+        assert_eq!(math("square root of 81").unwrap(), "\u{221a}81 = 9");
+        assert_eq!(math("split 1200 by 3").unwrap(), "1200 / 3 = 400");
+        assert_eq!(math("20 into 3").unwrap(), "20 * 3 = 60");
+        assert_eq!(math("2 power 10").unwrap(), "2 ^ 10 = 1,024");
+        assert_eq!(math("1,000 + 500").unwrap(), "1000 + 500 = 1,500");
+        for typo in ["18 percnt of 2450", "18 perecent of 2450", "18 pct of 2450"] {
+            assert_eq!(math(typo).unwrap(), "18% of 2,450 is 441.", "{typo}");
+        }
+        assert_eq!(number_words_to_digits("one two"), "1 2");
+        assert_eq!(
+            number_words_to_digits("a ten rupee note"),
+            "a 10 rupee note"
+        );
+        assert!(math("calculate").is_none());
     }
 
     #[test]

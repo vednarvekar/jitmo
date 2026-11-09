@@ -120,7 +120,39 @@ pub fn match_contact(said: &str, contacts: &[Contact]) -> Match<Contact> {
 /// Match the words the user said against installed app names: an exact name first,
 /// then apps whose name contains it (as the launcher does). Uninstallers never count.
 pub fn match_app(said: &str, apps: &[String]) -> Match<String> {
-    let wanted = squash(said);
+    // "the calculator", "up spotify please": drop words that are not part of the name.
+    let cleaned: Vec<&str> = said
+        .split_whitespace()
+        .filter(|w| {
+            !matches!(
+                w.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphanumeric()),
+                "the"
+                    | "my"
+                    | "a"
+                    | "an"
+                    | "up"
+                    | "app"
+                    | "application"
+                    | "program"
+                    | "please"
+                    | "pls"
+                    | "plz"
+                    | "now"
+            )
+        })
+        .collect();
+    let said = cleaned.join(" ");
+    // Common short names for installed apps.
+    let said = match squash(&said).as_str() {
+        "vscode" | "code" => "visual studio code".to_string(),
+        "calc" => "calculator".to_string(),
+        "cmd" | "terminal" => "terminal".to_string(),
+        "explorer" | "files" | "fileexplorer" => "file explorer".to_string(),
+        "ppt" | "powerpoint" => "powerpoint".to_string(),
+        _ => said,
+    };
+    let wanted = squash(&said);
     if wanted.is_empty() {
         return Match::None;
     }
@@ -138,10 +170,66 @@ pub fn match_app(said: &str, apps: &[String]) -> Match<String> {
         }
     }
     match hits.len() {
-        0 => Match::None,
+        0 => fuzzy_app(&wanted, usable()),
         1 => Match::One(hits.remove(0)),
         _ => Match::Many(hits),
     }
+}
+
+/// A typo ("spotfy", "calcualtor"): the one app whose name, or whose first word, is a
+/// small edit away. Two equally close apps are never guessed between.
+fn fuzzy_app<'a>(wanted: &str, apps: impl Iterator<Item = &'a String>) -> Match<String> {
+    let allowed = match wanted.chars().count() {
+        0..=4 => return Match::None,
+        5..=7 => 1,
+        _ => 2,
+    };
+    let mut best: Option<(usize, &String)> = None;
+    let mut tie = false;
+    for a in apps {
+        let whole = squash(a);
+        let first_word = words(a)
+            .into_iter()
+            .next()
+            .map(|w| squash(&w))
+            .unwrap_or_default();
+        let d = edit_distance(wanted, &whole).min(edit_distance(wanted, &first_word));
+        if d > allowed {
+            continue;
+        }
+        match best {
+            Some((bd, b)) if d == bd && squash(b) != whole => tie = true,
+            Some((bd, _)) if d >= bd => {}
+            _ => {
+                best = Some((d, a));
+                tie = false;
+            }
+        }
+    }
+    match best {
+        Some((_, a)) if !tie => Match::One(a.clone()),
+        _ => Match::None,
+    }
+}
+
+/// Letters inserted, removed or changed to turn `a` into `b`; a swapped pair counts as one.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let mut prev2: Vec<usize> = Vec::new();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for i in 1..=a.len() {
+        let mut cur = vec![i; b.len() + 1];
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            cur[j] = (prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + cost);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                cur[j] = cur[j].min(prev2[j - 2] + 1);
+            }
+        }
+        prev2 = prev;
+        prev = cur;
+    }
+    prev[b.len()]
 }
 
 // --- vCard import ----------------------------------------------------------
@@ -311,6 +399,37 @@ mod tests {
         );
         assert_eq!(match_app("photoshop", &apps), Match::None);
         assert_eq!(match_app("o", &apps), Match::None);
+    }
+
+    #[test]
+    fn app_names_survive_filler_aliases_and_small_typos() {
+        let apps: Vec<String> = [
+            "Spotify",
+            "Visual Studio Code",
+            "Calculator",
+            "Notepad",
+            "Zoom",
+        ]
+        .map(String::from)
+        .to_vec();
+        let one = |s: &str| match_app(s, &apps);
+        assert_eq!(one("the calculator"), Match::One("Calculator".into()));
+        assert_eq!(one("up spotify please"), Match::One("Spotify".into()));
+        assert_eq!(one("vs code"), Match::One("Visual Studio Code".into()));
+        assert_eq!(one("calc"), Match::One("Calculator".into()));
+        // One letter off: the one app that fits, without a question.
+        assert_eq!(one("spotfy"), Match::One("Spotify".into()));
+        assert_eq!(one("calcualtor"), Match::One("Calculator".into()));
+        assert_eq!(one("notpad"), Match::One("Notepad".into()));
+        // Too far, or too short, or two equally close: nothing is guessed.
+        assert_eq!(one("zom"), Match::None);
+        assert_eq!(one("spotifffyyy"), Match::None);
+        assert_eq!(one("banana"), Match::None);
+        let twins: Vec<String> = ["Zoomer", "Zoomed"].map(String::from).to_vec();
+        assert_eq!(match_app("zoomex", &twins), Match::None);
+        let cams: Vec<String> = ["Camera", "Cameras"].map(String::from).to_vec();
+        assert_eq!(match_app("camrea", &cams), Match::One("Camera".into()));
+        assert_eq!(edit_distance("calcualtor", "calculator"), 1);
     }
 
     #[test]

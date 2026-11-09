@@ -71,6 +71,123 @@ fn durations(text: &str) -> Option<(Duration, Vec<(usize, usize)>)> {
     (total > Duration::zero()).then_some((total, spans))
 }
 
+/// Month number for "jan", "january", "sept"...
+fn month_number(word: &str) -> Option<u32> {
+    let w = word.to_lowercase();
+    [
+        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+    ]
+    .iter()
+    .position(|m| w.starts_with(m))
+    .map(|i| i as u32 + 1)
+}
+
+/// The next date at or after `today` that has this day of the month.
+fn next_day_of_month(today: chrono::NaiveDate, day: u32) -> Option<chrono::NaiveDate> {
+    let mut month_start = today.with_day(1)?;
+    for _ in 0..13 {
+        if let Some(d) = month_start.with_day(day) {
+            if d > today {
+                return Some(d);
+            }
+        }
+        month_start = month_start.checked_add_months(chrono::Months::new(1))?;
+    }
+    None
+}
+
+/// A date found in the text, and the part of the text it came from.
+type FoundDate = (chrono::NaiveDate, (usize, usize));
+
+/// Dates beyond today/tomorrow/weekday: "in 2 days", "in 3 weeks", "next week",
+/// "15 nov", "nov 15th", "15th of november", "on the 1st". Returns the date and the
+/// part of the text it came from. `Ok(None)` when there is none.
+fn calendar_date(text: &str, today: chrono::NaiveDate) -> Result<Option<FoundDate>, String> {
+    let bad = |e: regex::Error| e.to_string();
+    // "in 2 days" / "in 3 weeks"
+    let rel = Regex::new(r"(?i)\bin\s+(\d{1,3})\s*(day|days|week|weeks)\b").map_err(bad)?;
+    if let Some(c) = rel.captures(text) {
+        let n: i64 = c[1]
+            .parse()
+            .map_err(|_| "That is too far away.".to_string())?;
+        let days = if c[2].to_lowercase().starts_with('w') {
+            n * 7
+        } else {
+            n
+        };
+        if !(1..=365).contains(&days) {
+            return Err("I can remind you up to a year ahead.".into());
+        }
+        let m = c.get(0).ok_or("date")?;
+        return Ok(Some((today + Duration::days(days), (m.start(), m.end()))));
+    }
+    // "next week": the coming Monday.
+    let next_week = Regex::new(r"(?i)\bnext\s+week\b").map_err(bad)?;
+    if let Some(m) = next_week.find(text) {
+        let mut d = today;
+        loop {
+            d = d.succ_opt().ok_or("date")?;
+            if d.weekday() == Weekday::Mon {
+                return Ok(Some((d, (m.start(), m.end()))));
+            }
+        }
+    }
+    const MONTH: &str = r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+    let day_first = Regex::new(&format!(
+        r"(?i)\b(?:on\s+)?(?:the\s+)?(\d{{1,2}})(?:st|nd|rd|th)?\s*(?:of\s+)?{MONTH}\b"
+    ))
+    .map_err(bad)?;
+    let month_first = Regex::new(&format!(
+        r"(?i)\b(?:on\s+)?{MONTH}\s+(?:the\s+)?(\d{{1,2}})(?:st|nd|rd|th)?\b"
+    ))
+    .map_err(bad)?;
+    let found = day_first
+        .captures(text)
+        .and_then(|c| {
+            Some((
+                c.get(0)?,
+                c.get(1)?.as_str().parse::<u32>().ok()?,
+                month_number(c.get(2)?.as_str())?,
+            ))
+        })
+        .or_else(|| {
+            month_first.captures(text).and_then(|c| {
+                Some((
+                    c.get(0)?,
+                    c.get(2)?.as_str().parse::<u32>().ok()?,
+                    month_number(c.get(1)?.as_str())?,
+                ))
+            })
+        });
+    if let Some((m, day, month)) = found {
+        let mut year = today.year();
+        let mut date =
+            chrono::NaiveDate::from_ymd_opt(year, month, day).ok_or("That date doesn't exist.")?;
+        if date < today {
+            year += 1;
+            date = chrono::NaiveDate::from_ymd_opt(year, month, day)
+                .ok_or("That date doesn't exist.")?;
+        }
+        return Ok(Some((date, (m.start(), m.end()))));
+    }
+    // "on the 1st", "on 15th": the next time that day of the month comes round.
+    let dom = Regex::new(
+        r"(?i)\b(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\b|\bon\s+(\d{1,2})(?:st|nd|rd|th)\b",
+    )
+    .map_err(bad)?;
+    if let Some(c) = dom.captures(text) {
+        let day: u32 = c
+            .get(1)
+            .or_else(|| c.get(2))
+            .and_then(|d| d.as_str().parse().ok())
+            .ok_or("date")?;
+        let m = c.get(0).ok_or("date")?;
+        let date = next_day_of_month(today, day).ok_or("That date doesn't exist.")?;
+        return Ok(Some((date, (m.start(), m.end()))));
+    }
+    Ok(None)
+}
+
 fn weekday(word: &str) -> Option<Weekday> {
     Some(match word {
         "monday" | "mon" => Weekday::Mon,
@@ -128,9 +245,17 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
         return Err("How long should the timer run? Try “set a 10-minute timer”.".into());
     }
 
+    // A day that has gone cannot be reminded about; saying so beats setting it for today.
+    if Regex::new(r"(?i)\byesterday\b")
+        .map_err(|e| e.to_string())?
+        .is_match(text)
+    {
+        return Err("That day has already passed.".into());
+    }
+
     // Day words.
     let day_re = Regex::new(
-        r"(?i)\b(today|tonight|tomorrow|this (?:morning|afternoon|evening)|(?:next |on )?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun))\b",
+        r"(?i)\b(today|tonight|day after tomorrow|tomorrow|tmrw|tmr|tomorow|tommorow|tomorrw|2morrow|2moro|this (?:morning|afternoon|evening)|(?:next |on )?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun))\b",
     )
     .map_err(|e| e.to_string())?;
     let mut date = now.date_naive();
@@ -144,8 +269,13 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
         let m = c.get(0).ok_or("no day")?;
         cut.push((m.start(), m.end()));
         explicit_day = true;
-        if whole == "tomorrow" {
+        if matches!(
+            whole.as_str(),
+            "tomorrow" | "tmrw" | "tmr" | "tomorow" | "tommorow" | "tomorrw" | "2morrow" | "2moro"
+        ) {
             date = date.succ_opt().ok_or("date")?;
+        } else if whole == "day after tomorrow" {
+            date = date.succ_opt().and_then(|d| d.succ_opt()).ok_or("date")?;
         } else if whole == "tonight" {
             day_default_hour = Some(20);
         } else if whole.starts_with("this morning") {
@@ -164,6 +294,12 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
             }
             date = d;
         }
+    }
+    // "in 2 days", "next week", "15 nov", "on the 1st".
+    if let Some((d, span)) = calendar_date(text, now.date_naive())? {
+        date = d;
+        explicit_day = true;
+        cut.push(span);
     }
     let morning = Regex::new(r"(?i)\b(?:in the )?morning\b")
         .map_err(|e| e.to_string())?
@@ -248,9 +384,14 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
         }
         due += Duration::days(1);
     }
+    let what = clean(text, &cut);
+    if what == "Reminder" {
+        // A time with nothing to be reminded of: ask, do not save a blank reminder.
+        return Err("What should I remind you about? Try “remind me at 6pm to call mom”.".into());
+    }
     Ok(Parsed {
         due,
-        what: clean(text, &cut),
+        what,
         timer: false,
         repeat: None,
     })
@@ -507,6 +648,52 @@ mod tests {
         // 2pm: "at 1" -> next time the clock reads 1 is 1am tomorrow.
         let r = p("remind me to stretch at 1");
         assert_eq!(hm(r.due), (9, 1, 0));
+    }
+
+    #[test]
+    fn more_date_forms_are_understood_and_the_impossible_ones_refused() {
+        let n = now();
+        let p = |t: &str| parse(t, n);
+        // Misspelt tomorrow no longer means today.
+        for t in [
+            "remind me to call mom at 6pm tmrw",
+            "remind me to call mom at 6pm tommorow",
+            "remind me to call mom tomorow at 6pm",
+        ] {
+            let r = p(t).unwrap();
+            assert_eq!(
+                r.due.date_naive(),
+                n.date_naive().succ_opt().unwrap(),
+                "{t}"
+            );
+            assert_eq!(r.what, "Call mom", "{t}");
+        }
+        let after = p("remind me the day after tomorrow at 9am to renew").unwrap();
+        assert_eq!(after.due.date_naive(), n.date_naive() + Duration::days(2));
+        let in_two = p("remind me in 2 days to renew passport").unwrap();
+        assert_eq!(in_two.due.date_naive(), n.date_naive() + Duration::days(2));
+        assert_eq!(in_two.what, "Renew passport");
+        let week = p("remind me next week to call mom").unwrap();
+        assert_eq!(week.due.weekday(), Weekday::Mon);
+        assert!(week.due > n);
+        let dated = p("remind me on 15 nov at 3pm to call mom").unwrap();
+        assert_eq!((dated.due.month(), dated.due.day()), (11, 15));
+        assert_eq!(dated.what, "Call mom");
+        let dated = p("remind me dec 3rd to pay rent").unwrap();
+        assert_eq!((dated.due.month(), dated.due.day()), (12, 3));
+        let first = p("remind me on the 1st to pay rent").unwrap();
+        assert_eq!(first.due.day(), 1);
+        assert!(first.due > n);
+        // Refused with a reason, not turned into something else.
+        assert!(p("remind me yesterday at 5pm to call")
+            .unwrap_err()
+            .contains("passed"));
+        assert!(p("remind me on 31 feb to x").is_err());
+        assert!(p("remind me in 0 days to x").is_err());
+        // A time with nothing to remind about asks what.
+        assert!(p("remind me at 6pm")
+            .unwrap_err()
+            .contains("What should I remind you about"));
     }
 
     #[test]

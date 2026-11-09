@@ -408,7 +408,11 @@ impl Flow {
         }
     }
 
-    fn run(&mut self, id: RequestId, text: &str, p: &mut dyn Prompter) -> CoreEvent {
+    fn run(&mut self, id: RequestId, said: &str, p: &mut dyn Prompter) -> CoreEvent {
+        // Greetings and fillers are dropped and a mistyped first verb is repaired
+        // ("plya arijit singh" -> "play arijit singh") before anything looks at it.
+        let normalized = crate::normalize::normalize(said);
+        let text = normalized.as_str();
         // 0. "What can you do?" is answered here, without the router.
         if is_help_request(text) {
             self.log(text, None, Decision::Ran, HELP_MESSAGE, None);
