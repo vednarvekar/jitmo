@@ -35,7 +35,7 @@ let measureCtx: CanvasRenderingContext2D | null | undefined;
 function wantedWidth(text: string): number {
   if (measureCtx === undefined) {
     measureCtx = document.createElement("canvas").getContext("2d");
-    if (measureCtx) measureCtx.font = '500 14.5px "Segoe UI Variable Display", "Segoe UI", sans-serif';
+    if (measureCtx) measureCtx.font = '500 14px "Manrope Variable", "Segoe UI", sans-serif';
   }
   const textPx = measureCtx ? measureCtx.measureText(text).width : text.length * 8;
   return Math.round(Math.min(BAR_MAX_WIDTH, Math.max(BAR_MIN_WIDTH, textPx + ROW_CHROME)));
@@ -331,8 +331,8 @@ export default function App() {
                   className="input"
                   autoFocus
                   spellCheck={false}
-                  aria-label={answering ? "Your answer" : "Ask AI"}
-                  placeholder={state.phase === "asking" ? state.hint : "Ask AI"}
+                  aria-label={answering ? "Your answer" : "Ask Jitmo"}
+                  placeholder={state.phase === "asking" ? state.hint : "Ask Jitmo"}
                   value={text}
                   disabled={!typing}
                   onChange={(e) => {

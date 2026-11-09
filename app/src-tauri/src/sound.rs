@@ -1,7 +1,7 @@
 //! The two small sounds of the bar: a soft rising "pop" when it opens and a falling
 //! one when it closes.
 //!
-//! They are made here from sine waves (no recorded sample, so there is nothing to
+//! They are made here from sine glides (no recorded sample, so there is nothing to
 //! license) and played with the Windows `PlaySound` call from memory, which works
 //! without any user click in the page. The setting `bar_sounds` = `off` mutes them.
 
@@ -42,33 +42,42 @@ pub(crate) fn play(cue: Cue) {
         return;
     }
     let wav = match cue {
-        Cue::Open => UP.get_or_init(|| tone_pair(660.0, 990.0)),
-        Cue::Close => DOWN.get_or_init(|| tone_pair(880.0, 560.0)),
+        Cue::Open => UP.get_or_init(|| pop(430.0, 920.0, 0.26)),
+        Cue::Close => DOWN.get_or_init(|| pop(780.0, 360.0, 0.2)),
     };
     play_wav(wav);
 }
 
-/// Two quick soft notes (`a` then `b` Hz), each with a short attack and a smooth
-/// decay, with a faint octave overtone for a "glassy" feel. About 0.17 s in all, at
-/// low volume.
-fn tone_pair(a: f32, b: f32) -> Vec<u8> {
-    let note_len = (RATE as f32 * 0.085) as usize;
-    let gap = (RATE as f32 * 0.012) as usize;
-    let mut samples: Vec<i16> = Vec::with_capacity(note_len * 2 + gap);
-    for (n, freq) in [a, b].into_iter().enumerate() {
-        for i in 0..note_len {
-            let t = i as f32 / RATE as f32;
-            let attack = (i as f32 / (RATE as f32 * 0.004)).min(1.0);
-            let decay = (-t * 26.0).exp();
-            let wave = (2.0 * std::f32::consts::PI * freq * t).sin()
-                + 0.25 * (2.0 * std::f32::consts::PI * freq * 2.0 * t).sin();
-            let v = wave * attack * decay * 0.16;
-            samples.push((v * i16::MAX as f32) as i16);
-        }
-        if n == 0 {
-            samples.extend(std::iter::repeat_n(0, gap));
-        }
+/// A rounded "bubble" pop: a sine that glides from `from` to `to` Hz over about 90 ms
+/// (a soft pitch curve, not a beep), with a quick attack, a smooth decay, a faint
+/// overtone, and one quiet echo for a glassy tail. About 0.22 s in all.
+fn pop(from: f32, to: f32, gain: f32) -> Vec<u8> {
+    let pi2 = 2.0 * std::f32::consts::PI;
+    let sweep = RATE as f32 * 0.09;
+    let body = (RATE as f32 * 0.16) as usize;
+    let echo_at = (RATE as f32 * 0.075) as usize;
+    let total = body + echo_at;
+    let mut dry = vec![0.0f32; body];
+    let mut phase = 0.0f32;
+    for (i, out) in dry.iter_mut().enumerate() {
+        let progress = (i as f32 / sweep).min(1.0);
+        // Exponential glide: equal steps in pitch, so it sounds even.
+        let freq = from * (to / from).powf(progress);
+        phase += pi2 * freq / RATE as f32;
+        let t = i as f32 / RATE as f32;
+        let attack = (i as f32 / (RATE as f32 * 0.006)).min(1.0);
+        let decay = (-t * 20.0).exp();
+        *out = (phase.sin() + 0.18 * (phase * 2.0).sin()) * attack * decay;
     }
+    let mut mixed = vec![0.0f32; total];
+    for (i, v) in dry.iter().enumerate() {
+        mixed[i] += v;
+        mixed[i + echo_at] += v * 0.22;
+    }
+    let samples: Vec<i16> = mixed
+        .iter()
+        .map(|v| (v * gain * i16::MAX as f32) as i16)
+        .collect();
     wav_bytes(&samples)
 }
 
@@ -123,7 +132,7 @@ mod tests {
 
     #[test]
     fn the_cues_are_valid_short_quiet_wav_files() {
-        for wav in [tone_pair(660.0, 990.0), tone_pair(880.0, 560.0)] {
+        for wav in [pop(430.0, 920.0, 0.26), pop(780.0, 360.0, 0.2)] {
             assert_eq!(&wav[..4], b"RIFF");
             assert_eq!(&wav[8..16], b"WAVEfmt ");
             let data_len = u32::from_le_bytes(wav[40..44].try_into().unwrap()) as usize;

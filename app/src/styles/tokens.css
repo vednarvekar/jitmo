@@ -15,8 +15,8 @@ body {
   margin: 0;
   background: transparent;
   color: var(--ink);
-  /* Segoe UI Variable Display: the sleeker cut of the system font (installed on Windows 11). */
-  font: 500 13px "Segoe UI Variable Display", "Segoe UI Variable Text", system-ui, "Segoe UI", sans-serif;
+  /* Manrope (bundled, SIL OFL 1.1) with the system font as the fallback. */
+  font: 500 13px "Manrope Variable", "Segoe UI Variable Display", system-ui, "Segoe UI", sans-serif;
   letter-spacing: 0.1px;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;

@@ -74,15 +74,18 @@ fn position_file(app: &AppHandle) -> Option<std::path::PathBuf> {
         .map(|d| d.join("bar-position.json"))
 }
 
-/// The saved spot is the window's left edge and its BOTTOM edge, in physical
-/// pixels, because the bar grows upward from the taskbar.
-fn load_saved(app: &AppHandle) -> Option<(i32, i32)> {
+/// The saved spot is the window's horizontal CENTRE and its BOTTOM edge, in physical
+/// pixels: the bar grows upward from the taskbar and widens around its middle.
+/// Older files held the left edge (`x`) of a window that was 580 logical pixels wide.
+fn load_saved(app: &AppHandle, scale: f64) -> Option<(i32, i32)> {
     let text = std::fs::read_to_string(position_file(app)?).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-    Some((
-        v.get("x")?.as_i64()? as i32,
-        v.get("bottom")?.as_i64()? as i32,
-    ))
+    let bottom = v.get("bottom")?.as_i64()? as i32;
+    let cx = match v.get("cx").and_then(serde_json::Value::as_i64) {
+        Some(cx) => cx as i32,
+        None => v.get("x")?.as_i64()? as i32 + (580.0 * scale / 2.0) as i32,
+    };
+    Some((cx, bottom))
 }
 
 fn save_position(app: &AppHandle, w: &WebviewWindow) {
@@ -90,7 +93,10 @@ fn save_position(app: &AppHandle, w: &WebviewWindow) {
     else {
         return;
     };
-    let json = serde_json::json!({ "x": pos.x, "bottom": pos.y + size.height as i32 });
+    let json = serde_json::json!({
+        "cx": pos.x + size.width as i32 / 2,
+        "bottom": pos.y + size.height as i32,
+    });
     let _ = std::fs::write(file, json.to_string());
 }
 
@@ -107,10 +113,10 @@ fn work_area_at(app: &AppHandle, x: i32, y: i32) -> Option<tauri::PhysicalRect<i
 fn place_bar(app: &AppHandle, w: &WebviewWindow) {
     let Ok(size) = w.outer_size() else { return };
     let (width, height) = (size.width as i32, size.height as i32);
-    if let Some((x, bottom)) = load_saved(app) {
+    if let Some((cx, bottom)) = load_saved(app, w.scale_factor().unwrap_or(1.0)) {
         // Still visible on some monitor? Check the window's middle.
-        if work_area_at(app, x + width / 2, bottom - height / 2).is_some() {
-            move_to(w, x, bottom - height);
+        if work_area_at(app, cx, bottom - height / 2).is_some() {
+            move_to(w, cx - width / 2, bottom - height);
             return;
         }
     }
@@ -146,8 +152,15 @@ pub(crate) fn resize_keeping_anchor(w: &WebviewWindow, width_logical: f64, heigh
         area.is_none_or(|a| pos.y + old_h / 2 > a.position.y + a.size.height as i32 / 2);
     LAST_OWN_MOVE.store(now_ms(), Ordering::SeqCst);
     let _ = w.set_size(LogicalSize::new(width_logical, height_logical));
-    if lower_half {
-        move_to(w, pos.x, pos.y + old_h - new_h);
+    // The bar widens and narrows around its middle, so it stays centred.
+    let x = pos.x + (old.width as i32 - new_w) / 2;
+    let y = if lower_half {
+        pos.y + old_h - new_h
+    } else {
+        pos.y
+    };
+    if x != pos.x || y != pos.y {
+        move_to(w, x, y);
     }
 }
 
