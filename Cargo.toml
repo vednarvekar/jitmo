@@ -26,3 +26,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tracing = "0.1"
+
+# Keep the build folder (target/) small: full debug symbols for every dependency made it
+# 28 GB. Line tables keep backtraces readable; dependencies get no debug info at all.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

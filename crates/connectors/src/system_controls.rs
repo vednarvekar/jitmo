@@ -193,48 +193,180 @@ fn first_number(t: &str) -> Option<u32> {
     digits.parse().ok().map(|n: u32| n.min(100))
 }
 
-/// "turn the volume down", "louder", "set brightness to 40", "mute", "dim the screen".
+/// Number words: "fifty", "thirty five", "a hundred".
+fn word_number(words: &[&str]) -> Option<u32> {
+    let one = |w: &str| -> Option<u32> {
+        Some(match w {
+            "zero" => 0,
+            "one" => 1,
+            "two" => 2,
+            "three" => 3,
+            "four" => 4,
+            "five" => 5,
+            "six" => 6,
+            "seven" => 7,
+            "eight" => 8,
+            "nine" => 9,
+            "ten" => 10,
+            "fifteen" => 15,
+            "twenty" => 20,
+            "thirty" => 30,
+            "forty" => 40,
+            "fifty" => 50,
+            "sixty" => 60,
+            "seventy" => 70,
+            "eighty" => 80,
+            "ninety" => 90,
+            "hundred" => 100,
+            _ => return None,
+        })
+    };
+    let mut total = None;
+    for w in words {
+        if let Some(n) = one(w) {
+            // "thirty five": tens then a unit.
+            total = Some(match total {
+                Some(t) if t >= 20 && t % 10 == 0 && n < 10 => t + n,
+                _ => n,
+            });
+        }
+    }
+    total.map(|n: u32| n.min(100))
+}
+
+/// True when `a` and `b` differ by at most one inserted, deleted or changed letter.
+fn within_one(a: &str, b: &str) -> bool {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    if a.len().abs_diff(b.len()) > 1 {
+        return false;
+    }
+    let (mut i, mut j, mut edits) = (0, 0, 0);
+    while i < a.len() && j < b.len() {
+        if a[i] == b[j] {
+            i += 1;
+            j += 1;
+            continue;
+        }
+        edits += 1;
+        if edits > 1 {
+            return false;
+        }
+        match a.len().cmp(&b.len()) {
+            std::cmp::Ordering::Greater => i += 1,
+            std::cmp::Ordering::Less => j += 1,
+            std::cmp::Ordering::Equal => {
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    edits + (a.len() - i) + (b.len() - j) <= 1
+}
+
+/// "turn the volume down", "louder", "set brightness to 40", "volume 50", "mute",
+/// "dim the screen", "vol up", "max volume", "its too loud", "volume badha do".
+/// Small typos in the keywords are tolerated; negative numbers are refused.
 pub fn parse_adjust(text: &str) -> Option<(Target, Op)> {
     let t = text.to_lowercase();
+    // A minus sign is not a level ("set volume to -10"): ask instead of guessing.
+    if t.contains("-1")
+        || t.contains("-2")
+        || t.contains("-3")
+        || t.contains("-4")
+        || t.contains("-5")
+        || t.contains("-6")
+        || t.contains("-7")
+        || t.contains("-8")
+        || t.contains("-9")
+        || t.contains("-0")
+    {
+        let negative = t.split_whitespace().any(|w| {
+            w.strip_prefix('-')
+                .is_some_and(|r| r.chars().next().is_some_and(|c| c.is_ascii_digit()))
+        });
+        if negative {
+            return None;
+        }
+    }
     let words: Vec<&str> = t
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
         .collect();
     let has = |w: &[&str]| words.iter().any(|x| w.contains(x));
-    let target = if has(&[
+    // A keyword the user may have mistyped by one letter (words of 5+ letters only).
+    let near = |w: &[&str]| {
+        words
+            .iter()
+            .any(|x| x.len() >= 5 && w.iter().any(|k| k.len() >= 5 && within_one(x, k)))
+    };
+    let brightness_word = has(&[
         "brightness",
         "brighter",
         "dim",
         "dimmer",
         "darker",
         "screen",
-    ]) {
+    ]) || near(&["brightness"]);
+    let volume_word = has(&[
+        "volume", "vol", "louder", "quieter", "softer", "mute", "mutee", "mutte", "unmute",
+        "sound", "audio", "awaaz", "awaz", "loud",
+    ]) || near(&["volume", "louder", "quieter", "unmute"]);
+    let up_word = has(&[
+        "up", "raise", "increase", "higher", "louder", "brighter", "more", "badha", "badhao",
+        "zyada", "tez", "max", "maximum", "full",
+    ]) || near(&["increase", "louder", "brighter"]);
+    let down_word = has(&[
+        "down", "lower", "decrease", "quieter", "softer", "dim", "dimmer", "darker", "less",
+        "reduce", "kam", "kamm", "dheere", "halka", "min", "minimum",
+    ]) || near(&["decrease", "quieter", "softer", "dimmer", "darker"]);
+    // "too loud" turns it down; "cant hear" / "too quiet" / "too low" turns it up.
+    let too_loud =
+        has(&["loud"]) && (has(&["too", "so", "very", "its", "it's"]) || words.len() <= 3);
+    let cant_hear = t.contains("can't hear")
+        || t.contains("cant hear")
+        || t.contains("cannot hear")
+        || (has(&["quiet", "low", "soft"]) && has(&["too", "so", "very"]));
+
+    let target = if brightness_word {
         Target::Brightness
-    } else if has(&[
-        "volume", "louder", "quieter", "softer", "mute", "unmute", "sound", "audio",
-    ]) {
+    } else if volume_word || cant_hear || too_loud || up_word || down_word {
+        // "turn it up": the router already chose this skill, so volume is the default.
         Target::Volume
     } else {
         return None;
     };
-    let n = first_number(&t);
-    let op = if has(&["unmute"]) {
+    if !volume_word && !brightness_word && !cant_hear && !too_loud && !has(&["it", "this", "that"])
+    {
+        return None;
+    }
+    // Two different targets in one sentence ("volume 50 and brightness 30"): ask.
+    if brightness_word
+        && volume_word
+        && !has(&["screen"])
+        && words.iter().filter(|w| **w == "and").count() > 0
+    {
+        return None;
+    }
+    let n = first_number(&t).or_else(|| word_number(&words));
+    let op = if has(&["unmute"]) || near(&["unmute"]) {
         Op::Unmute
-    } else if has(&["mute", "silence"]) && target == Target::Volume {
+    } else if has(&["mute", "mutee", "mutte", "silence"]) && target == Target::Volume {
         Op::Mute
+    } else if has(&["max", "maximum", "full"]) && n.is_none() {
+        Op::Set(100)
+    } else if cant_hear {
+        Op::Up(STEP)
+    } else if too_loud {
+        Op::Down(STEP)
     } else if let (Some(n), true) = (n, t.contains(" to ") || has(&["set", "at"])) {
         Op::Set(n)
-    } else if has(&[
-        "up", "raise", "increase", "higher", "louder", "brighter", "more",
-    ]) {
+    } else if up_word {
         Op::Up(n.unwrap_or(STEP))
-    } else if has(&[
-        "down", "lower", "decrease", "quieter", "softer", "dim", "dimmer", "darker", "less",
-        "reduce",
-    ]) {
+    } else if down_word {
         Op::Down(n.unwrap_or(STEP))
     } else {
-        return None;
+        // "volume 50": a level with no verb. No number either: ask, do not guess.
+        Op::Set(n?)
     };
     Some((target, op))
 }
@@ -583,6 +715,36 @@ mod tests {
             None,
             "no direction: ask, do not guess"
         );
+    }
+
+    #[test]
+    fn looser_volume_phrasing_typos_and_number_words_are_understood() {
+        use Op::*;
+        use Target::*;
+        for (text, want) in [
+            ("volume 50", (Volume, Set(50))),
+            ("brightness 40", (Brightness, Set(40))),
+            ("volume to fifty", (Volume, Set(50))),
+            ("volume to thirty five", (Volume, Set(35))),
+            ("vol up", (Volume, Up(10))),
+            ("turn the volme down", (Volume, Down(10))),
+            ("volumee down", (Volume, Down(10))),
+            ("brightnes 40", (Brightness, Set(40))),
+            ("mutee", (Volume, Mute)),
+            ("max volume", (Volume, Set(100))),
+            ("its too loud", (Volume, Down(10))),
+            ("i cant hear anything", (Volume, Up(10))),
+            ("turn it up", (Volume, Up(10))),
+            ("volume badha do", (Volume, Up(10))),
+            ("awaaz kam karo", (Volume, Down(10))),
+        ] {
+            assert_eq!(parse_adjust(text), Some(want), "{text}");
+        }
+        // Refused rather than guessed: a minus sign, two targets, no direction.
+        assert_eq!(parse_adjust("set volume to -10"), None);
+        assert_eq!(parse_adjust("volume 50 and brightness 30"), None);
+        assert_eq!(parse_adjust("what is the capital of peru"), None);
+        assert!(within_one("volme", "volume") && !within_one("vol", "volume"));
     }
 
     #[test]
