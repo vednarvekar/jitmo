@@ -93,7 +93,7 @@ fn main() {
             }
             sound::set_enabled(store.get_setting("bar_sounds")?.as_deref() != Some("off"));
             sound::warm_up();
-            scheduler::start_reminder_scheduler(db_path.clone(), key);
+            scheduler::start_reminder_scheduler(db_path.clone(), key, app.handle().clone());
             let hotkey = store
                 .get_setting("hotkey")?
                 .unwrap_or_else(|| DEFAULT_HOTKEY.to_string());

@@ -110,7 +110,9 @@ export function isAnswering(s: BarState): boolean {
   return s.phase === "asking";
 }
 
-/** Should losing focus close the bar? Not while a task needs the user. */
+/** Should losing focus close the bar? Everywhere except while a task is running (its answer
+ *  would be lost). A question or confirm that is left open is cancelled when the bar closes
+ *  (see `closeBar` in App), so clicking away never leaves the engine waiting. */
 export function hideOnBlur(s: BarState): boolean {
-  return s.phase === "idle" || s.phase === "done" || s.phase === "failed";
+  return s.phase !== "working";
 }

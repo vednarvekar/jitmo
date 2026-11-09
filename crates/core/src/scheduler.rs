@@ -8,6 +8,9 @@ use jitmo_store::{Reminder, Store, StoreError};
 
 /// How late a reminder may be and still count as on time.
 const ON_TIME_SECONDS: i64 = 300;
+/// A notification Windows refused is tried again on the next checks for this long, then
+/// given up on (so a broken notifier can never loop a reminder for ever).
+const RETRY_SECONDS: i64 = 120;
 
 /// What to show for a reminder. `late` is true if the app was closed when it was due.
 pub struct Notice {
@@ -88,6 +91,14 @@ pub fn fire_due_with(
         };
         if !notify(&notice_for(r, late)) {
             eprintln!("could not show the notification for reminder {}", r.id);
+            // Still inside the retry window: leave it due, the next check tries again.
+            let waited = match (now, parse_utc(&r.due_at)) {
+                (Some(n), Some(d)) => n - d,
+                _ => i64::MAX,
+            };
+            if waited <= RETRY_SECONDS {
+                continue;
+            }
         }
         let following = r
             .repeat
@@ -157,17 +168,32 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_notification_still_marks_it_done_so_it_cannot_loop() {
+    fn a_refused_notification_is_retried_for_two_minutes_then_given_up_on() {
         let s = Store::open_in_memory().unwrap();
         s.add_reminder("2026-11-08T12:00:00Z", "x").unwrap();
-        assert_eq!(
-            fire_due(&s, "2026-11-08T12:00:01Z", &mut |_| false).unwrap(),
-            1
-        );
-        assert_eq!(
-            fire_due(&s, "2026-11-08T12:00:02Z", &mut |_| false).unwrap(),
-            0
-        );
+        // Refused at once: still due, so the next checks try again.
+        for t in [
+            "2026-11-08T12:00:01Z",
+            "2026-11-08T12:00:30Z",
+            "2026-11-08T12:01:59Z",
+        ] {
+            assert_eq!(fire_due(&s, t, &mut |_| false).unwrap(), 1, "{t}");
+            assert_eq!(s.pending_reminders().unwrap().len(), 1, "{t}");
+        }
+        // A later try works: shown once, done.
+        let mut shown = 0;
+        fire_due(&s, "2026-11-08T12:01:59Z", &mut |_| {
+            shown += 1;
+            true
+        })
+        .unwrap();
+        assert_eq!(shown, 1);
+        assert!(s.pending_reminders().unwrap().is_empty());
+
+        // Refused for longer than the window: given up on, never looped.
+        s.add_reminder("2026-11-08T13:00:00Z", "y").unwrap();
+        fire_due(&s, "2026-11-08T13:03:00Z", &mut |_| false).unwrap();
+        assert!(s.pending_reminders().unwrap().is_empty());
     }
 
     fn london(rule: &str, due: &str, now: &str) -> Option<String> {

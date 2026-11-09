@@ -94,8 +94,8 @@ describe("auto-hide and focus rules", () => {
     expect(hideOnBlur({ phase: "idle" })).toBe(true);
     expect(hideOnBlur({ phase: "done", id: 1, message: "ok", undoable: false })).toBe(true);
     expect(hideOnBlur({ phase: "working", id: 1 })).toBe(false);
-    expect(hideOnBlur({ phase: "confirm", id: 1, text: "Send?", shownAt: 0 })).toBe(false);
-    expect(hideOnBlur({ phase: "choice", id: 1, question: "Which?", choices: [] })).toBe(false);
+    expect(hideOnBlur({ phase: "confirm", id: 1, text: "Send?", shownAt: 0 })).toBe(true);
+    expect(hideOnBlur({ phase: "choice", id: 1, question: "Which?", choices: [] })).toBe(true);
   });
 });
 
@@ -137,10 +137,10 @@ describe("free-text question (asking)", () => {
     expect(reduce(s, core(ask))).toBe(s);
   });
 
-  it("never closes the bar by itself or on losing focus while a question is open", () => {
+  it("never closes the bar by itself while a question is open; clicking away does (and cancels it)", () => {
     const s: BarState = { phase: "asking", id: 7, question: "Which song?", hint: "" };
     expect(autoHideMs(s)).toBeNull();
-    expect(hideOnBlur(s)).toBe(false);
+    expect(hideOnBlur(s)).toBe(true);
   });
 
   it("the input takes typing as an answer, not as a new request", () => {

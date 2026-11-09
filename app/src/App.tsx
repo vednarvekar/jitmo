@@ -74,6 +74,13 @@ export default function App() {
   const closeBar = useCallback(() => {
     if (closing.current) return;
     closing.current = true;
+    // Closing with a question, confirm or choice still open cancels it, so the engine is
+    // never left waiting for an answer nobody can give.
+    const open = stateRef.current;
+    if (["confirm", "choice", "asking"].includes(open.phase)) {
+      const id = currentId(open);
+      if (id !== null) bridge.cancel(id);
+    }
     bridge.barSound("close");
     setAnim("out");
     setTimeout(() => bridge.hideBar(), POP_DOWN_MS);
@@ -105,6 +112,16 @@ export default function App() {
         playIn();
       }),
       bridge.onBarClose(closeBar),
+      // A timer or reminder came due: show it as a result, unless the user is in the middle
+      // of something (a running task, a question or a confirm), which must not be replaced.
+      bridge.onBarNotice((message) => {
+        if (!["idle", "done", "failed"].includes(stateRef.current.phase)) return;
+        dispatch({
+          type: "core",
+          event: { type: "done", id: 0, message, undoable: false },
+          now: Date.now(),
+        });
+      }),
       bridge.onBarBlurred(() => {
         if (Date.now() < dragUntil.current) return;
         if (hideOnBlur(stateRef.current)) closeBar();
@@ -187,8 +204,12 @@ export default function App() {
         inputRef.current?.focus();
       } else if (e.key === "Escape") {
         e.preventDefault();
-        const busy = ["working", "confirm", "choice", "asking"].includes(s.phase);
-        if (id !== null && busy) {
+        if (s.phase === "working") {
+          // A running action cannot be interrupted half-way, but Esc must never feel dead:
+          // ask the engine to stop before its next step and put the bar away.
+          if (id !== null) bridge.cancel(id);
+          closeBar();
+        } else if (id !== null && ["confirm", "choice", "asking"].includes(s.phase)) {
           bridge.cancel(id);
         } else {
           closeBar();

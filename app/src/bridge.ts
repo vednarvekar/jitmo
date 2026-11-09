@@ -48,6 +48,10 @@ export const resizeBar = (height: number, width: number) =>
 export const onCoreEvent = (cb: (e: CoreEvent) => void): Promise<UnlistenFn> =>
   listen<CoreEvent>("core-event", (e) => cb(e.payload));
 
+/** A message nobody asked for: a timer or reminder came due. */
+export const onBarNotice = (cb: (message: string) => void): Promise<UnlistenFn> =>
+  listen<string>("bar-notice", (e) => cb(e.payload));
+
 export const onBarShown = (cb: () => void): Promise<UnlistenFn> => listen("bar-shown", () => cb());
 
 /** The bar window lost focus (the user clicked elsewhere). */

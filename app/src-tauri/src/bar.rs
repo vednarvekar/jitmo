@@ -219,6 +219,36 @@ pub(crate) fn create_bar(app: &AppHandle) {
     }
 }
 
+/// Show the bar with a message nobody asked for (a timer or reminder that came due).
+/// An existing window is shown without taking keyboard focus, so typing in another app is
+/// not swallowed by the bar. Runs on the caller's thread and waits for the page to be up.
+pub(crate) fn show_notice(app: &AppHandle, text: &str) {
+    let existing = app.get_webview_window(BAR);
+    let visible = existing
+        .as_ref()
+        .is_some_and(|w| w.is_visible().unwrap_or(false));
+    if !visible {
+        match &existing {
+            Some(w) => {
+                app.state::<AppState>()
+                    .visibility
+                    .fetch_add(1, Ordering::SeqCst); // cancels the destroy timer
+                place_bar(app, w);
+                let _ = w.show();
+                announce_shown(app);
+                std::thread::sleep(Duration::from_millis(700));
+            }
+            None => {
+                // The web view was destroyed after a minute of rest: build it again and
+                // wait for the page to draw.
+                create_bar(app);
+                std::thread::sleep(Duration::from_millis(4_000));
+            }
+        }
+    }
+    let _ = app.emit("bar-notice", text);
+}
+
 pub(crate) fn toggle(app: &AppHandle) {
     if !app
         .get_webview_window(BAR)
