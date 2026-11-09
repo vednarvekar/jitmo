@@ -5,6 +5,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+# `cargo run -p jitmo-testset-runner` (as CI runs it) runs the test-set runner, not the audit.
+default-run = "jitmo-testset-runner"
 
 [dependencies]
 jitmo-connectors = { path = "../connectors" }

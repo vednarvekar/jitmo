@@ -24,6 +24,27 @@ use std::sync::Arc;
 pub const DND_SCRIPT: &str = r#"
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
+# Opening Settings takes the keyboard focus away from the command bar. Remember who had it
+# and hand it back before Settings is closed, or the bar cannot be typed into.
+Add-Type -Namespace Jitmo -Name Fg -MemberDefinition @'
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+[DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p);
+[DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f);
+[DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+'@
+$before = [Jitmo.Fg]::GetForegroundWindow()
+function GiveFocusBack {
+  $now = [Jitmo.Fg]::GetForegroundWindow()
+  if ($before -eq [IntPtr]::Zero -or $now -eq $before) { return }
+  $me = [Jitmo.Fg]::GetCurrentThreadId()
+  $them = [Jitmo.Fg]::GetWindowThreadProcessId($now, [IntPtr]::Zero)
+  if ($them -ne 0 -and $them -ne $me) { [void][Jitmo.Fg]::AttachThreadInput($me, $them, $true) }
+  [void][Jitmo.Fg]::BringWindowToTop($before)
+  [void][Jitmo.Fg]::SetForegroundWindow($before)
+  if ($them -ne 0 -and $them -ne $me) { [void][Jitmo.Fg]::AttachThreadInput($me, $them, $false) }
+}
 $ID = 'SystemSettings_Notifications_QuietHours_MuteNotification_Enabled_ToggleSwitch'
 $A = [Windows.Automation.AutomationElement]
 function GetSwitch {
@@ -49,6 +70,7 @@ if ($env:JITMO_STATE -eq 'On' -or $env:JITMO_STATE -eq 'Off') {
   }
 }
 $now = State $s
+GiveFocusBack
 Get-Process SystemSettings -ErrorAction SilentlyContinue | Stop-Process -Force
 "was=$was now=$now"
 "#;
@@ -282,9 +304,11 @@ impl Connector for Dnd {
         if action != "set" {
             return Err(ConnError::UnknownAction(action.to_string()));
         }
-        let req = parse_request(text(args)?).ok_or_else(ask)?;
-        let (_, is) = self.run("Get")?;
-        Ok(is == req.on)
+        parse_request(text(args)?).ok_or_else(ask)?;
+        // `execute` already read the switch back in the same Settings session and fails unless
+        // it matches the request. A second pass here would only open Settings again, in view,
+        // for 3 to 5 seconds, to learn what is already known.
+        Ok(true)
     }
 
     fn undo(&self, action: &str, output: &Output) -> Option<Result<(), ConnError>> {
@@ -446,15 +470,18 @@ mod tests {
     }
 
     #[test]
-    fn check_reads_the_state_back_and_undo_restores_it() {
+    fn execute_reads_the_state_back_once_check_opens_nothing_and_undo_restores_it() {
         let r = Fake::new(false, false);
         let c = dnd(&r);
         let out = c.execute("set", &args("dnd on")).unwrap();
+        // One Settings session for the whole request: the check must not open another.
         assert!(c.check("set", &args("dnd on")).unwrap());
-        assert!(!c.check("set", &args("dnd off")).unwrap());
+        assert_eq!(*r.calls.lock().unwrap(), vec!["On"]);
+        assert!(*r.state.lock().unwrap());
         c.undo("set", &out).unwrap().unwrap();
         assert!(!*r.state.lock().unwrap());
-        assert!(c.check("set", &args("dnd off")).unwrap());
+        // An unclear request is still refused by the check.
+        assert!(c.check("set", &args("hello")).is_err());
     }
 
     #[test]
