@@ -3,7 +3,7 @@
 #   cargo build --release -p jitmo-model-worker
 #   powershell -File tools/perf/measure_worker_memory.ps1 [-Exe target\release\jitmo-model-worker.exe]
 #
-# Needs models/router and models/extractor (see crates/model-worker/README.md).
+# Needs models/router and models/ner (see crates/model-worker/README.md).
 param(
     [string]$Exe = "target\release\jitmo-model-worker.exe",
     [string]$Models = "models\router",
@@ -58,7 +58,7 @@ $r = $sentences | Select-Object -First 30 | ForEach-Object { (Call $p understand
 "  understand: " + (Stats $r)
 
 $first = Call $p extract $sentences[0]
-"first extract (loads GLiNER):   {0:N0} ms" -f $first.Ms
+"first extract (loads the NER model): {0:N0} ms" -f $first.Ms
 "extractor loaded:               " + (Mem $p)
 $e = $sentences | ForEach-Object { (Call $p extract $_).Ms }
 "after $($sentences.Count) extract calls:      " + (Mem $p)

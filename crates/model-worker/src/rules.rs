@@ -6,8 +6,8 @@
 //! kept deliberately close to the Python so the two can be compared sentence by
 //! sentence (`tools/extractor/extractor_parity.json`). The rules generalise well for
 //! date/time/duration/number/setting/app and for contacts and apps from closed
-//! lists; open-ended spans (query, media, message, event, file) are weak, which
-//! is why the GLiNER model is consulted for them (see `gliner.rs`).
+//! lists; open-ended spans (query, media, message, event, file) are weak. These rules are
+//! the fallback when the NER model (`ner.rs`) is not installed.
 //!
 //! Spans use the spike's type names (`file`, `message`, ...); [`to_slot_span`]
 //! turns them into the slot types skills use (`file_ref`, ...).
@@ -37,7 +37,7 @@ impl Ent {
     }
 }
 
-/// A span the GLiNER model proposed (already mapped from its label to a type name).
+/// A span a model proposed (type name already mapped from its label).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModelEnt {
     pub kind: &'static str,
@@ -993,7 +993,7 @@ pub fn extract_v2(text: &str, raw: &[ModelEnt], threshold: f32, gaz: &Gazetteer)
     crate::refine::refine(text, extract(text, raw, threshold, gaz), raw, gaz)
 }
 
-/// Rules only (no model): what is needed to fill slots without loading GLiNER.
+/// Rules only (no model): what fills slots when the NER model is not installed.
 pub fn extract_rules(text: &str, gaz: &Gazetteer) -> Vec<Ent> {
     extract_v2(text, &[], 0.3, gaz)
 }

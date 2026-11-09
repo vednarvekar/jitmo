@@ -41,7 +41,7 @@ impl RouterEngine {
         Self::load_with(dir, None)
     }
 
-    /// `extractor_dir` overrides where the extractor model is looked for (it is
+    /// `extractor_dir` overrides where the NER model folder is looked for (it is
     /// not loaded until a request needs it).
     pub fn load_with(
         dir: &Path,
@@ -280,6 +280,28 @@ mod tests {
         assert!(!u.chained);
         let u = top(&mut e, "pause the music");
         assert_eq!(u.tasks[0].id, "A3");
+    }
+
+    #[test]
+    fn extract_uses_the_apps_and_contacts_from_the_context() {
+        let Some(mut e) = engine() else {
+            return;
+        };
+        let ctx = ContextNote {
+            contacts: vec!["Zoya Khan".into()],
+            apps: vec!["Obsidian".into()],
+            ..ContextNote::default()
+        };
+        // With the NER model or without it (rules fallback), the closed lists decide these.
+        let spans = e.extract("open obsidian", None, &ctx).unwrap();
+        assert!(spans.iter().any(|s| s.kind == "app"), "{spans:?}");
+        let spans = e.extract("send it to zoya khan", None, &ctx).unwrap();
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.kind == "contact" && s.text.eq_ignore_ascii_case("zoya khan")),
+            "{spans:?}"
+        );
     }
 
     #[test]

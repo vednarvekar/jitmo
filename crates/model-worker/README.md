@@ -4,29 +4,36 @@ Separate model process (no network): Tier 0 router and extractor.
 
 ## Model files (not in git)
 
-`models/` is git-ignored. For development, copy the files from the spike folders:
+`models/` is git-ignored.
 
-- Router: `models/router/` needs `model_int8.onnx`, `tokenizer.json`, `head.json`.
-- Extractor: populate `models/extractor/` from `spikes/sp2-extractor/models/gliner_small_onnx/`:
-  copy `onnx/model_int8.onnx` (as `model_int8.onnx`), `tokenizer.json` and `gliner_config.json`.
-  To keep the files elsewhere, set `JITMO_EXTRACTOR_DIR` (or pass `--extractor DIR` to the worker).
-  Without the files the extractor falls back to rules only, and the model tests skip with a message.
+- Router: `models/router/` needs `model_int8.onnx`, `tokenizer.json`, `head.json` (see `models-src/router/README.md`).
+- Extractor (NER): `models/ner/` needs `model_int8.onnx` (about 23 MB), `tokenizer.json` and `labels.json`. Reproduce them with the
+  commands in `tools/extractor_ner/README.md` (generate corpus, fine-tune MiniLM-L6, `export_onnx.py --out ../../models/ner`).
+  To keep the files elsewhere, set `JITMO_NER_DIR` (or pass `--extractor DIR` to the worker). The app finds `models/ner` next to
+  `jitmo-model-worker.exe`, so ship the folder beside the worker.
+  Without the files the extractor falls back to the rules only (a warning is logged, never an error), and the model tests skip with a message.
+- CI (`.github/workflows/ci.yml`) has no model files: router and NER tests skip, the testset runner uses fake connectors and no worker,
+  so nothing needs to change there. If a CI job should score the extractor, restore `models/ner` (cache or release asset) and run
+  `cargo test -p jitmo-model-worker --release --test split_eval -- --ignored`.
 
 ## Extractor
 
-`rules.rs` (pure Rust: dates, times, durations, numbers, settings, closed lists, sentence frames; a port of
-the SP2 spike, kept so it can be checked against the Python), `refine.rs` (second rule pass: more frames
-for query, media, message, event and file, a shared tail-trimming step, small repairs; this is what the
-worker runs after the first pass) plus `gliner.rs` (GLiNER-small int8 on ONNX Runtime). The model is loaded
-on the first `Extract` request only, and goes away when the worker exits after idle. The Python parity test
-checks the first pass alone (`LazyExtractor::extract_classic`); the shipped path is `LazyExtractor::extract`
-(`rules::extract_v2`).
+`ner.rs` is the shipped extractor: a MiniLM-L6 BIO tagger (int8 ONNX on ONNX Runtime) that tags the slot spans
+(app, contact, date_time, duration, event, file, folder, media, message, number, place, query, setting, website). It is loaded on the
+first `Extract` request only and goes away when the worker exits after idle. `extractor.rs` (`LazyExtractor`) runs it and applies the
+closed-list correction from the apps and contacts the app passes in the context (a span containing a known name becomes that app or
+contact, snapped to the name). If the model folder is missing or fails to load, `rules.rs` (dates, times, durations, numbers, settings,
+closed lists, sentence frames) and `refine.rs` (second rule pass) answer instead (`rules::extract_v2`).
+Span kinds map to skill slot types in `rules::to_slot_span` (`file` becomes `file_ref`; `message` and `query` are turned into `text`
+by Core for a free-text slot); all other names are used as they are.
 
-Tuning data: `tools/extractor/dev_set.txt` and `dev2_set.txt` (written for tuning; the SP2 `fresh.txt` is the
-blind set and is only scored, never tuned on). Compare configurations with
-`cargo test -p jitmo-model-worker --release --test ablate -- --ignored --nocapture` (`SETS=dev_set.txt,fresh.txt`),
-look at single sentences with `TEXT="a|b" cargo test -p jitmo-model-worker --release --test show_one -- --ignored --nocapture`,
-and sweep GLiNER label wording and per-type thresholds with `--test extractor_model sweep_gliner`. The Python reference outputs are in
-`tools/extractor/extractor_reference.json` and `tools/extractor/extractor_parity.json` (regenerate with
-`tools/extractor/dump_reference.py`). Score it with
-`cargo test -p jitmo-model-worker --release --test extractor_model eval_sp2 -- --ignored --nocapture`.
+Numbers (D33): on the SP2 `fresh.txt` split (DEV = odd lines, TEST = even lines) sentence-exact DEV 94% / TEST 86%, about 3 ms
+per request and about 95 MB for the whole worker with the extractor loaded.
+
+Score and compare combinations through the real path with
+`cargo test -p jitmo-model-worker --release --test split_eval -- --ignored --nocapture` (options in the file header; `MODES=rules,ner,ner+lists,...`).
+The self-written sets `tools/extractor/dev_set.txt` to `dev5_set.txt` are sanity checks only (the rules were tuned on them): `OWN_SET=dev4_set.txt`.
+Look at single sentences with `TEXT="a|b" cargo test -p jitmo-model-worker --release --test show_one -- --ignored --nocapture`.
+Model-loading tests must not share a process with the router unit tests (one ONNX environment per process): the router tests share
+one engine inside the library test binary, `tests/extractor_ner.rs` shares one static environment, `tests/ner_eval.rs` and
+`tests/split_eval.rs` are their own binaries.

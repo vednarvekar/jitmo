@@ -19,6 +19,6 @@ pub use server::{serve, Exit};
 #[cfg(feature = "models")]
 pub mod extractor;
 #[cfg(feature = "models")]
-pub mod gliner;
+pub mod ner;
 #[cfg(feature = "models")]
 pub mod router;

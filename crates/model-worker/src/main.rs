@@ -4,8 +4,9 @@
 //! - `--idle-secs N`  exit after N seconds without a request (default 300, 0 = never)
 //! - `--models DIR`   folder with the router files (else `JITMO_MODELS`, else
 //!   `models/router` next to the program, else `./models/router`)
-//! - `--extractor DIR` folder with the extractor model (else `JITMO_EXTRACTOR_DIR`, else
-//!   `models/extractor` next to the program, else `./models/extractor`); loaded on first use
+//! - `--extractor DIR` folder with the extractor (NER) model (else `JITMO_NER_DIR`, else
+//!   `models/ner` next to the program, else `./models/ner`); loaded on first use, and without it
+//!   the extractor uses the rules only
 //! - `--engine test`  the crash/hang test engine (for process tests)
 //!
 //! If the models cannot be loaded the process exits with code 2 and Core falls

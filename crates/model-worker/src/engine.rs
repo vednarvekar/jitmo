@@ -8,7 +8,7 @@ pub trait Engine {
     fn understand(&mut self, text: &str, context: &ContextNote) -> Result<Understanding, String>;
 
     /// Slot spans for a request whose task is already chosen. The default uses the
-    /// rules alone (no model); the real engine adds GLiNER, loaded on first use.
+    /// rules alone (no model); the real engine uses the NER model, loaded on first use.
     fn extract(
         &mut self,
         text: &str,
