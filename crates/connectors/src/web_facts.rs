@@ -339,7 +339,7 @@ const WIKIDATA_API: &str = "https://www.wikidata.org/w/api.php";
 const WIKIDATA_CREDIT: &str = "(Wikidata, CC0)";
 /// How many entity candidates are looked at, and how many get their claims read.
 const SEARCH_LIMIT: usize = 12;
-const CLAIM_CANDIDATES: usize = 7;
+const CLAIM_CANDIDATES: usize = 6;
 
 struct Candidate {
     id: String,
@@ -363,34 +363,29 @@ impl FactSource for WikidataFacts {
     fn fact(&self, http: &dyn Http, subject: &str) -> Result<String, HttpError> {
         let q = parse_question(subject);
         let relation = q.relation.ok_or(HttpError::NotFound)?;
-        let cands: Vec<Candidate> = self
-            .search(http, &q.entity)?
-            .into_iter()
+        let cands = self.search(http, &q.entity)?;
+        // Which candidates have an English article (a cheap notability test).
+        // If that check itself fails, every candidate is accepted.
+        let ids: Vec<&str> = cands.iter().map(|c| c.id.as_str()).collect();
+        let linked = linked_to_enwiki(http, &ids).ok();
+        let cands: Vec<&Candidate> = cands
+            .iter()
+            .filter(|c| linked.as_ref().is_none_or(|l| l.contains(&c.id)))
             .take(CLAIM_CANDIDATES)
             .collect();
-        // In one parallel round: which candidates have an English article (a
-        // cheap notability test), and each candidate's claims for the
-        // asked-for property. If the article check fails, every candidate is
-        // accepted.
-        let ids: Vec<&str> = cands.iter().map(|c| c.id.as_str()).collect();
-        let (linked, claim_sets) = std::thread::scope(|s| {
-            let links = s.spawn(|| linked_to_enwiki(http, &ids));
+        // Each candidate's claims for the asked-for property, in parallel.
+        let claim_sets: Vec<Result<Vec<Value>, HttpError>> = std::thread::scope(|s| {
             let handles: Vec<_> = cands
                 .iter()
                 .map(|c| s.spawn(move || claims_for(http, &c.id, relation)))
                 .collect();
-            let links = links.join().unwrap_or(Err(HttpError::NotFound));
-            let sets: Vec<Result<Vec<Value>, HttpError>> = handles
+            handles
                 .into_iter()
                 .map(|h| h.join().unwrap_or(Err(HttpError::NotFound)))
-                .collect();
-            (links.ok(), sets)
+                .collect()
         });
         let mut first_err: Option<HttpError> = None;
         for (cand, set) in cands.iter().zip(claim_sets) {
-            if linked.as_ref().is_some_and(|l| !l.contains(&cand.id)) {
-                continue;
-            }
             let list = match set {
                 Ok(l) => l,
                 Err(HttpError::NotFound) => continue,

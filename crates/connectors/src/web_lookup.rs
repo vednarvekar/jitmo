@@ -53,7 +53,7 @@ pub trait Http: Send + Sync {
 
 /// Identifies the app and a contact, as MET Norway and Wikimedia require.
 pub const USER_AGENT: &str =
-    "Jitmo/0.1 (+https://github.com/vednarvekar/jitmo; local assistant) ureq/3";
+    "Jitmo/0.1 (+https://github.com/vednarvekar/jitmo; local assistant bot) ureq/3";
 
 /// The real HTTP client: short timeouts, built-in Windows TLS.
 pub struct UreqHttp {
@@ -617,7 +617,13 @@ impl WebLookup {
                 Box::new(crate::web_weather::FmiEcmwfForecaster),
                 Box::new(NwsForecaster),
             ],
-            facts: vec![Box::new(WikipediaFacts), Box::new(WikipediaRestFacts)],
+            // Wikidata for relation questions, then smart Wikipedia; the two
+            // plain Wikipedia sources stay as outage fallbacks.
+            facts: vec![
+                Box::new(crate::web_facts::BestFacts),
+                Box::new(WikipediaFacts),
+                Box::new(WikipediaRestFacts),
+            ],
         }
     }
 
@@ -1363,7 +1369,11 @@ mod tests {
             out.0["message"],
             "Canberra is the capital city of Australia. It is located at the northern end of the Australian Capital Territory. (Wikipedia, CC BY-SA 4.0: https://en.wikipedia.org/wiki/Canberra)"
         );
-        assert!(seen.lock().unwrap()[0].contains("gsrsearch=capital%20of%20australia"));
+        // Some source asked Wikipedia for an intro extract, and no URL carries
+        // the user's whole sentence (PS3).
+        let seen = seen.lock().unwrap();
+        assert!(seen.iter().any(|u| u.contains("prop=extracts")));
+        assert!(seen.iter().all(|u| !u.to_lowercase().contains("what")));
     }
 
     #[test]
