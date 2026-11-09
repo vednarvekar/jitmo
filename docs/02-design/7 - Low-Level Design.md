@@ -68,7 +68,7 @@ slots:
     resolve: [named_contact, usual_contact]
   app: whatsapp
 confirm:
-  text: "Send {file.name} to {contact.name} on WhatsApp?"
+  text: "Send {file.name} to {contact.label} on WhatsApp?"
 steps:
   - connector: whatsapp_desktop
     action: open_chat

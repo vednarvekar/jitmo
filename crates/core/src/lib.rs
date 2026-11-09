@@ -4,6 +4,7 @@
 
 pub mod context;
 pub mod flow;
+pub mod known;
 pub mod policy;
 pub mod resolver;
 pub mod router;

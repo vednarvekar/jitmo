@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn send_without_confirm_is_rejected() {
         let yaml = SAMPLE.replace(
-            "confirm:\n  text: \"Send {file.name} to {contact.name} on WhatsApp?\"\n",
+            "confirm:\n  text: \"Send {file.name} to {contact.label} on WhatsApp?\"\n",
             "",
         );
         assert!(problems(&yaml)
@@ -396,7 +396,7 @@ mod tests {
 
     #[test]
     fn a_placeholder_for_a_missing_slot_is_rejected_everywhere() {
-        let confirm = SAMPLE.replace("{contact.name}", "{person.name}");
+        let confirm = SAMPLE.replace("{contact.label}", "{person.name}");
         assert!(problems(&confirm)
             .iter()
             .any(|m| m.contains("confirm text") && m.contains("{person.name}")));
@@ -412,7 +412,7 @@ mod tests {
 
     #[test]
     fn dotted_fields_are_allowed_in_confirms_and_args_but_not_in_examples() {
-        assert!(Skill::parse(SAMPLE).is_ok()); // uses {file.name}, {contact.name}, {file.path}
+        assert!(Skill::parse(SAMPLE).is_ok()); // uses {file.name}, {contact.label}, {file.path}
         let example = SAMPLE.replace(
             "send this file to ved on whatsapp",
             "send {file.name} to ved",
@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn an_unclosed_brace_is_rejected() {
         // Only the last placeholder of the confirm loses its closing brace.
-        let yaml = SAMPLE.replace("{contact.name} on WhatsApp", "{contact.name on WhatsApp");
+        let yaml = SAMPLE.replace("{contact.label} on WhatsApp", "{contact.label on WhatsApp");
         assert!(problems(&yaml)
             .iter()
             .any(|m| m.contains("confirm text") && m.contains("no closing")));

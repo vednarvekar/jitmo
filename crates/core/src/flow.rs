@@ -11,6 +11,7 @@
 //! The flow is synchronous. Anything that needs the user goes through
 //! [`Prompter`], which the service layer implements over the UI pipe.
 
+use crate::known::Known;
 use crate::policy::{self, Outcome, StepFacts};
 use crate::resolver::{self, ContextSource, NoContext, Resolution, SlotValue};
 use crate::router::{decide, RouteDecision, Router};
@@ -55,6 +56,9 @@ pub struct Flow {
     /// Overrides the policy's Undo window (tests).
     undo_window: Option<Duration>,
     context: Box<dyn ContextSource>,
+    /// Names of installed apps, asked for at each request (the list changes as apps
+    /// are installed). Empty until the app supplies one.
+    app_names: Box<dyn Fn() -> Vec<String> + Send>,
 }
 
 impl Flow {
@@ -71,6 +75,7 @@ impl Flow {
             last_undo: None,
             undo_window: None,
             context: Box::new(NoContext),
+            app_names: Box::new(Vec::new),
         }
     }
 
@@ -78,6 +83,29 @@ impl Flow {
     pub fn with_context(mut self, context: impl ContextSource + 'static) -> Self {
         self.context = Box::new(context);
         self
+    }
+
+    /// Where the names of installed apps come from. Asked at every request, so a
+    /// newly installed app is known at once. Used as a closed list for the router and
+    /// for `named_app`.
+    pub fn with_app_names(mut self, names: impl Fn() -> Vec<String> + Send + 'static) -> Self {
+        self.app_names = Box::new(names);
+        self
+    }
+
+    /// The closed lists for this request: installed apps and saved contacts.
+    fn known(&self) -> Known {
+        let mut apps = (self.app_names)();
+        apps.retain(|a| a.trim().chars().count() >= 2);
+        apps.sort_by_key(|a| a.to_lowercase());
+        apps.dedup_by_key(|a| a.to_lowercase());
+        Known {
+            apps,
+            contacts: self.store.contacts().unwrap_or_else(|e| {
+                eprintln!("could not read the contacts: {e}");
+                Vec::new()
+            }),
+        }
     }
 
     /// Replace the clock (tests).
@@ -207,7 +235,8 @@ impl Flow {
 
     fn run(&mut self, id: RequestId, text: &str, p: &mut dyn Prompter) -> CoreEvent {
         // 1. Route.
-        let understanding = self.router.route(text);
+        let known = self.known();
+        let understanding = self.router.route_with(text, &known.note());
         let skill_id = match decide(&understanding) {
             RouteDecision::Decline => return self.fail(id, text, None, "I can't do that yet."),
             RouteDecision::Chained => {
@@ -248,6 +277,7 @@ impl Flow {
             &skill,
             &understanding.spans,
             self.context.as_ref(),
+            &known,
             &self.store,
             p,
         ) {
@@ -416,6 +446,17 @@ impl Flow {
                 eprintln!("could not save a learned default: {e}");
             }
         }
+        // A person who was used successfully joins the contact list (a test skill's
+        // pretend send does not count). Groups ("ved and rahul") are not one person.
+        if skill.category != "testing" {
+            for l in learned.iter().filter(|l| l.slot_type == "contact") {
+                if people_in(&l.value) == 1 {
+                    if let Err(e) = self.store.remember_contact(&display_name(&l.value), &at) {
+                        eprintln!("could not save a contact: {e}");
+                    }
+                }
+            }
+        }
         // A read-only task answers with the text its last step returned.
         let answer = executed
             .iter()
@@ -487,6 +528,7 @@ fn resolve_slots(
     skill: &Skill,
     spans: &[Span],
     ctx: &dyn ContextSource,
+    known: &Known,
     store: &Store,
     p: &mut dyn Prompter,
 ) -> Result<(Slots, Vec<Learned>), SlotError> {
@@ -513,7 +555,7 @@ fn resolve_slots(
                     .ok()
                     .flatten()
                     .or_else(|| store.usual_for(&sp.kind).ok().flatten());
-                match resolver::resolve(&sp.resolve, said, ctx, usual.as_deref()) {
+                match resolver::resolve_with(&sp.resolve, said, ctx, usual.as_deref(), known) {
                     Resolution::Found(v) => {
                         // A set of files is not one thing to remember.
                         if let (Some(words), false) = (said, v.fields.contains_key("paths")) {
@@ -682,6 +724,23 @@ fn recipient_count(skill: &Skill, slots: &Slots) -> u32 {
         }
     }
     total.unwrap_or(1)
+}
+
+/// A name the router lowercased ("ved narvekar") is saved as people write it
+/// ("Ved Narvekar"). A name with any capital letter is kept as it is.
+fn display_name(name: &str) -> String {
+    if name.chars().any(char::is_uppercase) {
+        return name.trim().to_string();
+    }
+    name.split_whitespace()
+        .map(|w| {
+            let mut cs = w.chars();
+            cs.next()
+                .map(|f| f.to_uppercase().chain(cs).collect::<String>())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn people_in(text: &str) -> u32 {
@@ -1263,7 +1322,7 @@ mod tests {
         assert!(second.choices_seen.is_empty(), "it must not ask again");
         assert_eq!(
             second.shown,
-            vec!["Send Invoice April.pdf to ved on WhatsApp?"]
+            vec!["Send Invoice April.pdf to Ved on WhatsApp?"]
         );
         assert_eq!(done(&ev).0, "Done.");
         assert_eq!(wa.execute_count(), 4);
@@ -1545,6 +1604,164 @@ mod tests {
         );
         flow.handle(52, "open spotify", &mut user(&[]));
         assert_eq!(flow.undo(), "That can't be undone.");
+    }
+
+    // --- closed lists: installed apps and contacts ---------------------------
+
+    fn open_flow(apps: &[&str]) -> (Flow, Arc<FakeConnector>) {
+        let sys = Arc::new(FakeConnector::new("windows_system"));
+        let names: Vec<String> = apps.iter().map(|a| a.to_string()).collect();
+        let flow = flow_with(&[OPEN], vec![("windows_system", sys.clone())])
+            .with_app_names(move || names.clone());
+        (flow, sys)
+    }
+
+    fn opened_app(c: &FakeConnector) -> Option<String> {
+        c.calls().into_iter().find_map(|c| match c {
+            Call::Execute { action, args } if action == "open_app" => args.get("app").cloned(),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn an_installed_app_is_opened_by_its_real_name() {
+        let (mut flow, sys) = open_flow(&["Spotify", "Visual Studio Code"]);
+        flow.handle(60, "open visual studio", &mut user(&[]));
+        assert_eq!(opened_app(&sys).as_deref(), Some("Visual Studio Code"));
+    }
+
+    #[test]
+    fn an_app_that_is_not_on_the_list_still_goes_to_the_connector_as_said() {
+        // The list can be a few minutes old, and the connector refreshes on a miss.
+        let (mut flow, sys) = open_flow(&["Spotify"]);
+        flow.handle(61, "open brandnewapp", &mut user(&[]));
+        assert_eq!(opened_app(&sys).as_deref(), Some("brandnewapp"));
+    }
+
+    #[test]
+    fn two_apps_that_fit_make_one_question_and_the_answer_is_used() {
+        let (mut flow, sys) = open_flow(&["Office Hub", "Office Lens", "Spotify"]);
+        let mut u = user(&[]);
+        u.choice = Some("Office Lens".into());
+        flow.handle(62, "open office", &mut u);
+        assert_eq!(u.choices_seen, ["Office Hub", "Office Lens"]);
+        assert_eq!(opened_app(&sys).as_deref(), Some("Office Lens"));
+        // Dismissing the question opens nothing.
+        let (mut flow, sys) = open_flow(&["Office Hub", "Office Lens"]);
+        flow.handle(63, "open office", &mut user(&[]));
+        assert_eq!(opened_app(&sys), None);
+    }
+
+    fn sent_contact(c: &FakeConnector) -> Option<String> {
+        c.calls().into_iter().find_map(|c| match c {
+            Call::Execute { action, args } if action == "open_chat" => args.get("contact").cloned(),
+            _ => None,
+        })
+    }
+
+    fn report_context() -> Files {
+        Files {
+            selected: None,
+            files: vec![file_ref("report.pdf")],
+        }
+    }
+
+    #[test]
+    fn two_contacts_called_ved_make_a_question_and_the_confirm_shows_name_and_number() {
+        let (mut flow, wa) = whatsapp_flow(report_context());
+        flow.store()
+            .upsert_contact("Ved Narvekar", Some("+91 98765 43210"), "vcard")
+            .unwrap();
+        flow.store()
+            .upsert_contact("Ved Patel", Some("+91 91234 56789"), "vcard")
+            .unwrap();
+        let mut u = user(&[true]);
+        u.choice = Some("Ved Patel".into());
+        let ev = flow.handle(64, "send report.pdf to ved on whatsapp", &mut u);
+        assert_eq!(u.choices_seen, ["Ved Narvekar", "Ved Patel"]);
+        assert_eq!(
+            u.shown,
+            ["Send report.pdf to Ved Patel (+91 91234 56789) on WhatsApp?"]
+        );
+        assert_eq!(sent_contact(&wa).as_deref(), Some("Ved Patel"));
+        assert_eq!(done(&ev).0, "Done.");
+    }
+
+    #[test]
+    fn dismissing_the_which_one_question_sends_nothing() {
+        let (mut flow, wa) = whatsapp_flow(report_context());
+        for n in ["Ved Narvekar", "Ved Patel"] {
+            flow.store().upsert_contact(n, None, "vcard").unwrap();
+        }
+        let mut u = user(&[true]);
+        flow.handle(65, "send report.pdf to ved on whatsapp", &mut u);
+        assert!(u.shown.is_empty());
+        assert_eq!(sent_contact(&wa), None);
+    }
+
+    #[test]
+    fn a_unique_first_name_resolves_to_the_saved_person_and_a_send_is_still_confirmed() {
+        let (mut flow, wa) = whatsapp_flow(report_context());
+        flow.store()
+            .upsert_contact("Rahul Shah", None, "vcard")
+            .unwrap();
+        // Declining the confirm: nothing is sent, and the contact is not counted as used.
+        let mut u = user(&[false]);
+        flow.handle(66, "send report.pdf to rahul on whatsapp", &mut u);
+        assert_eq!(u.shown, ["Send report.pdf to Rahul Shah on WhatsApp?"]);
+        assert_eq!(sent_contact(&wa), None);
+        assert_eq!(flow.store().contacts().unwrap()[0].uses, 0);
+    }
+
+    #[test]
+    fn a_new_name_is_sent_as_said_then_learned_after_it_works() {
+        let (mut flow, wa) = whatsapp_flow(report_context());
+        let mut u = user(&[true]);
+        flow.handle(67, "send report.pdf to zainab on whatsapp", &mut u);
+        assert_eq!(u.shown, ["Send report.pdf to zainab on WhatsApp?"]);
+        assert_eq!(sent_contact(&wa).as_deref(), Some("zainab"));
+        let saved = flow.store().contacts().unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].name, "Zainab");
+        assert_eq!(saved[0].source, "learned");
+        // Next time the name is known, and the card shows it as saved.
+        let mut u = user(&[false]);
+        flow.handle(68, "send report.pdf to zainab on whatsapp", &mut u);
+        assert_eq!(u.shown, ["Send report.pdf to Zainab on WhatsApp?"]);
+    }
+
+    #[test]
+    fn a_cancelled_or_pretend_send_teaches_nothing() {
+        let (mut flow, _) = whatsapp_flow(report_context());
+        flow.handle(
+            69,
+            "send report.pdf to zainab on whatsapp",
+            &mut user(&[false]),
+        );
+        assert!(flow.store().contacts().unwrap().is_empty());
+        // The test send skill only pretends, so it must not fill the list either.
+        let stub = Arc::new(FakeConnector::new("stub_messenger"));
+        let mut flow = flow_with(&[SEND], vec![("stub_messenger", stub)]);
+        flow.handle(70, "send hi to ved", &mut user(&[true]));
+        assert!(flow.store().contacts().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_group_is_never_learned_as_a_person() {
+        let (mut flow, _) = whatsapp_flow(report_context());
+        flow.handle(
+            71,
+            "send report.pdf to ved and rahul on whatsapp",
+            &mut user(&[true]),
+        );
+        assert!(flow.store().contacts().unwrap().is_empty());
+    }
+
+    #[test]
+    fn display_names_are_capitalised_only_when_all_lowercase() {
+        assert_eq!(display_name("ved narvekar"), "Ved Narvekar");
+        assert_eq!(display_name("Ved narvekar"), "Ved narvekar");
+        assert_eq!(display_name("  zainab "), "Zainab");
     }
 
     #[test]

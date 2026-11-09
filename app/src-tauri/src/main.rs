@@ -76,6 +76,16 @@ fn main() {
             // Build the installed-apps list now, so "open <app>" never waits for it.
             #[cfg(windows)]
             jitmo_adapter_windows::apps::warm_up();
+            // People who can be sent to: learned from use, plus any vCard (.vcf) the
+            // user has put in their Contacts folder (Export in Windows Contacts,
+            // Outlook, Google Contacts or a phone). Nothing is read from an account.
+            if let Some(home) = std::env::var_os("USERPROFILE") {
+                let dir = std::path::Path::new(&home).join("Contacts");
+                let n = jitmo_core::known::import_vcard_folder(&store, &dir);
+                if n > 0 {
+                    eprintln!("imported {n} contact card(s) from {}", dir.display());
+                }
+            }
             scheduler::start_reminder_scheduler(db_path.clone(), key);
             let hotkey = store
                 .get_setting("hotkey")?
@@ -88,6 +98,9 @@ fn main() {
                 registry::connectors(&db_path, key.as_ref()),
             )
             .with_context(FsContext::for_current_user(selection.clone()));
+            // Installed apps are a closed list for understanding and resolving requests.
+            #[cfg(windows)]
+            let flow = flow.with_app_names(jitmo_adapter_windows::apps::installed_app_names);
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("jitmo-core".into())

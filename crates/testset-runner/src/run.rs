@@ -173,11 +173,19 @@ pub fn run_case_with(
     }
 
     let store = Store::open_in_memory().expect("in-memory store");
+    for c in &spec.contacts {
+        store
+            .upsert_contact(&c.name, c.phone.as_deref(), "manual")
+            .expect("save a test contact");
+    }
     let mut router = Router::new(skills.to_vec());
     if let Some(launcher) = worker {
         router = router.with_worker(WorkerClient::new(launcher.clone(), Duration::from_secs(10)));
     }
-    let mut flow = Flow::new(router, store, map).with_context(TestFiles::new(spec));
+    let apps = spec.apps.clone();
+    let mut flow = Flow::new(router, store, map)
+        .with_context(TestFiles::new(spec))
+        .with_app_names(move || apps.clone());
     let mut user = Recorder {
         answers: spec.confirm_answers.iter().copied().collect(),
         confirms: Vec::new(),

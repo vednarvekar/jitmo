@@ -7,8 +7,15 @@
 //! parsed here and only the place name (weather) or the subject phrase (fact)
 //! is put in a request URL. Never the whole sentence, files or contacts.
 //!
-//! Services (pending the owner's decision): Open-Meteo for weather (no key) and
-//! the Wikipedia search and REST summary APIs for facts.
+//! Services (decision D18, terms checked 2026-11-09, all usable commercially
+//! with no API key):
+//! - weather:   MET Norway locationforecast 2.0 (CC BY 4.0 + NLOD 2.0, needs an
+//!   identifying User-Agent, coordinates truncated to 4 decimals).
+//! - geocoding: the English Wikipedia Action API (article coordinates).
+//! - facts:     the English Wikipedia Action API (intro extract, CC BY-SA 4.0,
+//!   credited with a link to the article).
+//!
+//! Open-Meteo is NOT used: its free API is non-commercial only.
 //!
 //! All network access goes through the [`Http`] trait, so tests use canned
 //! JSON and never touch the network.
@@ -44,7 +51,11 @@ pub trait Http: Send + Sync {
     fn get(&self, url: &str) -> Result<String, HttpError>;
 }
 
-/// The real HTTP client: short timeout, built-in Windows TLS.
+/// Identifies the app and a contact, as MET Norway and Wikimedia require.
+pub const USER_AGENT: &str =
+    "Jitmo/0.1 (+https://github.com/vednarvekar/jitmo; local assistant) ureq/3";
+
+/// The real HTTP client: short timeouts, built-in Windows TLS.
 pub struct UreqHttp {
     agent: ureq::Agent,
 }
@@ -58,8 +69,9 @@ impl Default for UreqHttp {
 impl UreqHttp {
     pub fn new() -> Self {
         let config = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_secs(6)))
-            .user_agent("jitmo/0.1 (local assistant)")
+            .timeout_connect(Some(Duration::from_secs(4)))
+            .timeout_global(Some(Duration::from_secs(8)))
+            .user_agent(USER_AGENT)
             .tls_config(
                 ureq::tls::TlsConfig::builder()
                     .provider(ureq::tls::TlsProvider::NativeTls)
@@ -101,9 +113,23 @@ pub struct WebLookup {
     default_place: Option<String>,
     /// Reads the saved place each time, so "set my city" works without a restart.
     place_source: Option<Box<dyn Fn() -> Option<String> + Send + Sync>>,
+    /// The clock, replaceable in tests.
+    now: Box<dyn Fn() -> chrono::DateTime<chrono::Utc> + Send + Sync>,
 }
 
+/// Credit required by the MET Norway licence (CC BY 4.0).
+pub const WEATHER_CREDIT: &str = "(Data from MET Norway)";
+
 impl WebLookup {
+    /// Replace the clock (tests).
+    pub fn with_clock(
+        mut self,
+        now: impl Fn() -> chrono::DateTime<chrono::Utc> + Send + Sync + 'static,
+    ) -> Self {
+        self.now = Box::new(now);
+        self
+    }
+
     /// Read the saved place live instead of once at startup.
     pub fn with_place_source(
         mut self,
@@ -131,6 +157,7 @@ impl WebLookup {
             http,
             default_place: default_place.filter(|p| !p.trim().is_empty()),
             place_source: None,
+            now: Box::new(chrono::Utc::now),
         }
     }
 
@@ -142,53 +169,41 @@ impl WebLookup {
             .or_else(|| self.default_place.clone())
             .ok_or_else(|| ConnError::Failed(NO_PLACE_MESSAGE.into()))?;
 
+        // Geocoding: the coordinates of the best-matching Wikipedia article.
         let geo_url = format!(
-            "https://geocoding-api.open-meteo.com/v1/search?name={}&count=1&language=en&format=json",
+            "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={}\
+             &gsrlimit=3&prop=coordinates&format=json&formatversion=2",
             encode(&place)
         );
         let geo = self.fetch_json(&geo_url)?;
-        let hit = geo
-            .pointer("/results/0")
+        let (name, lat, lon) = parse_geocode(&geo)
             .ok_or_else(|| ConnError::Failed("I couldn't find that place.".into()))?;
-        let (lat, lon) = match (
-            hit.get("latitude").and_then(Value::as_f64),
-            hit.get("longitude").and_then(Value::as_f64),
-        ) {
-            (Some(a), Some(b)) => (a, b),
-            _ => return Err(not_found()),
-        };
-        let name = hit
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or(&place)
-            .to_string();
 
+        // MET Norway rejects more than 4 decimals.
         let url = format!(
-            "https://api.open-meteo.com/v1/forecast?latitude={lat:.4}&longitude={lon:.4}\
-             &daily=precipitation_probability_max,temperature_2m_max,temperature_2m_min\
-             &timezone=auto&forecast_days=7"
+            "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat={lat:.4}&lon={lon:.4}"
         );
         let forecast = self.fetch_json(&url)?;
-        render_weather(&q, &name, &forecast).ok_or_else(not_found)
+        let offset_secs = solar_offset_secs(lon);
+        let today = (self.now)()
+            .checked_add_signed(chrono::Duration::seconds(offset_secs))
+            .map(|t| t.date_naive())
+            .ok_or_else(not_found)?;
+        let days = daily_from_met(&forecast, offset_secs).ok_or_else(not_found)?;
+        let text = render_weather(&q, &name, today, &days).ok_or_else(not_found)?;
+        Ok(format!("{text} {WEATHER_CREDIT}"))
     }
 
     fn fact(&self, text: &str) -> Result<String, ConnError> {
         let subject = parse_fact_subject(text).ok_or_else(not_found)?;
-        let search_url = format!(
-            "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={}&srlimit=1&format=json",
+        let url = format!(
+            "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={}\
+             &gsrlimit=1&prop=extracts%7Cinfo&exintro=1&explaintext=1&exchars=700&inprop=url\
+             &format=json&formatversion=2",
             encode(&subject)
         );
-        let found = self.fetch_json(&search_url)?;
-        let title = found
-            .pointer("/query/search/0/title")
-            .and_then(Value::as_str)
-            .ok_or_else(not_found)?;
-        let summary_url = format!(
-            "https://en.wikipedia.org/api/rest_v1/page/summary/{}",
-            encode(&title.replace(' ', "_"))
-        );
-        let summary = self.fetch_json(&summary_url)?;
-        render_fact(&summary).ok_or_else(not_found)
+        let found = self.fetch_json(&url)?;
+        render_fact(&found).ok_or_else(not_found)
     }
 
     /// GET and parse JSON. Bad JSON becomes "I couldn't find that.", never a panic.
@@ -391,103 +406,189 @@ fn encode(s: &str) -> String {
 // Rendering
 // ---------------------------------------------------------------------------
 
-fn num_list(daily: &Value, key: &str) -> Vec<Option<f64>> {
-    daily
-        .get(key)
-        .and_then(Value::as_array)
-        .map(|a| a.iter().map(Value::as_f64).collect())
-        .unwrap_or_default()
+/// One local day of forecast, built from the hourly MET Norway series.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DayForecast {
+    pub date: NaiveDate,
+    pub high: f64,
+    pub low: f64,
+    pub rain_mm: f64,
 }
 
-fn render_weather(q: &WeatherQuery, place: &str, forecast: &Value) -> Option<String> {
-    let daily = forecast.get("daily")?;
-    let dates: Vec<NaiveDate> = daily
-        .get("time")?
-        .as_array()?
-        .iter()
-        .filter_map(|v| NaiveDate::parse_from_str(v.as_str()?, "%Y-%m-%d").ok())
-        .collect();
-    let rain = num_list(daily, "precipitation_probability_max");
-    let hi = num_list(daily, "temperature_2m_max");
-    let lo = num_list(daily, "temperature_2m_min");
+/// Rough local time offset from longitude (solar time, nearest half hour).
+/// The sources give no time zone; this only decides which day an hour is in.
+fn solar_offset_secs(lon: f64) -> i64 {
+    let half_hours = (lon / 7.5).round().clamp(-24.0, 24.0) as i64;
+    half_hours * 1800
+}
 
-    let (idx, label): (Vec<usize>, &str) = match q.day {
-        Day::Today => (vec![0], "today"),
-        Day::Tomorrow => (vec![1], "tomorrow"),
-        Day::DayAfterTomorrow => (vec![2], "the day after tomorrow"),
+/// Best Wikipedia search hit that has coordinates: (name, lat, lon).
+fn parse_geocode(v: &Value) -> Option<(String, f64, f64)> {
+    let mut pages: Vec<&Value> = v.pointer("/query/pages")?.as_array()?.iter().collect();
+    pages.sort_by_key(|p| p.get("index").and_then(Value::as_i64).unwrap_or(i64::MAX));
+    pages.into_iter().find_map(|p| {
+        let c = p.pointer("/coordinates/0")?;
+        let lat = c.get("lat")?.as_f64()?;
+        let lon = c.get("lon")?.as_f64()?;
+        let title = p.get("title")?.as_str()?;
+        let name = title.split(" (").next().unwrap_or(title).trim().to_string();
+        Some((name, lat, lon))
+    })
+}
+
+/// Group a MET Norway `compact` forecast into local days.
+fn daily_from_met(forecast: &Value, offset_secs: i64) -> Option<Vec<DayForecast>> {
+    let series = forecast.pointer("/properties/timeseries")?.as_array()?;
+    let mut days: Vec<DayForecast> = Vec::new();
+    for entry in series {
+        let Some(time) = entry
+            .get("time")
+            .and_then(Value::as_str)
+            .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+        else {
+            continue;
+        };
+        let Some(local) = time.checked_add_signed(chrono::Duration::seconds(offset_secs)) else {
+            continue;
+        };
+        let date = local.date_naive();
+        let data = entry.get("data")?;
+        let temp = data
+            .pointer("/instant/details/air_temperature")
+            .and_then(Value::as_f64);
+        // Hourly entries carry next_1_hours; the later 6-hourly ones carry
+        // next_6_hours at 00, 06, 12 and 18 UTC. Never count a span twice.
+        let rain = data
+            .pointer("/next_1_hours/details/precipitation_amount")
+            .and_then(Value::as_f64)
+            .or_else(|| {
+                use chrono::Timelike;
+                if time.hour() % 6 == 0 {
+                    data.pointer("/next_6_hours/details/precipitation_amount")
+                        .and_then(Value::as_f64)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0.0);
+        if days.last().map(|d| d.date) != Some(date) {
+            days.push(DayForecast {
+                date,
+                high: f64::NEG_INFINITY,
+                low: f64::INFINITY,
+                rain_mm: 0.0,
+            });
+        }
+        let d = days.last_mut()?;
+        if let Some(t) = temp {
+            d.high = d.high.max(t);
+            d.low = d.low.min(t);
+        }
+        d.rain_mm += rain;
+    }
+    days.retain(|d| d.high.is_finite() && d.low.is_finite());
+    if days.is_empty() {
+        None
+    } else {
+        Some(days)
+    }
+}
+
+fn render_weather(
+    q: &WeatherQuery,
+    place: &str,
+    today: NaiveDate,
+    days: &[DayForecast],
+) -> Option<String> {
+    let start = days.iter().position(|d| d.date >= today)?;
+    let days = &days[start..];
+    let (picked, label): (Vec<&DayForecast>, &str) = match q.day {
+        Day::Today => (days.iter().take(1).collect(), "today"),
+        Day::Tomorrow => (days.get(1).into_iter().collect(), "tomorrow"),
+        Day::DayAfterTomorrow => (days.get(2).into_iter().collect(), "the day after tomorrow"),
         Day::Weekend => (
-            dates
-                .iter()
-                .enumerate()
-                .filter(|(_, d)| matches!(d.weekday(), Weekday::Sat | Weekday::Sun))
-                .map(|(i, _)| i)
+            days.iter()
+                .filter(|d| matches!(d.date.weekday(), Weekday::Sat | Weekday::Sun))
                 .take(2)
                 .collect(),
             "this weekend",
         ),
     };
-    if idx.is_empty() || idx.iter().any(|&i| i >= dates.len()) {
+    if picked.is_empty() {
         return None;
     }
-    let pick = |v: &[Option<f64>]| -> Vec<f64> {
-        idx.iter()
-            .filter_map(|&i| v.get(i).copied().flatten())
-            .collect()
+    let high = picked.iter().map(|d| d.high).fold(f64::MIN, f64::max);
+    let low = picked.iter().map(|d| d.low).fold(f64::MAX, f64::min);
+    let mm: f64 = picked.iter().map(|d| d.rain_mm).sum();
+    let temps = format!("high {high:.0}\u{b0}C, low {low:.0}\u{b0}C");
+    let rain_part = if mm < 0.2 {
+        "no rain expected".to_string()
+    } else {
+        format!("about {mm:.1} mm of rain")
     };
-    let max = |v: Vec<f64>| {
-        v.into_iter()
-            .fold(None, |m: Option<f64>, x| Some(m.map_or(x, |m| m.max(x))))
-    };
-    let min = |v: Vec<f64>| {
-        v.into_iter()
-            .fold(None, |m: Option<f64>, x| Some(m.map_or(x, |m| m.min(x))))
-    };
-    let chance = max(pick(&rain));
-    let high = max(pick(&hi));
-    let low = min(pick(&lo));
-
-    let temps = match (high, low) {
-        (Some(h), Some(l)) => Some(format!("high {h:.0}\u{b0}C, low {l:.0}\u{b0}C")),
-        _ => None,
-    };
-    let rain_part = chance.map(|c| format!("{c:.0}% chance of rain"));
 
     match q.kind {
         Kind::Rain => {
-            let c = chance?;
-            let word = if c < 20.0 {
+            let word = if mm < 0.2 {
                 "unlikely"
-            } else if c < 50.0 {
+            } else if mm < 1.0 {
                 "possible"
             } else {
                 "likely"
             };
             Some(format!(
-                "Rain is {word} in {place} {label}: {c:.0}% chance{}.",
-                temps.map(|t| format!(", {t}")).unwrap_or_default()
+                "Rain is {word} in {place} {label}: {rain_part}, {temps}."
             ))
         }
-        Kind::Temperature => Some(format!("{place} {label}: {}.", temps?)),
-        Kind::General => {
-            let parts: Vec<String> = [temps, rain_part].into_iter().flatten().collect();
-            if parts.is_empty() {
-                None
-            } else {
-                Some(format!("{place} {label}: {}.", parts.join(", ")))
-            }
-        }
+        Kind::Temperature => Some(format!("{place} {label}: {temps}.")),
+        Kind::General => Some(format!("{place} {label}: {temps}, {rain_part}.")),
     }
 }
 
-fn render_fact(summary: &Value) -> Option<String> {
-    if summary.get("type").and_then(Value::as_str) == Some("disambiguation") {
+/// The intro of the best Wikipedia hit, two sentences, with the CC BY-SA credit.
+fn render_fact(found: &Value) -> Option<String> {
+    let mut pages: Vec<&Value> = found.pointer("/query/pages")?.as_array()?.iter().collect();
+    pages.sort_by_key(|p| p.get("index").and_then(Value::as_i64).unwrap_or(i64::MAX));
+    let page = pages.first()?;
+    let extract = page.get("extract")?.as_str()?.trim();
+    let lower = extract.to_lowercase();
+    if extract.is_empty() || lower.contains("may refer to") || lower.contains("can refer to") {
         return None;
     }
-    let extract = summary.get("extract")?.as_str()?.trim();
-    if extract.is_empty() {
-        return None;
+    let title = page.get("title").and_then(Value::as_str).unwrap_or("");
+    let url = page
+        .get("fullurl")
+        .and_then(Value::as_str)
+        .map(String::from)
+        .unwrap_or_else(|| {
+            format!(
+                "https://en.wikipedia.org/wiki/{}",
+                encode(&title.replace(' ', "_"))
+            )
+        });
+    Some(format!(
+        "{} (Wikipedia, CC BY-SA 4.0: {url})",
+        first_sentences(&strip_parentheses(extract), 2, 320)
+    ))
+}
+
+/// Drop "(...)" groups (pronunciations, native spellings) and tidy spaces.
+fn strip_parentheses(s: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0u32;
+    for c in s.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' if depth > 0 => depth -= 1,
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
     }
-    Some(first_sentences(extract, 2, 320))
+    out.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(" ,", ",")
+        .replace(" .", ".")
 }
 
 /// The first `n` sentences, cut at `max_chars` on a word edge.
@@ -587,13 +688,53 @@ mod tests {
         [("text".to_string(), text.to_string())].into()
     }
 
-    const GEO: &str = r#"{"results":[{"name":"Pune","latitude":18.5196,"longitude":73.8553}]}"#;
-    // 2026-11-07 is a Saturday.
-    const FORECAST: &str = r#"{"daily":{
-        "time":["2026-11-04","2026-11-05","2026-11-06","2026-11-07","2026-11-08","2026-11-09","2026-11-10"],
-        "precipitation_probability_max":[10,70,5,0,15,null,40],
-        "temperature_2m_max":[30.2,28.4,31.0,32.1,31.5,30.0,29.0],
-        "temperature_2m_min":[20.0,21.4,19.0,18.5,19.2,20.0,21.0]}}"#;
+    const GEO: &str = r#"{"query":{"pages":[
+        {"pageid":2,"title":"Pune (disambiguation)","index":2},
+        {"pageid":1,"title":"Pune","index":1,"coordinates":[{"lat":18.5196,"lon":73.8553,"primary":true}]}]}}"#;
+
+    /// A MET Norway style forecast: four 6-hourly entries per UTC day.
+    /// Pune is UTC+5 by the solar offset, so all four fall on the same local day.
+    fn met() -> String {
+        let days = [
+            ("2026-11-04", [20.0, 28.0, 30.0, 24.0], [0.0, 0.0, 0.0, 0.0]),
+            ("2026-11-05", [21.0, 26.0, 28.4, 23.0], [0.0, 0.5, 3.0, 1.0]),
+            ("2026-11-06", [19.0, 29.0, 31.0, 24.0], [0.0, 0.0, 0.0, 0.0]),
+            ("2026-11-07", [18.0, 30.0, 32.1, 25.0], [0.0, 0.0, 0.0, 0.0]),
+            ("2026-11-08", [19.2, 28.0, 31.5, 24.0], [0.0, 0.0, 0.4, 0.0]),
+        ];
+        let mut series = Vec::new();
+        for (date, temps, rain) in days {
+            for (i, hour) in ["00", "06", "12", "18"].iter().enumerate() {
+                series.push(serde_json::json!({
+                    "time": format!("{date}T{hour}:00:00Z"),
+                    "data": {
+                        "instant": {"details": {"air_temperature": temps[i]}},
+                        "next_6_hours": {"details": {"precipitation_amount": rain[i]}}
+                    }
+                }));
+            }
+        }
+        serde_json::json!({"properties": {"timeseries": series}}).to_string()
+    }
+
+    fn clock() -> chrono::DateTime<chrono::Utc> {
+        "2026-11-04T10:00:00Z".parse().unwrap()
+    }
+
+    fn routes_ok() -> Vec<(&'static str, Result<String, HttpError>)> {
+        vec![
+            ("prop=coordinates", Ok(GEO.into())),
+            ("api.met.no", Ok(met())),
+        ]
+    }
+
+    fn connector_at_clock(
+        routes: Vec<(&'static str, Result<String, HttpError>)>,
+        place: Option<&str>,
+    ) -> (WebLookup, Seen) {
+        let (c, seen) = connector(routes, place);
+        (c.with_clock(clock), seen)
+    }
 
     #[test]
     fn parses_weather_requests() {
@@ -646,47 +787,42 @@ mod tests {
         let t = "Dr. Who is a show. It is old. Really.";
         assert_eq!(first_sentences(t, 1, 300), "Dr. Who is a show.");
         assert_eq!(first_sentences("No end here", 2, 300), "No end here");
+        assert_eq!(
+            strip_parentheses("The Tower (  EYE-fəl; French: x ) is tall (very)."),
+            "The Tower is tall."
+        );
         assert!(first_sentences(&"word ".repeat(100), 2, 50).ends_with("..."));
     }
 
     #[test]
     fn rain_tomorrow_in_named_place() {
-        let (c, seen) = connector(
-            vec![
-                ("geocoding-api", Ok(GEO.into())),
-                ("api.open-meteo", Ok(FORECAST.into())),
-            ],
-            None,
-        );
+        let (c, seen) = connector_at_clock(routes_ok(), None);
         let out = c
             .execute("weather", &args("Will it rain in Pune tomorrow?"))
             .unwrap();
         assert_eq!(
             out.0["message"],
-            "Rain is likely in Pune tomorrow: 70% chance, high 28\u{b0}C, low 21\u{b0}C."
+            "Rain is likely in Pune tomorrow: about 4.5 mm of rain, high 28\u{b0}C, low 21\u{b0}C. (Data from MET Norway)"
         );
         // PS3: the sentence never leaves the device.
-        for url in seen.lock().unwrap().iter() {
+        let seen = seen.lock().unwrap();
+        for url in seen.iter() {
             assert!(!url.to_lowercase().contains("will"), "{url}");
             assert!(!url.contains("rain%20in"), "{url}");
         }
+        // MET Norway: at most 4 decimals.
+        assert!(seen[1].contains("lat=18.5196&lon=73.8553"), "{}", seen[1]);
     }
 
     #[test]
     fn uses_saved_place_and_asks_when_none() {
-        let routes = || {
-            vec![
-                ("geocoding-api", Ok(GEO.to_string())),
-                ("api.open-meteo", Ok(FORECAST.to_string())),
-            ]
-        };
-        let (c, seen) = connector(routes(), Some("Pune"));
+        let (c, seen) = connector_at_clock(routes_ok(), Some("Pune"));
         let out = c.execute("weather", &args("gonna rain tmrw?")).unwrap();
         assert!(out.0["message"].starts_with("Rain is likely in Pune tomorrow"));
-        assert!(seen.lock().unwrap()[0].contains("name=Pune"));
+        assert!(seen.lock().unwrap()[0].contains("gsrsearch=Pune"));
         assert_eq!(c.check("weather", &args("gonna rain tmrw?")), Ok(true));
 
-        let (c, seen) = connector(routes(), None);
+        let (c, seen) = connector_at_clock(routes_ok(), None);
         let err = c.execute("weather", &args("gonna rain tmrw?")).unwrap_err();
         assert_eq!(err, ConnError::Failed(NO_PLACE_MESSAGE.into()));
         assert!(seen.lock().unwrap().is_empty());
@@ -695,38 +831,28 @@ mod tests {
 
     #[test]
     fn weekend_and_temperature_answers() {
-        let (c, _) = connector(
-            vec![
-                ("geocoding-api", Ok(GEO.into())),
-                ("api.open-meteo", Ok(FORECAST.into())),
-            ],
-            Some("Pune"),
-        );
+        let (c, _) = connector_at_clock(routes_ok(), Some("Pune"));
         let out = c.execute("weather", &args("weather this weekend")).unwrap();
         assert_eq!(
             out.0["message"],
-            "Pune this weekend: high 32\u{b0}C, low 18\u{b0}C, 15% chance of rain."
+            "Pune this weekend: high 32\u{b0}C, low 18\u{b0}C, about 0.4 mm of rain. (Data from MET Norway)"
         );
         let out = c.execute("weather", &args("how hot is it today")).unwrap();
         assert_eq!(
             out.0["message"],
-            "Pune today: high 30\u{b0}C, low 20\u{b0}C."
+            "Pune today: high 30\u{b0}C, low 20\u{b0}C. (Data from MET Norway)"
         );
+        let out = c.execute("weather", &args("will it rain today")).unwrap();
+        assert!(out.0["message"].starts_with("Rain is unlikely in Pune today: no rain expected"));
     }
 
     #[test]
     fn capital_of_australia() {
         let (c, seen) = connector(
-            vec![
-                (
-                    "list=search",
-                    Ok(r#"{"query":{"search":[{"title":"Canberra"}]}}"#.into()),
-                ),
-                (
-                    "page/summary/Canberra",
-                    Ok(r#"{"type":"standard","extract":"Canberra is the capital city of Australia. It is located at the northern end of the Australian Capital Territory. More text."}"#.into()),
-                ),
-            ],
+            vec![(
+                "prop=extracts",
+                Ok(r#"{"query":{"pages":[{"title":"Canberra","index":1,"fullurl":"https://en.wikipedia.org/wiki/Canberra","extract":"Canberra is the capital city of Australia. It is located at the northern end of the Australian Capital Territory. More text."}]}}"#.into()),
+            )],
             None,
         );
         let out = c
@@ -734,9 +860,9 @@ mod tests {
             .unwrap();
         assert_eq!(
             out.0["message"],
-            "Canberra is the capital city of Australia. It is located at the northern end of the Australian Capital Territory."
+            "Canberra is the capital city of Australia. It is located at the northern end of the Australian Capital Territory. (Wikipedia, CC BY-SA 4.0: https://en.wikipedia.org/wiki/Canberra)"
         );
-        assert!(seen.lock().unwrap()[0].contains("srsearch=capital%20of%20australia"));
+        assert!(seen.lock().unwrap()[0].contains("gsrsearch=capital%20of%20australia"));
     }
 
     #[test]
@@ -759,8 +885,16 @@ mod tests {
 
     #[test]
     fn bad_replies_never_panic() {
-        for body in ["", "not json", "{}", "[]", "null", r#"{"results":[{}]}"#] {
-            let (c, _) = connector(vec![("", Ok(body.into()))], Some("Pune"));
+        for body in [
+            "",
+            "not json",
+            "{}",
+            "[]",
+            "null",
+            r#"{"results":[{}]}"#,
+            r#"{"query":{"pages":[{}]}}"#,
+        ] {
+            let (c, _) = connector_at_clock(vec![("", Ok(body.into()))], Some("Pune"));
             for (action, text) in [("fact", "capital of peru"), ("weather", "rain tomorrow")] {
                 let err = c.execute(action, &args(text)).unwrap_err();
                 let ConnError::Failed(msg) = err else {
@@ -775,8 +909,34 @@ mod tests {
             Some("Pune"),
         );
         assert!(c.execute("fact", &args("capital of peru")).is_err());
-        let summary = serde_json::json!({"type": "disambiguation", "extract": "X may refer to:"});
-        assert_eq!(render_fact(&summary), None);
+        let page = serde_json::json!({"query": {"pages": [
+            {"title": "X", "index": 1, "extract": "X may refer to:"}]}});
+        assert_eq!(render_fact(&page), None);
+    }
+
+    #[test]
+    fn user_agent_identifies_the_app() {
+        assert!(USER_AGENT.starts_with("Jitmo/"));
+        assert!(USER_AGENT.contains("github.com"));
+    }
+
+    #[test]
+    #[ignore = "uses the network: cargo test -p jitmo-connectors live -- --ignored --nocapture"]
+    fn live_lookups() {
+        let c = WebLookup::new(None);
+        for (action, text) in [
+            ("weather", "will it rain in London tomorrow"),
+            ("weather", "what's the weather in Pune"),
+            ("fact", "Eiffel Tower"),
+            ("fact", "what is the capital of Australia"),
+        ] {
+            let t = std::time::Instant::now();
+            let r = c.execute(action, &args(text));
+            println!(
+                "[{} ms] {action} '{text}' -> {r:?}",
+                t.elapsed().as_millis()
+            );
+        }
     }
 
     #[test]

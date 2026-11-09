@@ -233,6 +233,24 @@ impl AppIndex {
         self.done.notify_all();
     }
 
+    /// Display names of the apps known right now, without waiting for a refresh:
+    /// empty until the first build has produced something. Duplicates and
+    /// uninstallers are left out. Used as a closed list for understanding requests.
+    pub fn names(&self) -> Vec<String> {
+        let st = self.lock();
+        let mut out: Vec<String> = Vec::new();
+        for e in &st.merged {
+            let key = normalize(&e.name);
+            if key.is_empty() || key.contains("uninstall") {
+                continue;
+            }
+            if !out.iter().any(|n| normalize(n) == key) {
+                out.push(e.name.clone());
+            }
+        }
+        out
+    }
+
     /// Look an app up by name.
     pub fn lookup(self: &Arc<Self>, wanted: &str) -> Result<Lookup, String> {
         let mut st = self.lock();
@@ -344,6 +362,11 @@ mod os {
         Ok(parse_app_list(&String::from_utf8_lossy(&out.stdout)))
     }
 
+    /// Names of the installed apps known right now (see [`AppIndex::names`]).
+    pub fn installed_app_names() -> Vec<String> {
+        index().names()
+    }
+
     /// Look an app up by name in the in-memory index (see [`AppIndex`]).
     pub fn lookup_app(wanted: &str) -> Result<Lookup, String> {
         index().lookup(wanted)
@@ -417,7 +440,7 @@ mod os {
 }
 
 #[cfg(windows)]
-pub use os::{is_app_running, launch, lookup_app, warm_up};
+pub use os::{installed_app_names, is_app_running, launch, lookup_app, warm_up};
 
 #[cfg(test)]
 mod tests {
@@ -620,6 +643,25 @@ mod tests {
     fn a_failed_listing_with_nothing_cached_is_an_error() {
         let idx = Arc::new(AppIndex::new(Vec::new, || Err("no powershell".into())));
         assert_eq!(idx.lookup("x"), Err("no powershell".to_string()));
+    }
+
+    #[test]
+    fn names_are_available_without_waiting_and_skip_duplicates_and_uninstallers() {
+        let listed = entries();
+        let idx = Arc::new(AppIndex::new(Vec::new, move || Ok(listed.clone())));
+        // Nothing built yet: no names, and no wait.
+        assert!(idx.names().is_empty());
+        idx.lookup("spotify").unwrap();
+        assert_eq!(
+            idx.names(),
+            [
+                "Spotify",
+                "Notepad",
+                "Visual Studio Code",
+                "Microsoft Word",
+                "Microsoft Excel"
+            ]
+        );
     }
 
     #[test]

@@ -8,7 +8,10 @@
 //! - `named_file`     fuzzy match of the words against files in the usual folders
 //! - `recent_download` the newest download; used for "the latest download" or
 //!   when nothing was said and nothing is selected
-//! - `named_*`        (app, contact, ...) the words as said, until those lookups exist
+//! - `named_app`, `named_contact`  the words matched against the closed lists in
+//!   [`Known`] (installed apps, saved contacts): the real entry, or a question when
+//!   two fit; a name on no list passes through as said
+//! - `named_*`        (other types) the words as said
 //! - `usual_*`        the user's usual choice from the settings (`usual.<type>`),
 //!   used when nothing was said
 //!
@@ -16,6 +19,7 @@
 //! and Core asks one short question with the options (FR4). A tie is never
 //! settled by guessing.
 
+use crate::known::{self, Known, Match};
 use std::collections::BTreeMap;
 
 /// A slot's value. `text` is what to show and substitute for `{slot}`; `fields`
@@ -32,6 +36,26 @@ impl SlotValue {
         SlotValue {
             text: text.to_string(),
             fields: BTreeMap::from([("name".to_string(), text.to_string())]),
+        }
+    }
+
+    /// A person. `name` is the full name; `label` is what a confirm card shows: the
+    /// name, with the number after it when it is known ("Ved Narvekar (+91 98765 43210)").
+    pub fn from_person(name: &str, phone: Option<&str>) -> Self {
+        let label = match phone {
+            Some(p) if !p.trim().is_empty() => format!("{name} ({})", p.trim()),
+            _ => name.to_string(),
+        };
+        let mut fields = BTreeMap::from([
+            ("name".to_string(), name.to_string()),
+            ("label".to_string(), label),
+        ]);
+        if let Some(p) = phone.filter(|p| !p.trim().is_empty()) {
+            fields.insert("phone".to_string(), p.trim().to_string());
+        }
+        SlotValue {
+            text: name.to_string(),
+            fields,
         }
     }
 
@@ -143,6 +167,17 @@ pub fn resolve(
     ctx: &dyn ContextSource,
     usual: Option<&str>,
 ) -> Resolution {
+    resolve_with(strategies, said, ctx, usual, &Known::default())
+}
+
+/// Like [`resolve`], with the closed lists of installed apps and saved contacts.
+pub fn resolve_with(
+    strategies: &[String],
+    said: Option<&str>,
+    ctx: &dyn ContextSource,
+    usual: Option<&str>,
+    known: &Known,
+) -> Resolution {
     let said = said.map(str::trim).filter(|s| !s.is_empty());
     let deictic = said.is_none_or(is_deictic);
     let recency = said.is_some_and(is_recency);
@@ -193,18 +228,69 @@ pub fn resolve(
             }
             s if s.starts_with("named_") && s != "named_file" && s != "named_folder" => {
                 if let Some(words) = said {
-                    return Resolution::Found(SlotValue::from_text(words));
+                    return closed_list(s, words, known);
                 }
             }
             s if s.starts_with("usual_") && said.is_none() => {
                 if let Some(v) = usual {
-                    return Resolution::Found(SlotValue::from_text(v));
+                    return match s {
+                        // A usual contact gets their number too, when it is known.
+                        "usual_contact" => match known::match_contact(v, &known.contacts) {
+                            Match::One(c) => Resolution::Found(contact_value(&c)),
+                            _ => Resolution::Found(SlotValue::from_person(v, None)),
+                        },
+                        _ => Resolution::Found(SlotValue::from_text(v)),
+                    };
                 }
             }
             _ => {}
         }
     }
     Resolution::NotFound(said.map(str::to_string))
+}
+
+fn contact_value(c: &jitmo_store::Contact) -> SlotValue {
+    SlotValue::from_person(&c.name, c.phone.as_deref())
+}
+
+/// `named_app` and `named_contact`: match the words against the closed list. A name
+/// on the list becomes the real entry; several that fit make one question (T94); a
+/// name that is on no list passes through as said, because the lists are learned and
+/// the connector still checks it (and every send is confirmed).
+fn closed_list(strategy: &str, words: &str, known: &Known) -> Resolution {
+    match strategy {
+        "named_contact" => match known::match_contact(words, &known.contacts) {
+            Match::One(c) => Resolution::Found(contact_value(&c)),
+            Match::Many(cs) => Resolution::Choose {
+                question: "Which one?".to_string(),
+                options: cs
+                    .iter()
+                    .take(MAX_OPTIONS)
+                    .map(|c| {
+                        (
+                            c.name.clone(),
+                            contact_value(c).fields["label"].clone(),
+                            contact_value(c),
+                        )
+                    })
+                    .collect(),
+            },
+            Match::None => Resolution::Found(SlotValue::from_person(words, None)),
+        },
+        "named_app" => match known::match_app(words, &known.apps) {
+            Match::One(a) => Resolution::Found(SlotValue::from_text(&a)),
+            Match::Many(apps) => Resolution::Choose {
+                question: "Which one?".to_string(),
+                options: apps
+                    .iter()
+                    .take(MAX_OPTIONS)
+                    .map(|a| (a.clone(), a.clone(), SlotValue::from_text(a)))
+                    .collect(),
+            },
+            Match::None => Resolution::Found(SlotValue::from_text(words)),
+        },
+        _ => Resolution::Found(SlotValue::from_text(words)),
+    }
 }
 
 fn match_named_file(words: &str, files: &[FileRef]) -> Option<Resolution> {

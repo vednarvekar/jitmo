@@ -6,10 +6,11 @@
 
 T01:
   request: "Open Spotify."
+  apps: ["Notepad", "Spotify", "Visual Studio Code"]
   expect: ran
   skill: apps.open
   calls:
-    - { connector: windows_system, action: open_app, args: { app: spotify } }
+    - { connector: windows_system, action: open_app, args: { app: Spotify } }
   live: [windows_system]
 
 T03:
@@ -32,6 +33,36 @@ T95:
 T96:
   request: "Send this message to all my contacts."
   expect: declined
+
+# Closed lists. The engine knows the installed apps and the saved contacts (learned from
+# use, or imported from a vCard file); the runner supplies both. "spotify" becomes the
+# installed app's real name.
+# T94: two saved contacts called Ved. The engine must ask which one; the runner dismisses
+# the question and nothing may be sent.
+T94:
+  needs_model: true
+  request: "Send the file to Ved."
+  files: ["report.pdf"]
+  selected: ["report.pdf"]
+  contacts:
+    - { name: "Ved Narvekar", phone: "+91 98765 43210" }
+    - { name: "Ved Patel", phone: "+91 91234 56789" }
+  expect: asks_question
+
+# T52 (routing part, fake connector): the newest PDF, the saved contact found by first
+# name, and a confirm card that shows the exact name and number.
+T52:
+  needs_model: true
+  request: "yo send ved the pdf i just downloaded on whatsapp"
+  files: ["Notes.txt", "new.pdf"]
+  contacts:
+    - { name: "Ved Narvekar", phone: "+91 98765 43210" }
+    - { name: "Rahul Shah" }
+  expect: ran
+  skill: whatsapp.send_file
+  confirm_contains: "Ved Narvekar (+91 98765 43210)"
+  calls:
+    - { connector: whatsapp_desktop, action: open_chat, args: { contact: "Ved Narvekar" } }
 
 # Out of scope (T83-T90): nothing in V1 may act on these.
 T83: { request: "Delete all my emails from 2023.", expect: declined }

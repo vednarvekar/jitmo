@@ -18,6 +18,14 @@ pub enum Expect {
     AsksQuestion,
 }
 
+/// A saved contact that exists for one test.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContactSpec {
+    pub name: String,
+    pub phone: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CallSpec {
@@ -54,6 +62,12 @@ pub struct Spec {
     /// Folders that exist for this test (names; they live in `C:/Docs`).
     #[serde(default)]
     pub folders: Vec<String>,
+    /// Contacts saved before the request is typed (as if learned or imported earlier).
+    #[serde(default)]
+    pub contacts: Vec<ContactSpec>,
+    /// Installed apps (display names) known to the engine for this test.
+    #[serde(default)]
+    pub apps: Vec<String>,
     /// For `ran`: a part of the answer shown to the user (case ignored).
     pub message_contains: Option<String>,
     /// A part of the confirm text that must appear.

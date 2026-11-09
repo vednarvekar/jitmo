@@ -148,7 +148,7 @@ pub fn metrics(rows: &[Row], peak_bytes: Option<u64>) -> Vec<Metric> {
         Metric {
             name: "Sent to the wrong person (all tests)",
             target: "0",
-            measured: "not measured yet: contacts are not resolved".into(),
+            measured: "not measured yet: the real WhatsApp connector is not built (contacts are resolved)".into(),
             verdict: Verdict::Incomplete,
         },
         Metric {

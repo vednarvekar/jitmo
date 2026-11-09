@@ -60,6 +60,18 @@ const MIGRATIONS: &[&str] = &[
         value TEXT NOT NULL
     );
     ",
+    // 2: people the user can send to. Learned from use, or imported from a vCard file.
+    // `name` is unique ignoring case, so "ved narvekar" and "Ved Narvekar" are one person.
+    "
+    CREATE TABLE contacts (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        phone TEXT,
+        source TEXT NOT NULL,
+        uses INTEGER NOT NULL DEFAULT 0,
+        last_used TEXT
+    );
+    ",
 ];
 
 /// Whether this build can encrypt the database.
@@ -108,6 +120,19 @@ pub struct Reminder {
     pub repeat: Option<String>,
 }
 
+/// A person the user can send to (table `contacts`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Contact {
+    /// Full name as saved, like "Ved Narvekar".
+    pub name: String,
+    pub phone: Option<String>,
+    /// Where it came from: `learned` (a send to this name worked), `vcard` (imported)
+    /// or `manual`.
+    pub source: String,
+    /// How many successful tasks used this contact.
+    pub uses: i64,
+}
+
 /// True if `path` reads as an ordinary (unencrypted) SQLite database.
 fn is_plain_database(path: &Path) -> bool {
     Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
@@ -119,7 +144,13 @@ fn is_plain_database(path: &Path) -> bool {
         .is_ok()
 }
 
-const COUNTED_TABLES: [&str; 4] = ["defaults", "action_log", "reminders", "settings"];
+const COUNTED_TABLES: [&str; 5] = [
+    "defaults",
+    "action_log",
+    "reminders",
+    "settings",
+    "contacts",
+];
 
 fn table_counts(conn: &Connection, schema: &str) -> Result<Vec<i64>, StoreError> {
     COUNTED_TABLES
@@ -430,6 +461,68 @@ impl Store {
         )?;
         let mut rows = stmt.query([slot_type])?;
         Ok(rows.next()?.map(|r| r.get(0)).transpose()?)
+    }
+
+    // --- contacts -------------------------------------------------------
+
+    /// Add a person, or update the number of one already saved. A number given
+    /// now replaces the old one; `None` keeps it. The original `source` is kept.
+    pub fn upsert_contact(
+        &self,
+        name: &str,
+        phone: Option<&str>,
+        source: &str,
+    ) -> Result<(), StoreError> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Ok(());
+        }
+        self.conn.execute(
+            "INSERT INTO contacts(name, phone, source) VALUES(?1, ?2, ?3)
+             ON CONFLICT(name) DO UPDATE SET phone = COALESCE(excluded.phone, phone)",
+            params![name, phone, source],
+        )?;
+        Ok(())
+    }
+
+    /// A task that used this person worked: remember them (`learned`, if new) and
+    /// count the use. This is how the contact list grows with no sign-in anywhere.
+    pub fn remember_contact(&self, name: &str, at: &str) -> Result<(), StoreError> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Ok(());
+        }
+        self.conn.execute(
+            "INSERT INTO contacts(name, source, uses, last_used) VALUES(?1, 'learned', 1, ?2)
+             ON CONFLICT(name) DO UPDATE SET uses = uses + 1, last_used = excluded.last_used",
+            params![name, at],
+        )?;
+        Ok(())
+    }
+
+    /// Forget a person. Returns whether anyone was removed.
+    pub fn delete_contact(&self, name: &str) -> Result<bool, StoreError> {
+        Ok(self
+            .conn
+            .execute("DELETE FROM contacts WHERE name = ?1", [name.trim()])?
+            > 0)
+    }
+
+    /// Everyone saved, most used first, then by name.
+    pub fn contacts(&self) -> Result<Vec<Contact>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT name, phone, source, uses FROM contacts
+             ORDER BY uses DESC, last_used DESC, name COLLATE NOCASE",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Contact {
+                name: r.get(0)?,
+                phone: r.get(1)?,
+                source: r.get(2)?,
+                uses: r.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     // --- reminders ------------------------------------------------------
@@ -816,6 +909,44 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), vec![0xABu8; 4096]);
         assert!(!dir.join("j.db.plain.bak").exists());
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn contacts_are_learned_counted_and_unique_ignoring_case() {
+        let s = Store::open_in_memory().unwrap();
+        s.remember_contact("Ved Narvekar", "2026-11-09T10:00:00Z")
+            .unwrap();
+        s.remember_contact("ved narvekar", "2026-11-09T11:00:00Z")
+            .unwrap();
+        s.remember_contact("Rahul", "2026-11-09T12:00:00Z").unwrap();
+        let all = s.contacts().unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].name, "Ved Narvekar");
+        assert_eq!(all[0].uses, 2);
+        assert_eq!(all[0].source, "learned");
+    }
+
+    #[test]
+    fn an_imported_number_survives_later_use_and_a_missing_one_does_not_erase_it() {
+        let s = Store::open_in_memory().unwrap();
+        s.upsert_contact("Priya Shah", Some("+91 98765 43210"), "vcard")
+            .unwrap();
+        s.upsert_contact("Priya Shah", None, "vcard").unwrap();
+        s.remember_contact("Priya Shah", "2026-11-09T10:00:00Z")
+            .unwrap();
+        let c = &s.contacts().unwrap()[0];
+        assert_eq!(c.phone.as_deref(), Some("+91 98765 43210"));
+        assert_eq!(c.source, "vcard");
+        assert_eq!(c.uses, 1);
+    }
+
+    #[test]
+    fn a_contact_can_be_forgotten() {
+        let s = Store::open_in_memory().unwrap();
+        s.upsert_contact("Ved", None, "manual").unwrap();
+        assert!(s.delete_contact("ved").unwrap());
+        assert!(!s.delete_contact("ved").unwrap());
+        assert!(s.contacts().unwrap().is_empty());
     }
 
     #[cfg(not(feature = "sqlcipher"))]
