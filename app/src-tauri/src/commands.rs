@@ -59,6 +59,11 @@ pub(crate) fn stop_alarm() {
 
 #[tauri::command]
 pub(crate) fn hide_bar(app: AppHandle) {
+    // A ringing alarm is put away only after the page has stopped it (Esc, Enter, Backspace,
+    // a click): a stray blur or timer must not hide it.
+    if crate::sound::is_alarming() {
+        return;
+    }
     bar::hide(&app);
 }
 

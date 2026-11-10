@@ -42,7 +42,24 @@ fn announce_shown(app: &AppHandle) {
     });
 }
 
+/// Set while the bar is built ahead of an alarm: the page may report that it has drawn, but
+/// the window must stay hidden until the alarm itself shows it.
+static HOLD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A reminder is about to be due: build the bar now, hidden, so that when the alarm goes
+/// off the bar appears at once and the sound can follow it. (Waiting until the moment it
+/// is due meant a sound, then several seconds of silence before the bar came up.)
+pub(crate) fn warm_up(app: &AppHandle) {
+    if app.get_webview_window(BAR).is_none() {
+        HOLD.store(true, Ordering::SeqCst);
+        create_bar(app);
+    }
+}
+
 pub(crate) fn show_when_ready(app: &AppHandle) {
+    if HOLD.load(Ordering::SeqCst) {
+        return;
+    }
     if let Some(w) = app.get_webview_window(BAR) {
         if !w.is_visible().unwrap_or(false) {
             place_bar(app, &w);
@@ -253,14 +270,19 @@ fn show_notice_inner(app: &AppHandle, text: &str, event: &str) {
 /// Backspace stops it. Unlike [`show_notice`] this does take focus; an alarm that cannot
 /// be silenced from the keyboard is worse than one that interrupts typing.
 pub(crate) fn show_alarm(app: &AppHandle, text: &str) {
-    crate::sound::start_alarm();
+    HOLD.store(false, Ordering::SeqCst);
+    // The bar first, then the sound a moment later: a sound with nothing on screen feels
+    // broken.
     show_notice_inner(app, text, "bar-alarm");
     if let Some(w) = app.get_webview_window(BAR) {
         let _ = w.set_focus();
     }
+    std::thread::sleep(Duration::from_millis(350));
+    crate::sound::start_alarm();
 }
 
 pub(crate) fn toggle(app: &AppHandle) {
+    HOLD.store(false, Ordering::SeqCst);
     if !app
         .get_webview_window(BAR)
         .is_some_and(|w| w.is_visible().unwrap_or(false))
@@ -322,7 +344,6 @@ pub(crate) fn hide(app: &AppHandle) {
     let Some(w) = app.get_webview_window(BAR) else {
         return;
     };
-    crate::sound::stop_alarm(); // putting the bar away silences an alarm too
     let _ = w.hide();
     let mine = app
         .state::<AppState>()

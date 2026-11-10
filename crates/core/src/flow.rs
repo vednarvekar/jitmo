@@ -776,6 +776,28 @@ impl Flow {
                                 None => self.cancelled(id, text, Some(&skill.id)),
                             };
                         }
+                        // "remind me at 3": morning or afternoon? Offered in words, with only
+                        // the times a person would really mean (nobody sets 3 in the morning).
+                        if message.starts_with("Which time did you mean") {
+                            if let Some(options) = time_options(text, &message) {
+                                let choices: Vec<Choice> = options
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, (label, _))| Choice {
+                                        id: i.to_string(),
+                                        label: label.clone(),
+                                    })
+                                    .collect();
+                                return match p
+                                    .choose("What time did you mean?", &choices)
+                                    .and_then(|c| c.parse::<usize>().ok())
+                                    .and_then(|i| options.get(i))
+                                {
+                                    Some((_, sentence)) => self.run(id, sentence, p),
+                                    None => self.cancelled(id, text, Some(&skill.id)),
+                                };
+                            }
+                        }
                         if message.starts_with("When should I remind you") {
                             let presets = [
                                 ("In 1 hour", "in 1 hour"),
@@ -1243,6 +1265,62 @@ fn time_left(d: chrono::Duration) -> String {
     } else {
         format!("{m} min")
     }
+}
+
+/// The ways to read a bare hour ("remind me at 3"), as (button, complete sentence) pairs.
+/// `message` ends with the hour the reminder code found, "(3:00)". Hours 1 to 4 can only
+/// mean the afternoon; 5 to 11 can be morning or later, named in words ("6 in the evening")
+/// and never "am" or "pm".
+fn time_options(said: &str, message: &str) -> Option<Vec<(String, String)>> {
+    let inner = message.get(message.rfind('(')? + 1..message.rfind(')')?)?;
+    // "3:00" or "6:00 pm only" (the morning one has already gone by today).
+    let pm_only = inner.ends_with("pm only");
+    let inner = inner.trim_end_matches(" pm only");
+    let (h, m) = inner.split_once(':')?;
+    let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
+    if !(1..=11).contains(&h) {
+        return None;
+    }
+    let shown = if m == 0 {
+        h.to_string()
+    } else {
+        format!("{h}:{m:02}")
+    };
+    // The token in the sentence that holds the time, preferring one after "at".
+    let tokens: Vec<&str> = said.split_whitespace().collect();
+    let is_time = |t: &str| {
+        let t = t.trim_matches(|c: char| !c.is_alphanumeric() && c != ':');
+        t == shown || (m == 0 && t == format!("{h}:00"))
+    };
+    let at = tokens
+        .iter()
+        .position(|t| is_time(t))
+        .and_then(|i| {
+            let after_at = i > 0
+                && matches!(
+                    tokens[i - 1].to_lowercase().as_str(),
+                    "at" | "until" | "till" | "for" | "by"
+                );
+            after_at.then_some(i)
+        })
+        .or_else(|| tokens.iter().position(|t| is_time(t)))?;
+    let with = |suffix: &str| {
+        let mut t: Vec<String> = tokens.iter().map(|s| s.to_string()).collect();
+        t[at] = format!("{shown}{suffix}");
+        t.join(" ")
+    };
+    let part = |h24: u32| match h24 {
+        0..=11 => "in the morning",
+        12..=16 => "in the afternoon",
+        17..=20 => "in the evening",
+        _ => "at night",
+    };
+    let mut out = Vec::new();
+    if h >= 5 && !pm_only {
+        out.push((format!("{shown} {}", part(h)), with("am")));
+    }
+    out.push((format!("{shown} {}", part(h + 12)), with("pm")));
+    Some(out)
 }
 
 /// "help", "what can you do", "what can jitmo do" and close variants.
@@ -2793,5 +2871,55 @@ mod tests {
             "undo restores the previous place"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod time_option_tests {
+    use super::time_options;
+
+    #[test]
+    fn a_bare_three_only_offers_the_afternoon() {
+        let o = time_options(
+            "remind me to stretch at 3",
+            "Which time did you mean? (3:00)",
+        )
+        .unwrap();
+        assert_eq!(o.len(), 1);
+        assert_eq!(o[0].0, "3 in the afternoon");
+        assert_eq!(o[0].1, "remind me to stretch at 3pm");
+    }
+
+    #[test]
+    fn a_bare_ten_offers_morning_and_night_in_words() {
+        let o = time_options(
+            "remind me at 10:30 to call",
+            "Which time did you mean? (10:30)",
+        )
+        .unwrap();
+        assert_eq!(
+            o[0],
+            (
+                "10:30 in the morning".into(),
+                "remind me at 10:30am to call".into()
+            )
+        );
+        assert_eq!(
+            o[1],
+            (
+                "10:30 at night".into(),
+                "remind me at 10:30pm to call".into()
+            )
+        );
+        let o = time_options("remind me at 6 to eat", "Which time did you mean? (6:00)").unwrap();
+        assert_eq!(o[1].0, "6 in the evening");
+        assert!(time_options("remind me at 15", "Which time did you mean? (15:00)").is_none());
+        // The morning one is dropped once it has gone by today.
+        let o = time_options("remind me at 6", "Which time did you mean? (6:00 pm only)").unwrap();
+        assert_eq!(o.len(), 1);
+        assert_eq!(o[0].0, "6 in the evening");
+        // "timer until 6" keeps its "until".
+        let o = time_options("timer until 6", "Which time did you mean? (6:00)").unwrap();
+        assert_eq!(o[1].1, "timer until 6pm");
     }
 }

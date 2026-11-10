@@ -270,10 +270,11 @@ export default function App() {
         if (id !== null && ["confirm", "choice", "asking", "working"].includes(open.phase)) {
           bridge.cancel(id);
         }
-        closing.current = false;
         dispatch({ type: "reset" });
         setText("");
         setAlarm(message);
+        // Pop up the way the bar always does (also undoes a pop-down that was under way).
+        playIn();
       }),
       bridge.onBarBlurred(() => {
         if (Date.now() < dragUntil.current || alarmRef.current !== null) return;

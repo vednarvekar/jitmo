@@ -101,6 +101,12 @@ pub(crate) fn start_alarm() {
     });
 }
 
+/// Is an alarm ringing? The bar must not be put away by anything but the user's own
+/// dismissal while it is.
+pub(crate) fn is_alarming() -> bool {
+    ALARMING.load(Ordering::SeqCst)
+}
+
 /// Silence the alarm at once.
 pub(crate) fn stop_alarm() {
     if ALARMING.swap(false, Ordering::SeqCst) {

@@ -21,6 +21,14 @@ pub(crate) fn start_reminder_scheduler(
         };
         loop {
             let now = chrono_utc_now();
+            // About ten seconds ahead, build the bar (hidden) so it is ready the moment the
+            // reminder is due.
+            let soon = jitmo_connectors::reminders::utc_text(
+                chrono::Local::now() + chrono::Duration::seconds(12),
+            );
+            if store.due_reminders(&soon).is_ok_and(|d| !d.is_empty()) {
+                crate::bar::warm_up(&app);
+            }
             // The alarm is the bar itself: it pops up, rings, and stays until Esc, Enter or
             // Backspace. (The Windows notification, which came from "Windows PowerShell" and
             // was easy to miss, is no longer used.)

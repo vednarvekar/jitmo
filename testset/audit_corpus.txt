@@ -190,11 +190,11 @@ reminders.remind|partial|remind me tomorrow|ask|about what?
 reminders.remind|typo|rmind me to call mom at 6pm|run:reminders.remind;msg~6:00 PM|
 reminders.remind|typo|remid me to call mom at 6 pm|run:reminders.remind;msg~6:00 PM|
 reminders.remind|typo|remind me to call mom at 6 p.m.|run:reminders.remind;msg~6:00 PM|
-reminders.remind|typo|remind me abt mom call at 6|run:reminders.remind;msg~6:00 PM|
+reminders.remind|typo|remind me abt mom call at 6|ask;pick=evening;msg~6:00 PM|a bare hour asks which part of the day
 reminders.remind|typo|remind me to call mom at 6pm tommorow|run:reminders.remind;msg~tomorrow|
 reminders.remind|typo|remindme to call mom at 6pm|run:reminders.remind;msg~6:00 PM|
 reminders.remind|slang|ping me at 6pm to call mom|run:reminders.remind;msg~6:00 PM|
-reminders.remind|slang|reminder: gym at 6|run:reminders.remind;msg~6:00 PM|
+reminders.remind|slang|reminder: gym at 6|ask;pick=evening;msg~6:00 PM|a bare hour asks which part of the day
 reminders.remind|slang|mujhe kal subah 9 baje yaad dilana meeting hai|run:reminders.remind/ask;msg~tomorrow|Hinglish
 reminders.remind|slang|yaad dila do 6 baje mom ko call karna|run:reminders.remind/ask|Hinglish
 reminders.remind|slang|dont let me forget to call mom at 6pm|run:reminders.remind;msg~6:00 PM|
@@ -204,8 +204,8 @@ reminders.remind|ambiguous|remind me in 2 days to renew passport|run:reminders.r
 reminders.remind|ambiguous|remind me next week to call mom|ask/run:reminders.remind;msg~16 November|
 reminders.remind|ambiguous|remind me on 15 nov at 3pm to call mom|run:reminders.remind;msg~15 November|calendar date
 reminders.remind|ambiguous|remind me on the 1st to pay rent|ask/run:reminders.remind|date only
-reminders.remind|ambiguous|remind me at 9 to call mom|run:reminders.remind;msg~9:00 PM|9 am has passed: 9 pm today
-reminders.remind|ambiguous|remind me at 6 to call mom|run:reminders.remind;msg~6:00 PM|
+reminders.remind|ambiguous|remind me at 9 to call mom|ask;pick=night;msg~9:00 PM|a bare hour asks; only 9 at night is still ahead
+reminders.remind|ambiguous|remind me at 6 to call mom|ask;pick=evening;msg~6:00 PM|a bare hour asks
 reminders.remind|ambiguous|remind me today at 9am to jog|fail:reminders.remind;msg~passed/ask|past time
 reminders.remind|ambiguous|what reminders do I have|done|
 reminders.remind|ambiguous|cancel my reminders|done|

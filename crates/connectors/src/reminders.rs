@@ -269,12 +269,17 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
             .replace_all(&lower.replace("timer", ""), "at")
             .to_string();
         if until.contains("at") {
-            if let Ok(p) = parse(&format!("remind me to ring {until}"), now) {
-                return Ok(Parsed {
-                    what: "Timer".to_string(),
-                    timer: true,
-                    ..p
-                });
+            match parse(&format!("remind me to ring {until}"), now) {
+                Ok(p) => {
+                    return Ok(Parsed {
+                        what: "Timer".to_string(),
+                        timer: true,
+                        ..p
+                    })
+                }
+                // "timer until 6": morning or evening? The caller asks.
+                Err(e) if e.starts_with("Which time did you mean") => return Err(e),
+                Err(_) => {}
             }
         }
         // "timer 5": a lone number means minutes (a minus sign is never a length).
@@ -364,14 +369,15 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
 
     // Clock time: "at 6pm", "6:30 pm", "at 6", "noon", "midnight".
     let clock_re = Regex::new(
-        r"(?i)\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b|\b(noon|midnight)\b",
+        r"(?i)\b(?:(?:at|until|till)\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b|\b(noon|midnight)\b",
     )
     .map_err(|e| e.to_string())?;
     let mut found_clock: Option<(u32, u32, Option<bool>)> = None; // hour, minute, is_pm
     for c in clock_re.captures_iter(text) {
         let whole = c.get(0).ok_or("no match")?;
         let ampm = c.get(3).map(|a| a.as_str().to_lowercase().starts_with('p'));
-        let has_at = whole.as_str().to_lowercase().starts_with("at");
+        let lw = whole.as_str().to_lowercase();
+        let has_at = lw.starts_with("at") || lw.starts_with("until") || lw.starts_with("till");
         if let Some(w) = c.get(4) {
             let noon = w.as_str().eq_ignore_ascii_case("noon");
             found_clock = Some((12, 0, Some(noon)));
@@ -405,8 +411,46 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
     if let Some(m) = morning.or(evening) {
         cut.push((m.start(), m.end()));
     }
+    // "at 8 in the morning", "this evening at 6", "tomorrow afternoon at 3": the words say
+    // which half of the day, so nothing is left to ask.
+    let ampm = match ampm {
+        Some(a) => Some(a),
+        None if morning.is_some() && evening.is_none() => Some(false),
+        None if evening.is_some() && morning.is_none() => Some(true),
+        None => {
+            let pm_word = Regex::new(r"(?i)\b(?:in the )?(afternoon|night)\b")
+                .map_err(|e| e.to_string())?
+                .find(text);
+            match (day_default_hour, pm_word) {
+                (Some(h), _) => Some(h >= 12),
+                (None, Some(m)) => {
+                    cut.push((m.start(), m.end()));
+                    Some(true)
+                }
+                (None, None) => None,
+            }
+        }
+    };
+    // A bare hour ("remind me at 3") could be morning or afternoon, and a wrong guess
+    // (3 in the morning) would never be noticed until it rings. Ask, in words: "3 in the
+    // afternoon", never "am or pm". 12 is noon; 13 to 23 and 0 are already clear.
+    if ampm.is_none() && (1..=11).contains(&hour) && minute < 60 {
+        // The morning one is left out when it has already gone by today.
+        let morning_gone = !explicit_day && local_at(date, hour, minute).is_none_or(|t| t <= now);
+        let only = if morning_gone { " pm only" } else { "" };
+        return Err(format!(
+            "Which time did you mean? ({hour}:{minute:02}{only})"
+        ));
+    }
 
-    // Resolve am/pm. With none given, use the next time the clock shows that hour.
+    // A bare 12 means noon.
+    let ampm = if ampm.is_none() && hour == 12 {
+        Some(true)
+    } else {
+        ampm
+    };
+
+    // Resolve am/pm. With none given (only 0 and 13 to 23 reach here), the hour is as typed.
     let due = match ampm {
         _ if hour > 12 || hour == 0 => local_at(date, hour % 24, minute),
         Some(pm) => {
@@ -692,19 +736,36 @@ mod tests {
     }
 
     #[test]
-    fn t59_casual_bare_six_means_the_next_six() {
-        let r = p("remind me abt mom call at 6");
-        assert_eq!(hm(r.due), (8, 18, 0), "it is 2pm, so the next 6 is 6pm");
-        assert_eq!(r.what, "Mom call");
+    fn a_bare_hour_asks_which_part_of_the_day() {
+        // "at 6", "at 3": never guessed (3 in the morning would never be wanted).
+        for said in ["remind me abt mom call at 6", "remind me to stretch at 3"] {
+            let e = parse(said, now()).unwrap_err();
+            assert!(e.starts_with("Which time did you mean?"), "{said}: {e}");
+        }
+        assert_eq!(
+            parse("remind me at 3:30 to call", now()).unwrap_err(),
+            "Which time did you mean? (3:30 pm only)"
+        );
     }
 
     #[test]
-    fn a_bare_hour_already_passed_today_rolls_to_tomorrows_next() {
-        // 2pm: "at 1" -> next time the clock reads 1 is 1am tomorrow.
-        let r = p("remind me to stretch at 1");
-        assert_eq!(hm(r.due), (9, 1, 0));
+    fn words_or_am_pm_settle_the_part_of_the_day() {
+        let r = p("remind me to stretch at 3pm");
+        assert_eq!(hm(r.due), (8, 15, 0));
+        // "this evening at 6" and "tomorrow morning at 8" say which half of the day.
+        assert_eq!(hm(p("remind me this evening at 6 to eat").due), (8, 18, 0));
+        assert_eq!(
+            hm(p("remind me tomorrow morning at 8 to run").due),
+            (9, 8, 0)
+        );
+        assert_eq!(
+            hm(p("remind me tomorrow afternoon at 3 to call").due),
+            (9, 15, 0)
+        );
+        // Noon is not asked about, and 24-hour times are clear.
+        assert_eq!(hm(p("remind me at 12 to eat").due), (9, 12, 0));
+        assert_eq!(hm(p("remind me at 15:00 to call").due), (8, 15, 0));
     }
-
     #[test]
     fn more_date_forms_are_understood_and_the_impossible_ones_refused() {
         let n = now();

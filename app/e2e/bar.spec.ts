@@ -71,3 +71,14 @@ test("a ringing alarm stays until Esc, Enter or Backspace", async ({ bar }) => {
     await expect.poll(() => bar.shell.hidden).toBe(true);
   }
 });
+
+test("a bare hour asks in words, and the single sensible choice finishes the job", async ({ bar }) => {
+  await bar.open();
+  await bar.say("remind me to call mom at 3");
+  expect(await bar.line()).toBe("What time did you mean?");
+  const buttons = await bar.buttons();
+  expect(buttons.some((b) => /am|pm/i.test(b))).toBe(false); // words, never am or pm
+  expect(buttons.join(" ")).toMatch(/in the afternoon/);
+  await bar.page.keyboard.press("1");
+  await expect(bar.page.locator(".status .message")).toContainText(/Reminder set/);
+});
