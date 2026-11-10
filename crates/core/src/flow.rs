@@ -671,8 +671,9 @@ impl Flow {
             Some(id) => RouteDecision::Run { skill_id: id },
             None => decide(&understanding),
         };
-        // The router is unsure or said no: a language model gets the catalog and may pick a
-        // tool or answer in words. Sure routes (and chains) never wait for it.
+        // The router is unsure or said no: a language model gets the router's best three
+        // tools (a short prompt is what keeps it fast) and may pick one. Sure routes (and
+        // chains) never wait for it.
         if self.llm.is_some()
             && matches!(
                 decision,
@@ -681,10 +682,11 @@ impl Flow {
                     | RouteDecision::ConfirmTask { .. }
             )
         {
-            let tools: Vec<crate::llm::ToolBrief> = self
-                .router
-                .skills()
+            let tools: Vec<crate::llm::ToolBrief> = understanding
+                .tasks
                 .iter()
+                .filter_map(|t| self.router.skill(&t.id))
+                .take(3)
                 .map(|s| crate::llm::ToolBrief {
                     id: s.id.clone(),
                     title: s.title.clone().unwrap_or_else(|| s.id.clone()),
@@ -701,14 +703,10 @@ impl Flow {
                 crate::llm::Pick::Tool(skill_id) if self.router.skill(&skill_id).is_some() => {
                     decision = RouteDecision::Run { skill_id };
                 }
-                crate::llm::Pick::Answer(answer) => {
-                    self.log(text, None, Decision::Ran, &answer, None);
-                    return CoreEvent::Done {
-                        id,
-                        message: answer,
-                        undoable: false,
-                    };
-                }
+                // An answer from a model's memory is a guess. It is shown only when it is
+                // grounded in retrieved text, which the writer will do (low-memory brief,
+                // step 6); until then it never reaches the user.
+                crate::llm::Pick::Answer(_) => {}
                 _ => {}
             }
         }
@@ -3263,7 +3261,7 @@ mod tests {
     }
 
     #[test]
-    fn a_declined_request_goes_to_the_model_which_can_answer() {
+    fn an_ungrounded_model_answer_never_reaches_the_user() {
         let c = Arc::new(FakeConnector::new("windows_system"));
         let mut flow =
             flow_with(&[OPEN], vec![("windows_system", c)]).with_llm(Box::new(Scripted(vec![
@@ -3272,7 +3270,7 @@ mod tests {
         let mut u = TestUser::default();
         let ev = flow.handle(1, "blorp the zibble pasta recipe please", &mut u);
         assert!(
-            matches!(&ev, CoreEvent::Done { message, .. } if message.contains("Boil the pasta")),
+            !matches!(&ev, CoreEvent::Done { message, .. } if message.contains("Boil the pasta")),
             "{ev:?}"
         );
     }

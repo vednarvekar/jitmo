@@ -24,8 +24,15 @@ pub struct LlmConfig {
     pub port: u16,
     pub threads: u32,
     pub context: u32,
-    /// Minutes without a request before the server is stopped.
-    pub idle_minutes: u64,
+    /// Seconds without a request before the server is stopped.
+    pub idle_seconds: u64,
+}
+
+/// Physical cores minus one, at most three: the model must never take the whole CPU. (Logical
+/// processors are halved as an estimate of physical cores.)
+pub fn default_threads() -> u32 {
+    let logical = std::thread::available_parallelism().map_or(2, |n| n.get() as u32);
+    (logical / 2).saturating_sub(1).clamp(1, 3)
 }
 
 impl LlmConfig {
@@ -34,9 +41,9 @@ impl LlmConfig {
             server_exe,
             model,
             port: 8791,
-            threads: 4,
-            context: 4096,
-            idle_minutes: 5,
+            threads: default_threads(),
+            context: 2048,
+            idle_seconds: 90,
         }
     }
 }
@@ -143,7 +150,7 @@ pub struct LocalLlm {
 
 impl LocalLlm {
     pub fn new(cfg: LlmConfig) -> LocalLlm {
-        let idle = Duration::from_secs(cfg.idle_minutes.max(1) * 60);
+        let idle = Duration::from_secs(cfg.idle_seconds.max(10));
         let host = Arc::new(Mutex::new(Host {
             cfg,
             child: None,
@@ -250,51 +257,9 @@ pub fn pick_schema(tools: &[ToolBrief]) -> Value {
     })
 }
 
-const ANSWER_SYSTEM: &str = "You are Jitmo, a helpful assistant on the user's PC. Answer the \
-question clearly in at most four short sentences, in plain words a student can follow. If you \
-are not sure, say \"I'm not sure\" and say what you do know. Never invent facts, names, numbers \
-or sources. Do not use markdown headings.";
-
-/// Does the request read like a question or a writing job (so an answer is wanted), rather
-/// than a command the tools could not do?
-pub fn wants_an_answer(request: &str) -> bool {
-    let t = request.trim().to_lowercase();
-    let starts = [
-        "what",
-        "who",
-        "why",
-        "how",
-        "when",
-        "where",
-        "which",
-        "explain",
-        "define",
-        "tell me",
-        "give me",
-        "write",
-        "translate",
-        "summar",
-        "quiz",
-        "solve",
-        "calculate",
-        "compare",
-        "is ",
-        "are ",
-        "does ",
-        "do ",
-        "can ",
-        "should ",
-        "make me",
-        "help me",
-        "teach",
-        "describe",
-        "list",
-        "suggest",
-        "recommend",
-        "meaning",
-    ];
-    t.ends_with('?') || starts.iter().any(|s| t.starts_with(s))
-}
+// The model only picks a tool here. It does not write free text for the user: an answer
+// from a model's memory is a guess, and the writer (step 6 of the low-memory brief) will
+// answer only from retrieved text. Until then "none" means "I can't do that yet".
 
 impl Llm for LocalLlm {
     fn route(&mut self, request: &str, tools: &[ToolBrief], recent: Option<&str>) -> Pick {
@@ -308,18 +273,9 @@ impl Llm for LocalLlm {
             .ok()
             .and_then(|s| serde_json::from_str::<Value>(&s).ok())
             .and_then(|v| v["tool"].as_str().map(str::to_string));
-        match picked.as_deref() {
-            Some("none") | None => {
-                if !wants_an_answer(request) {
-                    return Pick::Nothing;
-                }
-                match self.chat(ANSWER_SYSTEM, request, None, 220) {
-                    Ok(a) if !a.is_empty() => Pick::Answer(a),
-                    _ => Pick::Nothing,
-                }
-            }
-            Some(id) if tools.iter().any(|t| t.id == id) => Pick::Tool(id.to_string()),
-            Some(_) => Pick::Nothing,
+        match picked {
+            Some(id) if tools.iter().any(|t| t.id == id) => Pick::Tool(id),
+            _ => Pick::Nothing,
         }
     }
 }
@@ -352,17 +308,15 @@ mod tests {
     }
 
     #[test]
-    fn the_prompt_lists_every_tool() {
+    fn the_prompt_lists_every_tool_it_is_given() {
         let p = pick_system(&tools());
         assert!(p.contains("- apps.open: Open an app (e.g. \"open spotify\")"));
         assert!(p.contains("web.weather"));
     }
 
     #[test]
-    fn questions_want_answers_and_commands_do_not() {
-        assert!(wants_an_answer("how do vaccines work"));
-        assert!(wants_an_answer("explain newton's second law"));
-        assert!(wants_an_answer("translate good morning to french"));
-        assert!(!wants_an_answer("turn the lights to green"));
+    fn threads_never_take_the_whole_cpu() {
+        let t = default_threads();
+        assert!((1..=3).contains(&t));
     }
 }

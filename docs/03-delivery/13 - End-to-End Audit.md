@@ -6,6 +6,11 @@ material, opens apps, messages friends, checks schedules, plays music, browses a
 to the company workspace (Microsoft 365 or Google), gives meeting heads-ups, takes notes, shares files and
 answers messages; local models only, a smart engine rather than a rule follower, the best UI/UX.**
 
+> **Status (10 Nov 2026, evening).** Many findings below have since been addressed; see
+> [14 - Audit Response](14%20-%20Audit%20Response.md). Section 6's "one 3–4B model" advice is **superseded**
+> by section 10: the owner's hard limit is that jitmo must never slow the PC, so the design is now a
+> cascade of small specialist models inside a fixed memory budget.
+
 ## 0. Verdict in one paragraph
 
 The *engineering discipline* is excellent: a clean Rust workspace, a real policy engine, confirms, Undo,
@@ -272,3 +277,109 @@ consent), not on the spec's own test phrasings.
 6. Calendar watcher toast 10 minutes before each meeting (already have the scheduler and toasts).
 7. Change the placeholder to honest rotating examples.
 8. Add `testset/vision_corpus.txt` (written for this audit) to the audit run and track it.
+
+---
+
+## 10. The low-memory engine (added 10 Nov 2026, evening)
+
+**Owner's hard rule:** jitmo must never slow the PC. Over 2 GB is useless. The goal is many small,
+specialised models that load and unload quickly and still match a big model on *our* tasks.
+
+### 10.1 Budget (the contract every change is measured against)
+
+| | Target | Hard limit |
+|---|---|---|
+| Idle, bar closed (whole process tree) | ≤ 60 MB | 100 MB |
+| Idle, bar open, encoder warm | ≤ 150 MB | 200 MB |
+| Peak during any request | ≤ 900 MB | 1.2 GB (Job Object cap on the model process) |
+| CPU while idle | 0% | 0.5% |
+| CPU threads during a request | physical cores − 1, at most 3 on a 4-core laptop | never all cores |
+| Action requests (open, timer, volume, send…) | p50 ≤ 300 ms, p95 ≤ 800 ms | — |
+| Answers (explain, summarise) | first words ≤ 1.5 s, streamed | — |
+| Wrong actions (wrong tool, or wrong person on a send) | 0 | 0 |
+
+Before loading anything over 300 MB the engine checks free physical memory (`GlobalMemoryStatusEx`). If
+loading would leave less than about 1.5 GB free, it uses the next smaller tier or offers a web search, and it
+never pushes the PC into paging.
+
+### 10.2 What "load only part of a model" can and cannot mean
+
+| Idea | Verdict | Why |
+|---|---|---|
+| Load only the layers a request needs | **No**, for normal models | Every generated word passes through every layer. Skipping layers costs a lot of quality unless the model was trained for it. |
+| Memory-map the weights and let Windows page them | **Yes, already free** | llama.cpp and ONNX Runtime map the file by default. When the model process exits, the file pages usually stay in the Windows standby cache, so a reload is fast, and Windows can drop them under pressure. This *is* fast load and unload. |
+| One base model plus small swappable adapters (LoRA) | **Yes, the main lever** | Several specialists for the memory of one model. llama-server can choose adapters per request. Each adapter is 5–50 MB. |
+| Models built to keep part of their weights on disk (Gemma 3n and Gemma 4 "E" models, per-layer embeddings) | **Yes, test it** | About 5B parameters running with about 2B in memory. Check what llama.cpp actually keeps resident on a CPU. |
+| 1.58-bit models (BitNet b1.58 2B4T) | **Yes, test it** | About 0.4 GB non-embedding memory and fast CPU decoding, but it needs bitnet.cpp, not llama.cpp. |
+| Mixture-of-experts streamed from the SSD | **Not now** | Needs all experts in RAM or slow random SSD reads. Research, not a two-week task. |
+| One encoder pass feeding several small heads | **Yes, already half built** | The router and the NER tagger are two separate MiniLM models today; one shared encoder with several heads halves that cost. |
+
+### 10.3 The design: a cascade of specialists
+
+Each request starts at the cheapest level and only climbs when the level below is not confident.
+
+| Level | Job | Model | RAM | Resident |
+|---|---|---|---|---|
+| **L0** | Exact and learned requests ("open spotify", things the user confirmed before) | cache plus true parsers (dates, numbers, units, sums) | ~0 | always |
+| **L1** | Understand: which tool (open set), which slots, answer or action, confidence | **one** small encoder (MiniLM-class, int8, ~25 MB) with heads for tool retrieval, a generic slot tagger (person, time, duration, app, file, message, query, place, number) and calibrated confidence | ~60–100 MB | while the bar is open, and 60 s after |
+| **L2** | Fill typed tool arguments when L1 is unsure; short plans (at most 5 steps) | tiny tool-caller, 270M–0.8B, **fine-tuned on jitmo's own tool schemas**, grammar-constrained JSON | ~200–550 MB | on demand, pre-warmed when the bar opens if memory allows; unloaded after 60–90 s |
+| **L3** | Write: grounded answers, explain, summarise, draft replies, quiz | the L2 base with a writing adapter if the quality is enough; otherwise a 1.5–2B model (or BitNet 2B) | ~0.4–1.1 GB | only for writing tasks; never resident together with a second generator; unloaded after 30–60 s |
+
+Rules that **parse** (dates, durations, numbers, units, maths, URLs) stay: they are exact and cheap. Rules
+that **understand** (keyword lists that guess intent, error-string branches, per-skill guards, the
+`wants_an_answer` word list) are replaced by L1 and L2, then deleted.
+
+### 10.4 How small models reach big-model precision on our tasks
+
+1. **Specialise and distil.** Generate training data offline with a large teacher model from the tool
+   schemas (paraphrases, typos, Hinglish, slang, partial commands, chains), plus real requests users have
+   confirmed. Fine-tuned tiny tool-callers are reported to improve sharply on narrow tasks (FunctionGemma 270M:
+   58% to 85% on Mobile Actions; one community distillation reached 96.7% on a multi-turn home-control task,
+   above its 120B teacher). Small models win on narrow, repetitive agent work; keep a general model only for
+   open writing.
+2. **Make wrong output impossible.** Grammar or JSON-schema decoding: only real tool ids and valid argument
+   shapes can come out.
+3. **Show the model less.** Give L2 the top 3 tool schemas from L1 (about 200 tokens), not the whole catalog
+   (1,500 or more). On a laptop CPU most of the wait is the model *reading* the prompt (see 10.8).
+4. **Check in code, then ask.** Arguments are validated against the schema and the resolver (the contact
+   exists, the time parses). If the L1 tagger and L2 disagree, or confidence is low, ask one question. Never
+   guess on a send.
+5. **Ground every answer.** Small models are good readers and bad memorisers. L3 answers only from retrieved
+   text (local files, Wiktionary, Wikipedia passages), quotes it, and says "I'm not sure" otherwise.
+6. **Learn locally.** Every confirmed result becomes an L0 cache entry (instant next time) and a training
+   example for the next adapter update. The engine gets faster and more precise with use.
+
+### 10.5 The scheduler (the part to invent)
+
+- **Budget manager:** one place that knows what is loaded, its size and the free RAM. It refuses to load a
+  second generator, and puts a Job Object memory cap on the model process.
+- **Pre-warm on the hotkey:** people take 2–4 s to type. Start mapping L2 when the bar opens (if memory
+  allows) so the load is hidden behind typing.
+- **Unload on pressure:** subscribe to `CreateMemoryResourceNotification(LowMemoryResourceNotification)` and
+  drop L3, then L2, at once.
+- **CPU manners:** threads = physical cores − 1 (at most 3 on 4 cores); normal priority only while a request
+  runs, EcoQoS or below-normal otherwise; nothing runs while idle.
+- **Prompt-prefix cache:** keep the fixed instruction part of each L2 and L3 prompt cached (slot save and
+  restore). Hybrid linear-attention models (Qwen3.5) may not reuse prefix caches in llama.cpp; measure it, and
+  prefer a pure-attention model if caching fails.
+- **Stream** L3 output to the bar so the first words show while the rest is written.
+
+### 10.6 How to measure (the gate for every change)
+
+A benchmark that reports, for each candidate and tier: tool accuracy and **argument** accuracy on a
+**held-out** set the rules were never tuned on; ask rate; wrong-action rate; p50 and p95 latency split into
+cold load, prompt reading and writing, with and without the prefix cache; **peak private memory of the whole
+process tree**; CPU % during the request and while idle. Run it under a 1.2 GB Job Object cap with a browser
+open, to simulate an 8 GB laptop.
+
+### 10.7 Candidates to test (Nov 2026)
+
+| Slot | Candidates |
+|---|---|
+| L1 encoder | the current MiniLM-L6 int8, shared by both heads; EmbeddingGemma-300M only if retrieval is weak; GLiNER2 (~205M, schema-driven tagging and classification in one pass) as a comparison |
+| L2 tool-caller | FunctionGemma 270M (fine-tuned), Qwen3.5-0.8B (fine-tuned), Gemma 3 270M or 1B |
+| L3 writer | the L2 base plus a writing adapter; Qwen3.5-2B; Gemma 3n or 4 E2B; BitNet b1.58 2B4T |
+
+### 10.8 Measured on the owner's laptop
+
+MEASUREMENTS_PENDING
