@@ -534,6 +534,24 @@ fn work_skill(lower: &str) -> Option<&'static str> {
     {
         return Some("whatsapp.send_file");
     }
+    // A text on WhatsApp: "text rahul on whatsapp that i'll be late", "whatsapp mom happy
+    // birthday". Opening the app or the web page is not a message.
+    let opens_only = (starts("open") || starts("launch") || starts("start"))
+        && lower.split_whitespace().count() <= 3;
+    let message_verb = [
+        "text", "message", "msg", "tell", "send", "whatsapp", "ping", "dm",
+    ]
+    .iter()
+    .any(|v| starts(&format!("{v} ")))
+        || lower.contains(" on whatsapp");
+    if has("whatsapp")
+        && !has("whatsapp web")
+        && !opens_only
+        && message_verb
+        && lower.split_whitespace().count() >= 3
+    {
+        return Some("whatsapp.send_message");
+    }
     // The Google account: set the client, sign in, sign out.
     let google = has("google") || has("gmail") || has("g suite") || has("workspace");
     if google && (has("client id") || has("client secret")) && (starts("set") || starts("save")) {

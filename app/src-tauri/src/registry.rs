@@ -123,6 +123,8 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/account.google_sign_in.yaml"),
         include_str!("../../../skills/account.google_sign_out.yaml"),
         include_str!("../../../skills/account.google_client.yaml"),
+        include_str!("../../../skills/whatsapp.send_file.yaml"),
+        include_str!("../../../skills/whatsapp.send_message.yaml"),
     ]
     .iter()
     .map(|y| Skill::parse(y).expect("built-in skill is invalid"))
@@ -271,6 +273,7 @@ pub(crate) fn connectors(
     );
     add_ms365(&mut map, db, key);
     add_google(&mut map, db, key);
+    add_whatsapp(&mut map, db, key);
     map
 }
 
@@ -513,5 +516,78 @@ fn open_in_browser(url: &str) -> Result<(), String> {
     {
         let _ = url;
         Err("not supported here".into())
+    }
+}
+
+/// WhatsApp on this PC: opens the chat with the message typed (or the file copied) and the
+/// user presses Send. Numbers come from the saved contacts.
+fn add_whatsapp(
+    map: &mut HashMap<String, Arc<dyn Connector>>,
+    db: &std::path::Path,
+    key: Option<&jitmo_store::Key>,
+) {
+    use jitmo_connectors::whatsapp::WhatsAppDesktop;
+
+    let (db, key) = (db.to_path_buf(), key.copied());
+    let phone_of = move |name: &str| -> Option<String> {
+        let store = open_store(&db, key.as_ref()).ok()?;
+        store
+            .contacts()
+            .ok()?
+            .into_iter()
+            .find(|c| c.name.eq_ignore_ascii_case(name))
+            .and_then(|c| c.phone)
+    };
+    map.insert(
+        "whatsapp_desktop".into(),
+        Arc::new(WhatsAppDesktop::new(
+            Box::new(phone_of),
+            Box::new(open_in_browser),
+            Box::new(copy_file_to_clipboard),
+            Box::new(whatsapp_desktop_installed),
+        )),
+    );
+}
+
+/// Put a file on the clipboard (as a file, so Ctrl+V pastes it into WhatsApp). The path is
+/// passed as an argument, never spliced into a script.
+fn copy_file_to_clipboard(path: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let status = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Set-Clipboard -LiteralPath $args[0]",
+                path,
+            ])
+            .status()
+            .map_err(|e| e.to_string())?;
+        status
+            .success()
+            .then_some(())
+            .ok_or_else(|| "clipboard".to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Err("not supported here".into())
+    }
+}
+
+/// Is the `whatsapp://` link registered (the desktop app is installed)?
+fn whatsapp_desktop_installed() -> bool {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("reg")
+            .args(["query", r"HKEY_CLASSES_ROOT\whatsapp"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+    #[cfg(not(windows))]
+    {
+        false
     }
 }

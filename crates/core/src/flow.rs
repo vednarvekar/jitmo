@@ -846,7 +846,10 @@ impl Flow {
         slots.insert("request".to_string(), SlotValue::from_text(text));
 
         // A send must show, and send, the words the user meant, never the whole sentence.
-        if matches!(skill.id.as_str(), "mail.send" | "chat.post" | "mail.draft") {
+        if matches!(
+            skill.id.as_str(),
+            "mail.send" | "chat.post" | "mail.draft" | "whatsapp.send_message"
+        ) {
             let body = if skill.id == "chat.post" {
                 crate::normalize::post_body(text)
             } else {
@@ -950,7 +953,15 @@ impl Flow {
                         let who = slots
                             .get("contact")
                             .map_or("the".to_string(), |c| format!("{}'s", c.text));
-                        let message = format!("I opened {who} chat. Press Send to finish.");
+                        let message = match skill.id.as_str() {
+                            "whatsapp.send_file" => format!(
+                                "I opened {who} chat and copied the file. Press Ctrl+V, then Send."
+                            ),
+                            "whatsapp.send_message" => {
+                                format!("I opened {who} chat with your message. Press Send.")
+                            }
+                            _ => format!("I opened {who} chat. Press Send to finish."),
+                        };
                         self.log(text, Some(&skill.id), Decision::Ran, &message, None);
                         return CoreEvent::Done {
                             id,
@@ -2694,7 +2705,10 @@ mod tests {
         let ev = flow.handle(54, "send report.pdf to ved on whatsapp", &mut u);
         assert_eq!(
             done(&ev),
-            ("I opened ved's chat. Press Send to finish.", false)
+            (
+                "I opened ved's chat and copied the file. Press Ctrl+V, then Send.",
+                false
+            )
         );
     }
 

@@ -1,0 +1,35 @@
+id: whatsapp.send_message
+title: "Message someone on WhatsApp"
+version: 1
+category: messaging
+capabilities:
+  - contacts.read
+  - whatsapp.compose
+network: none
+limits:
+  cpu_ms: 200
+  timeout_s: 15
+# Jitmo only opens the chat with the text typed; the person presses Send.
+risk: changes_data
+examples:
+  - "text rahul on whatsapp that i'll be late"
+  - "whatsapp mom happy birthday"
+  - "message ved on whatsapp saying call me"
+slots:
+  contact:
+    type: contact
+    required: true
+    resolve: [named_contact, usual_contact]
+steps:
+  - connector: whatsapp_desktop
+    action: prefill
+    args: { contact: "{contact}", text: "{message}" }
+  - connector: whatsapp_desktop
+    action: await_send
+    args: {}
+check:
+  connector: whatsapp_desktop
+  action: prefill
+  args: { contact: "{contact}", text: "{message}" }
+undo: none
+fallback: open_chat_and_wait

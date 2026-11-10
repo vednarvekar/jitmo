@@ -27,6 +27,7 @@ pub mod system_controls;
 pub mod web_facts;
 pub mod web_lookup;
 pub mod web_weather;
+pub mod whatsapp;
 #[cfg(windows)]
 pub mod windows_system;
 
