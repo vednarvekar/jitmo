@@ -67,8 +67,8 @@ pub(crate) fn play(cue: Cue) {
         return;
     }
     let wav = match cue {
-        Cue::Open => UP.get_or_init(|| pop(430.0, 920.0, 0.26, 0.12)),
-        Cue::Close => DOWN.get_or_init(|| pop(780.0, 360.0, 0.2, 0.0)),
+        Cue::Open => UP.get_or_init(|| pop(430.0, 920.0, 0.55, 0.12)),
+        Cue::Close => DOWN.get_or_init(|| pop(780.0, 360.0, 0.45, 0.0)),
     };
     play_wav(wav);
 }
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn the_cues_are_valid_short_quiet_wav_files() {
-        for wav in [pop(430.0, 920.0, 0.26, 0.12), pop(780.0, 360.0, 0.2, 0.0)] {
+        for wav in [pop(430.0, 920.0, 0.55, 0.12), pop(780.0, 360.0, 0.45, 0.0)] {
             assert_eq!(&wav[..4], b"RIFF");
             assert_eq!(&wav[8..16], b"WAVEfmt ");
             let data_len = u32::from_le_bytes(wav[40..44].try_into().unwrap()) as usize;
@@ -309,7 +309,7 @@ mod tests {
                 .map(|i| i16::from_le_bytes([wav[i], wav[i + 1]]).unsigned_abs())
                 .max()
                 .unwrap();
-            assert!(peak > 1000 && peak < 12_000, "peak {peak}");
+            assert!(peak > 1000 && peak < 28_000, "peak {peak}");
         }
     }
 
