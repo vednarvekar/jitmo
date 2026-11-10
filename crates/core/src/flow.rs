@@ -831,6 +831,30 @@ impl Flow {
         };
         slots.insert("request".to_string(), SlotValue::from_text(text));
 
+        // A send must show, and send, the words the user meant, never the whole sentence.
+        if matches!(skill.id.as_str(), "mail.send" | "chat.post" | "mail.draft") {
+            let body = if skill.id == "chat.post" {
+                crate::normalize::post_body(text)
+            } else {
+                crate::normalize::message_body(text)
+            };
+            match body {
+                Some(body) => {
+                    slots.insert("message".to_string(), SlotValue::from_text(&body));
+                }
+                None => {
+                    return match ask_text_twice(
+                        p,
+                        "What should it say?",
+                        "The exact words to send, e.g. Friday works",
+                    ) {
+                        Some(what) => self.run(id, &format!("{text} saying {what}"), p),
+                        None => self.cancelled(id, text, Some(&skill.id)),
+                    };
+                }
+            }
+        }
+
         // 3. Policy. A broken log must not unblock anything, so if the block
         //    cannot be logged the decision still stands.
         let facts = StepFacts::from_skill(&skill, false, recipient_count(&skill, &slots));

@@ -16,7 +16,7 @@ examples:
   - "message the team channel that i am late"
 slots: {}
 confirm:
-  text: "Post this in Teams: {request}"
+  text: "Post this in Teams? “{message}”"
 steps:
   - connector: teams
     action: post

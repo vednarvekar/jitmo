@@ -803,6 +803,54 @@ fn file_search(s: &str) -> Option<String> {
     (!rest.is_empty()).then(|| format!("find {}", rest.join(" ")))
 }
 
+/// The words that will actually be sent: the part after "saying", "that", "about"…
+/// Capitalised, with a full stop. `None` when the sentence names no message.
+pub fn message_body(request: &str) -> Option<String> {
+    let lower = request.to_lowercase();
+    for marker in [
+        " saying ",
+        " say ",
+        " that ",
+        " telling him ",
+        " telling her ",
+        " with the message ",
+        " message ",
+        " about ",
+        ": ",
+    ] {
+        if let Some(i) = lower.find(marker) {
+            let rest = request[i + marker.len()..].trim().trim_end_matches('.');
+            if !rest.is_empty() {
+                let mut c = rest.chars();
+                let first = c.next()?.to_uppercase().collect::<String>();
+                return Some(format!("{first}{}.", c.as_str()));
+            }
+        }
+    }
+    None
+}
+
+/// The words to post in a Teams channel: "tell the team channel standup moves to 11" ->
+/// "Standup moves to 11."; otherwise the same as [`message_body`].
+pub fn post_body(request: &str) -> Option<String> {
+    let lower = request.to_lowercase();
+    for marker in [" channel ", " chat "] {
+        if let Some(i) = lower.find(marker) {
+            let rest = request[i + marker.len()..].trim().trim_end_matches('.');
+            let rest = rest
+                .strip_prefix("that ")
+                .or_else(|| rest.strip_prefix("saying "))
+                .unwrap_or(rest);
+            if !rest.is_empty() {
+                let mut c = rest.chars();
+                let first = c.next()?.to_uppercase().collect::<String>();
+                return Some(format!("{first}{}.", c.as_str()));
+            }
+        }
+    }
+    message_body(request)
+}
+
 /// Answers that need no skill: greetings, thanks, and things Jitmo cannot do (said plainly
 /// instead of guessing at the nearest skill, which once opened Chrome for "close chrome").
 pub fn plain_reply(said: &str) -> Option<&'static str> {
@@ -877,6 +925,15 @@ pub fn plain_reply(said: &str) -> Option<&'static str> {
     }
     if first == "mark" && t.contains("read") && mail {
         return Some("I can't do that yet. I can't mark email as read.");
+    }
+    // Teams: only posting is supported; a status or joining a call is not a post.
+    if t.contains("teams") && !t.contains("post") {
+        if t.contains("status") || t.contains("available") || t.contains("away") {
+            return Some("I can't change your Teams status yet. I can post a message in Teams.");
+        }
+        if first == "join" || t.contains("join ") || t.contains("start a call") {
+            return Some("I can't join a Teams meeting yet. I can show you your next meeting.");
+        }
     }
     let clock = words.iter().any(|w| {
         w.chars().next().is_some_and(|c| c.is_ascii_digit())

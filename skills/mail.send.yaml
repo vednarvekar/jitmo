@@ -20,7 +20,7 @@ slots:
     required: true
     resolve: [named_contact]
 confirm:
-  text: "Email {contact} “{request}”?"
+  text: "Send this email to {contact}? “{message}”"
 steps:
   - connector: outlook
     action: send

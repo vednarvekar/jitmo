@@ -228,6 +228,8 @@ impl Skill {
         // `{request}` is built in: the user's whole request, for connectors that read it themselves.
         let mut declared: BTreeSet<&str> = self.slots.keys().map(String::as_str).collect();
         declared.insert("request");
+        // The words to send, worked out by the engine for send skills.
+        declared.insert("message");
         if let Some(c) = &self.confirm {
             check_template("confirm text", &c.text, &declared, true, &mut p);
         }
