@@ -1,0 +1,186 @@
+/* The living orb (LivingOrb.tsx). Only transform, opacity and filter animate. */
+
+.lorb {
+  position: relative;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  -webkit-tap-highlight-color: transparent;
+  --spin: 14s;
+  --glow: 0.55;
+}
+.lorb:focus-visible {
+  outline: 2px solid var(--o-a);
+  outline-offset: 3px;
+}
+
+/* The bead: dark glass with the lights inside, and a halo in the palette beneath it. */
+.lorb-bead {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(circle at 50% 60%, #1b1830 0%, #0b0a12 75%);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.14) inset,
+    0 2px 6px rgb(0 0 0 / 0.5),
+    0 0 18px -2px color-mix(in srgb, var(--o-a) calc(var(--glow) * 100%), transparent);
+  transition: box-shadow 0.4s ease-out, filter 0.4s ease-out;
+}
+
+/* Three soft lights, each drifting on its own orbit and speed. */
+.lorb-light {
+  position: absolute;
+  width: 78%;
+  height: 78%;
+  border-radius: 50%;
+  filter: blur(5px);
+  mix-blend-mode: screen;
+  opacity: 0.95;
+  will-change: transform;
+}
+.lorb-light.l1 {
+  left: -8%;
+  top: -6%;
+  background: radial-gradient(circle, var(--o-a) 0%, transparent 68%);
+  animation: lorb-orbit-a var(--spin) linear infinite;
+}
+.lorb-light.l2 {
+  right: -10%;
+  top: 10%;
+  background: radial-gradient(circle, var(--o-b) 0%, transparent 68%);
+  animation: lorb-orbit-b calc(var(--spin) * 0.8) linear infinite;
+}
+.lorb-light.l3 {
+  left: 14%;
+  bottom: -14%;
+  background: radial-gradient(circle, var(--o-c) 0%, transparent 70%);
+  animation: lorb-orbit-c calc(var(--spin) * 1.15) linear infinite;
+}
+/* A glass highlight on top: the bead reads as a sphere, not a flat dot. */
+.lorb-gloss {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 24%, rgb(255 255 255 / 0.75) 0 7%, transparent 26%),
+    radial-gradient(circle at 50% 120%, rgb(255 255 255 / 0.18), transparent 55%);
+  pointer-events: none;
+}
+
+@keyframes lorb-orbit-a {
+  0% { transform: rotate(0deg) translateX(14%) rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) translateX(14%) rotate(-180deg) scale(1.15); }
+  100% { transform: rotate(360deg) translateX(14%) rotate(-360deg) scale(1); }
+}
+@keyframes lorb-orbit-b {
+  0% { transform: rotate(360deg) translateY(12%) rotate(-360deg) scale(1.1); }
+  50% { transform: rotate(180deg) translateY(12%) rotate(-180deg) scale(0.9); }
+  100% { transform: rotate(0deg) translateY(12%) rotate(0deg) scale(1.1); }
+}
+@keyframes lorb-orbit-c {
+  0% { transform: rotate(90deg) translateX(-12%) rotate(-90deg); }
+  100% { transform: rotate(450deg) translateX(-12%) rotate(-450deg); }
+}
+
+/* ---------- moods ---------- */
+.lorb[data-mood="working"] {
+  --spin: 2.4s;
+  --glow: 0.95;
+}
+.lorb[data-mood="working"] .lorb-bead {
+  filter: saturate(1.3) brightness(1.15);
+  animation: lorb-breathe 1.2s ease-in-out infinite;
+}
+@keyframes lorb-breathe {
+  50% { transform: scale(1.06); }
+}
+.lorb[data-mood="done"] {
+  --spin: 9s;
+  --glow: 0.9;
+}
+.lorb[data-mood="done"] .lorb-bead {
+  animation: lorb-bloom 0.7s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes lorb-bloom {
+  0% { transform: scale(0.9); filter: brightness(1.6) saturate(1.4); }
+  100% { transform: scale(1); filter: none; }
+}
+.lorb[data-mood="failed"] {
+  --spin: 22s;
+  --glow: 0.25;
+}
+.lorb[data-mood="failed"] .lorb-bead {
+  filter: saturate(0.35) brightness(0.85);
+  animation: lorb-shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+@keyframes lorb-shake {
+  20%, 60% { transform: translateX(-2px); }
+  40%, 80% { transform: translateX(2px); }
+}
+
+/* Hover: the lights quicken a little, inviting a click. */
+.lorb:hover {
+  --spin: 6s;
+}
+.lorb:hover .lorb-bead {
+  filter: brightness(1.12);
+}
+
+/* The ripple a click sends out. */
+.lorb-ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--o-b);
+  pointer-events: none;
+  animation: lorb-ripple 0.65s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+@keyframes lorb-ripple {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(2.1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lorb-light,
+  .lorb-bead,
+  .lorb-ripple {
+    animation: none !important;
+  }
+}
+
+/* Brighter: the lights fill the bead and the bead itself is tinted, so the orb reads
+   clearly on the dark bar and from across the room. */
+.lorb-bead {
+  background: radial-gradient(
+    circle at 50% 62%,
+    color-mix(in srgb, var(--o-a) 55%, #1a1530) 0%,
+    color-mix(in srgb, var(--o-c) 20%, #0e0c16) 85%
+  );
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.2) inset,
+    0 2px 6px rgb(0 0 0 / 0.5),
+    0 0 22px -2px color-mix(in srgb, var(--o-b) calc(var(--glow) * 100%), transparent);
+}
+.lorb-light {
+  width: 92%;
+  height: 92%;
+  filter: blur(3.5px) saturate(1.3);
+  opacity: 1;
+}
+.lorb-light.l1 {
+  background: radial-gradient(circle, var(--o-a) 0%, color-mix(in srgb, var(--o-a) 55%, transparent) 38%, transparent 68%);
+}
+.lorb-light.l2 {
+  background: radial-gradient(circle, var(--o-b) 0%, color-mix(in srgb, var(--o-b) 55%, transparent) 38%, transparent 68%);
+}
+.lorb-light.l3 {
+  background: radial-gradient(circle, var(--o-c) 0%, color-mix(in srgb, var(--o-c) 55%, transparent) 38%, transparent 70%);
+}

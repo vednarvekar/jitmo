@@ -9,6 +9,11 @@ import { splitSource } from "./source";
 import Suggestions from "./components/Suggestions";
 import VoiceButtons from "./components/VoiceButtons";
 import { GreyOrb, type GreyMood } from "./orbs";
+import { paletteVars } from "./orbs/LivingOrb";
+import FaceOrb from "./orbs/FaceOrb";
+import Hints from "./components/Hints";
+import Reveal from "./components/Reveal";
+import { ArrowUp } from "./components/Icons";
 import {
   UNDO_WINDOW_MS,
   acceptsTyping,
@@ -38,12 +43,15 @@ const GlassSurface = GlassSurfaceUntyped as unknown as React.FC<
   Record<string, unknown> & { children?: React.ReactNode }
 >;
 
-/** Which look the bar uses: "glass2" (GlassSurface, Geist) or "classic". See design.ts. */
+/** Which look the bar uses: "obsidian", "glass2" or "classic". See design.ts. */
 const DESIGN = currentDesign();
+const OBSIDIAN = DESIGN === "obsidian";
 const TEXT_FONT =
-  DESIGN === "glass2"
-    ? '450 14px "Geist Variable", "Segoe UI", sans-serif'
-    : '500 14px "Manrope Variable", "Segoe UI", sans-serif';
+  DESIGN === "classic"
+    ? '500 14px "Manrope Variable", "Segoe UI", sans-serif'
+    : DESIGN === "obsidian"
+      ? '420 15px "Geist Variable", "Segoe UI", sans-serif'
+      : '450 14px "Geist Variable", "Segoe UI", sans-serif';
 
 /** Window width: compact by default, growing with the typed text up to a limit. */
 const BAR_MIN_WIDTH = 440;
@@ -79,6 +87,20 @@ function Surface({
   block: boolean;
   children: React.ReactNode;
 }) {
+  if (DESIGN === "obsidian") {
+    const panel = block || ["confirm", "choice", "asking"].includes(phase);
+    return (
+      // The bloom sits outside the glass: inside it, the glass's own layer would put the
+      // bloom over the bar's background and wash out the text.
+      <div className="ob-wrap" data-phase={phase} data-panel={panel}>
+        <span className="ob-glow" aria-hidden="true" />
+        <div className="bar-ob" data-phase={phase} data-panel={panel} data-tauri-drag-region>
+          <span className="ob-ring" aria-hidden="true" />
+          {children}
+        </div>
+      </div>
+    );
+  }
   if (DESIGN === "glass2") {
     const panel = block || ["confirm", "choice", "asking"].includes(phase);
     return (
@@ -359,6 +381,10 @@ export default function App() {
 
   // The "+" opens a row of one-tap suggestions. Off by default, to keep the bar clean.
   const [showChips, setShowChips] = useState(false);
+  // The living orb: a beat per keystroke, and its colour mood shared with the edge glow.
+  const [beat, setBeat] = useState(0);
+  // The edge light's colours (Aurora); LivingOrb could change them, the face orb does not.
+  const palette = 0;
   const mood: GreyMood =
     state.phase === "working" ||
     state.phase === "confirm" ||
@@ -372,7 +398,13 @@ export default function App() {
           : "idle";
 
   return (
-    <div className="shell" ref={rootRef} data-anim={anim}>
+    <div
+      className="shell"
+      ref={rootRef}
+      data-anim={anim}
+      data-typing={text.length > 0 || undefined}
+      style={OBSIDIAN ? paletteVars(palette) : undefined}
+    >
       <div
         className="dock"
         data-tauri-drag-region
@@ -396,16 +428,21 @@ export default function App() {
           >
             {/* Any empty part of the pill drags it; the input and buttons do not. */}
             <div className="row" data-tauri-drag-region>
-              {/* The orb opens the suggestions. */}
-              <button
-                className="orb-btn"
-                aria-label="Suggestions"
-                aria-pressed={showChips}
-                title="Suggestions"
-                onClick={() => setShowChips((v) => !v)}
-              >
-                <GreyOrb mood={mood} size={34} />
-              </button>
+              {OBSIDIAN ? (
+                // The owner's face orb. (LivingOrb, the colour orb, is kept in orbs/ unused.)
+                <FaceOrb mood={mood} pulse={beat} size={32} />
+              ) : (
+                /* Classic and glass2: the grey orb opens the suggestions. */
+                <button
+                  className="orb-btn"
+                  aria-label="Suggestions"
+                  aria-pressed={showChips}
+                  title="Suggestions"
+                  onClick={() => setShowChips((v) => !v)}
+                >
+                  <GreyOrb mood={mood} size={34} />
+                </button>
+              )}
 
               {showStatus ? (
                 <div
@@ -415,11 +452,26 @@ export default function App() {
                   title={state.phase === "working" ? undefined : "Type to ask something else"}
                   onClick={() => state.phase !== "working" && resetBar()}
                 >
-                  {state.phase === "working" && <span className="message muted">Working…</span>}
+                  {state.phase === "working" && (
+                    <span className="message muted working-text">
+                      {OBSIDIAN ? (
+                        <>
+                          Working
+                          <span className="dots" aria-hidden="true">
+                            <i>.</i>
+                            <i>.</i>
+                            <i>.</i>
+                          </span>
+                        </>
+                      ) : (
+                        "Working…"
+                      )}
+                    </span>
+                  )}
                   {state.phase === "done" && answer && (
                     <>
                       <span className={messageClass(answer.body)} title={answer.body}>
-                        {answer.body}
+                        {OBSIDIAN ? <Reveal text={answer.body} /> : answer.body}
                         {answer.source && (
                           <SourceChip
                             source={answer.source}
@@ -442,22 +494,38 @@ export default function App() {
                     </>
                   )}
                   {state.phase === "failed" && <span className={messageClass(state.message)} title={state.message}>
-                        {state.message}
+                        {OBSIDIAN ? <Reveal text={state.message} /> : state.message}
                       </span>}
                 </div>
               ) : (
+                <div className="field">
+                {OBSIDIAN && (
+                  <Hints
+                    visible={text === ""}
+                    fixed={
+                      state.phase === "asking"
+                        ? state.hint
+                        : state.phase === "choice"
+                          ? "pick one below, or press its number"
+                          : state.phase === "confirm"
+                            ? "Enter to go ahead, Esc to cancel"
+                            : undefined
+                    }
+                  />
+                )}
                 <input
                   ref={inputRef}
                   className="input"
                   autoFocus
                   spellCheck={false}
                   aria-label={answering ? "Your answer" : "Ask Jitmo"}
-                  placeholder={state.phase === "asking" ? state.hint : "Ask Jitmo"}
+                  placeholder={OBSIDIAN ? "" : state.phase === "asking" ? state.hint : "Ask Jitmo"}
                   value={text}
                   disabled={!typing}
                   onChange={(e) => {
                     setText(e.target.value);
                     historyAt.current = -1;
+                    setBeat((b) => b + 1);
                   }}
                   onBlur={() => {
                     // Focus moving to another part of this page goes straight back to the
@@ -466,6 +534,7 @@ export default function App() {
                   }}
                   onKeyDown={onInputKey}
                 />
+                </div>
               )}
 
               {canSend ? (
@@ -475,7 +544,7 @@ export default function App() {
                   title={answering ? "Answer (Enter)" : "Run (Enter)"}
                   onClick={() => (state.phase === "asking" ? sendAnswer(state.id, text) : send(text))}
                 >
-                  <Chevron />
+                  {OBSIDIAN ? <ArrowUp /> : <Chevron />}
                 </button>
               ) : (
                 <VoiceButtons />

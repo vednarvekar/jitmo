@@ -324,3 +324,18 @@ kbd {
     animation: none;
   }
 }
+
+/* The input sits in a field box so the animated placeholder (obsidian) can lie over it. */
+.field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+/* The button must not make its line taller (the ten-line clamp would cut the line). */
+.status .source-chip {
+  vertical-align: middle;
+  margin-top: -4px;
+  margin-bottom: -4px;
+}

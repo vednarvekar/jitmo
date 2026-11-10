@@ -208,9 +208,10 @@ async function makeBar(page: Page, engine: Engine): Promise<Bar> {
     async line() {
       const loc = page.locator(".status .message, .card .line").first();
       // "Working..." is not an answer: wait for the engine to say something.
+      // (The obsidian look writes it with three animated dots, the others with "…".)
       await expect
         .poll(async () => (await loc.innerText().catch(() => "Working…")).trim(), { timeout: 12_000 })
-        .not.toBe("Working…");
+        .not.toMatch(/^Working(…|\.\.\.)$/);
       return (await loc.innerText()).trim();
     },
     async buttons() {

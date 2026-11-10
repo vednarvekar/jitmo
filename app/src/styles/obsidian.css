@@ -1,0 +1,525 @@
+/* The "obsidian" look (src/design.ts): dark smoked glass, the living orb, a light that runs
+   around the edge while Jitmo works, Instrument Serif italic for the voice of the bar
+   (placeholder, questions) and Geist for what the user types and for answers.
+   Scoped to html[data-design="obsidian"]; the other looks are untouched.
+   The palette (--o-a, --o-b, --o-c) comes from the orb's colour mood, set on .shell. */
+
+@property --ob-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+html[data-design="obsidian"] {
+  color-scheme: dark;
+  --ink: #f3f2f7;
+  --ink-soft: rgb(243 242 247 / 0.78);
+  --muted: rgb(243 242 247 / 0.56);
+  --rim: rgb(255 255 255 / 0.1);
+  --chip: rgb(255 255 255 / 0.07);
+  --chip-hover: rgb(255 255 255 / 0.13);
+  --paper: #f3f2f7;
+  --night: #121118;
+  --serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --sans: "Geist Variable", "Segoe UI Variable Text", system-ui, sans-serif;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+html[data-design="obsidian"],
+html[data-design="obsidian"] body {
+  font: 420 14px/1.45 var(--sans);
+  letter-spacing: 0.005em;
+  color: var(--ink);
+}
+html[data-design="obsidian"] ::selection {
+  background: color-mix(in srgb, var(--o-a, #7b61ff) 45%, transparent);
+  color: #fff;
+}
+html[data-design="obsidian"] .fx-layer {
+  filter: none;
+}
+html[data-design="obsidian"] button:focus-visible {
+  outline: 2px solid var(--o-b, #ff4fa3);
+  outline-offset: 2px;
+}
+
+/* ---------- the surface ---------- */
+.ob-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border-radius: 9999px;
+  transition: border-radius 0.32s var(--ease-out);
+}
+.ob-wrap[data-panel="true"] {
+  border-radius: 22px;
+}
+.bar-ob {
+  z-index: 1;
+  width: 100%;
+  box-sizing: border-box;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 0 8px;
+  border-radius: 9999px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--o-a) 14%, transparent), transparent 55%),
+    linear-gradient(180deg, rgb(36 34 46 / 0.94), rgb(17 16 23 / 0.96));
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    inset 0 0 0 1px rgb(255 255 255 / 0.07),
+    0 1px 2px rgb(0 0 0 / 0.45),
+    0 18px 38px -16px rgb(0 0 0 / 0.75);
+  transition: border-radius 0.32s var(--ease-out);
+}
+.bar-ob[data-panel="true"] {
+  border-radius: 22px;
+}
+.bar-ob[data-phase="confirm"],
+.bar-ob[data-phase="choice"],
+.bar-ob[data-phase="asking"] {
+  padding-bottom: 14px;
+}
+.bar-ob:has(.message.multi),
+.bar-ob:has(.source-card) {
+  padding-bottom: 8px;
+}
+.bar-ob > :not(.ob-ring) {
+  position: relative;
+  z-index: 2;
+}
+
+/* The light around the edge: a thin ring, and a soft bloom of the same colours behind it.
+   Off when idle, a faint slow sweep while typing, bright and quick while working, one flash
+   when done. */
+.ob-ring,
+.ob-glow {
+  position: absolute;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--ob-angle),
+    var(--o-a),
+    var(--o-b),
+    var(--o-c),
+    var(--o-a)
+  );
+  opacity: 0;
+  transition: opacity 0.5s var(--ease-out);
+  animation: ob-spin 7s linear infinite;
+  animation-play-state: paused;
+}
+.ob-ring {
+  inset: 0;
+  z-index: 3;
+  padding: 1.5px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+}
+.ob-glow {
+  inset: 3px;
+  z-index: 0;
+  filter: blur(14px);
+}
+@keyframes ob-spin {
+  to {
+    --ob-angle: 360deg;
+  }
+}
+.shell[data-typing] .ob-ring {
+  opacity: 0.5;
+  animation-play-state: running;
+}
+.shell[data-typing] .ob-glow {
+  opacity: 0.18;
+  animation-play-state: running;
+}
+.bar-ob[data-phase="working"] .ob-ring,
+.ob-wrap[data-phase="working"] .ob-glow {
+  animation-duration: 1.6s;
+  animation-play-state: running;
+}
+.bar-ob[data-phase="working"] .ob-ring {
+  opacity: 1;
+}
+.ob-wrap[data-phase="working"] .ob-glow {
+  opacity: 0.55;
+}
+.bar-ob[data-phase="done"] .ob-ring,
+.ob-wrap[data-phase="done"] .ob-glow {
+  animation:
+    ob-spin 2.4s linear infinite,
+    ob-flash 1.1s var(--ease-out) both;
+}
+@keyframes ob-flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* A failure: a short shake of the whole bar, the ring dark. */
+.bar-ob[data-phase="failed"] {
+  animation: ob-shake 0.38s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+@keyframes ob-shake {
+  20%, 60% { transform: translateX(-3px); }
+  40%, 80% { transform: translateX(3px); }
+}
+/* A question waiting for an answer: the ring stays on, calm. */
+.bar-ob[data-phase="confirm"] .ob-ring,
+.bar-ob[data-phase="choice"] .ob-ring,
+.bar-ob[data-phase="asking"] .ob-ring {
+  opacity: 0.45;
+  animation-play-state: running;
+}
+
+/* ---------- the row ---------- */
+html[data-design="obsidian"] .row {
+  min-height: 48px;
+  gap: 10px;
+}
+html[data-design="obsidian"] .input,
+html[data-design="obsidian"] .status {
+  font: 420 15px/1.45 var(--sans);
+  letter-spacing: 0.004em;
+  color: var(--ink);
+  padding: 6px 0;
+}
+html[data-design="obsidian"] .input {
+  caret-color: var(--o-b);
+}
+html[data-design="obsidian"] .input:disabled {
+  opacity: 0.5;
+}
+
+/* The placeholder voice: serif italic, cycling through real examples. */
+.hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.hint-line {
+  font: italic 400 18px/1 var(--serif);
+  letter-spacing: 0.005em;
+  color: var(--muted);
+  animation: hint-in 0.55s var(--ease-out) both;
+}
+@keyframes hint-in {
+  from {
+    opacity: 0;
+    filter: blur(5px);
+    transform: translateY(5px);
+  }
+}
+
+/* ---------- status, answers ---------- */
+html[data-design="obsidian"] .status .message {
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-wrap: pretty;
+}
+html[data-design="obsidian"] .status.failed .message {
+  color: var(--ink-soft);
+}
+/* Words arrive one after another (Reveal.tsx). */
+.rw {
+  display: inline-block;
+  animation: rw-in 0.42s var(--ease-out) both;
+}
+@keyframes rw-in {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateY(3px);
+  }
+}
+/* "Working" in the serif voice, with three dots taking turns. */
+html[data-design="obsidian"] .working-text {
+  font: italic 400 18px/1 var(--serif);
+  color: var(--ink-soft);
+}
+html[data-design="obsidian"] .working-text::after {
+  content: "";
+}
+
+/* ---------- buttons in the row ---------- */
+html[data-design="obsidian"] .go {
+  width: 32px;
+  height: 32px;
+  color: var(--night);
+  background: var(--paper);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.4),
+    0 0 0 4px color-mix(in srgb, var(--o-b) 22%, transparent);
+  transition:
+    transform 0.16s var(--ease-out),
+    box-shadow 0.25s var(--ease-out);
+  animation: ob-go-in 0.34s var(--ease-out) both;
+}
+html[data-design="obsidian"] .go:hover {
+  transform: translateY(-1px) scale(1.05);
+  box-shadow:
+    0 2px 6px rgb(0 0 0 / 0.45),
+    0 0 0 5px color-mix(in srgb, var(--o-b) 32%, transparent);
+}
+html[data-design="obsidian"] .go:active {
+  transform: scale(0.92);
+}
+@keyframes ob-go-in {
+  from {
+    transform: scale(0.4) rotate(-45deg);
+    opacity: 0;
+  }
+}
+html[data-design="obsidian"] .tool {
+  color: var(--muted);
+  opacity: 1;
+}
+
+/* ---------- question cards ---------- */
+html[data-design="obsidian"] .card {
+  padding-top: 12px;
+  gap: 11px;
+}
+html[data-design="obsidian"] .card::before {
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgb(255 255 255 / 0.12) 14%,
+    rgb(255 255 255 / 0.12) 86%,
+    transparent
+  );
+}
+html[data-design="obsidian"] .card .line {
+  font: italic 400 19px/1.25 var(--serif);
+  letter-spacing: 0.003em;
+  color: var(--ink);
+}
+html[data-design="obsidian"] .result button,
+html[data-design="obsidian"] .undo,
+html[data-design="obsidian"] .chip {
+  font: 500 13px/1.3 var(--sans);
+  color: var(--ink);
+  background: var(--chip);
+  border-radius: 999px;
+  padding: 6px 13px;
+  box-shadow: inset 0 0 0 1px var(--rim);
+  transition:
+    background-color 0.15s ease-out,
+    transform 0.12s var(--ease-out);
+}
+html[data-design="obsidian"] .result button:hover,
+html[data-design="obsidian"] .undo:hover,
+html[data-design="obsidian"] .chip:hover {
+  background: var(--chip-hover);
+}
+html[data-design="obsidian"] .result button:active,
+html[data-design="obsidian"] .undo:active {
+  transform: scale(0.96);
+}
+html[data-design="obsidian"] .result button.primary {
+  color: var(--night);
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+}
+html[data-design="obsidian"] .result button.primary:hover {
+  background: #fff;
+}
+html[data-design="obsidian"] .buttons.column button {
+  padding: 4px 11px;
+  border-radius: 12px;
+}
+html[data-design="obsidian"] .result kbd {
+  font: 500 11px/1 var(--sans);
+  color: var(--muted);
+  background: rgb(255 255 255 / 0.06);
+  border-radius: 5px;
+  padding: 2px 5px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+html[data-design="obsidian"] .result button.primary kbd {
+  color: rgb(18 17 24 / 0.6);
+  background: rgb(18 17 24 / 0.08);
+  box-shadow: none;
+}
+/* Cards slide in under the row rather than appearing. */
+html[data-design="obsidian"] .result {
+  animation: ob-card-in 0.36s var(--ease-out) both;
+}
+@keyframes ob-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    filter: blur(3px);
+  }
+}
+
+/* ---------- source button and card ---------- */
+html[data-design="obsidian"] .source-chip {
+  color: var(--ink);
+  background: rgb(255 255 255 / 0.12);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+}
+html[data-design="obsidian"] .source-chip:hover,
+html[data-design="obsidian"] .source-chip[aria-expanded="true"] {
+  background: rgb(255 255 255 / 0.22);
+}
+html[data-design="obsidian"] .source-card {
+  background: rgb(255 255 255 / 0.05);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+html[data-design="obsidian"] .source-mark {
+  color: var(--ink);
+  background: rgb(255 255 255 / 0.14);
+  box-shadow: none;
+}
+html[data-design="obsidian"] .source-card .source-open {
+  color: var(--night);
+  background: var(--paper);
+  box-shadow: none;
+}
+html[data-design="obsidian"] .source-card .source-open:hover {
+  background: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-ring,
+  .ob-glow {
+    animation: none !important;
+  }
+  .rw,
+  .hint-line,
+  html[data-design="obsidian"] .result,
+  html[data-design="obsidian"] .go,
+  .bar-ob[data-phase="failed"] {
+    animation: none !important;
+  }
+}
+
+.working-text .dots i {
+  font-style: normal;
+  display: inline-block;
+  animation: ob-dot 1.2s ease-in-out infinite;
+}
+.working-text .dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.working-text .dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes ob-dot {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
+}
+
+/* The bloom's flash on done is softer than the ring's. */
+.ob-wrap[data-phase="done"] .ob-glow {
+  animation:
+    ob-spin 2.4s linear infinite,
+    ob-flash-soft 1.1s var(--ease-out) both;
+}
+@keyframes ob-flash-soft {
+  0% { opacity: 0.6; }
+  100% { opacity: 0; }
+}
+
+/* The source button arrives after the words of the answer have. */
+html[data-design="obsidian"] .status .source-chip {
+  animation: rw-in 0.4s var(--ease-out) 0.45s both;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-design="obsidian"] .status .source-chip {
+    animation: none;
+  }
+}
+
+/* ---------- the face orb (FaceOrb.tsx: the grey "AI orb" with eyes) ---------- */
+.face-orb {
+  position: relative;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.face-body {
+  display: block;
+  border-radius: 50%;
+  /* A soft light behind it, so the sphere stands off the dark glass. */
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.22),
+    0 0 18px -3px rgb(220 220 255 / 0.35),
+    0 3px 8px rgb(0 0 0 / 0.5);
+  transition: box-shadow 0.4s var(--ease-out);
+}
+/* Brighter silver than on the light bar, and none of the classic glass's contrast undo. */
+html[data-design="obsidian"] .grey-orb {
+  filter: none;
+  background: radial-gradient(circle at 30% 18%, #d8d8e0 0%, #85858f 36%, #565661 100%);
+  box-shadow:
+    inset 0 -4px 7px rgb(0 0 0 / 0.32),
+    inset 0 2px 4px rgb(255 255 255 / 0.6);
+}
+.face-orb:hover .face-body {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.3),
+    0 0 22px -2px rgb(220 220 255 / 0.5),
+    0 3px 8px rgb(0 0 0 / 0.5);
+}
+.face-orb[data-mood="working"] .face-body {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.3),
+    0 0 22px -2px color-mix(in srgb, var(--o-b) 60%, transparent),
+    0 3px 8px rgb(0 0 0 / 0.5);
+}
+.face-orb:focus-visible {
+  outline: 2px solid var(--o-b);
+  outline-offset: 3px;
+}
+.face-ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 0.7);
+  pointer-events: none;
+  animation: lorb-ripple 0.65s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+@keyframes lorb-ripple {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(2.1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .face-ripple {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Inline words keep the paragraph's own line height (inline-blocks made each line 1-2 px
+   taller and the ten-line clamp cut the last one); fade and un-blur only. */
+.rw {
+  display: inline;
+  animation-name: rw-in-flat;
+}
+@keyframes rw-in-flat {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+  }
+}
