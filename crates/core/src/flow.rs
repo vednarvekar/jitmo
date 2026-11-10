@@ -62,6 +62,9 @@ pub struct Flow {
     /// Names of installed apps, asked for at each request (the list changes as apps
     /// are installed). Empty until the app supplies one.
     app_names: Box<dyn Fn() -> Vec<String> + Send>,
+    /// The skill a saved plan names for the step now running: it is used as the route, so
+    /// the router cannot decline a step the plan already chose.
+    forced_skill: Option<String>,
 }
 
 impl Flow {
@@ -79,6 +82,7 @@ impl Flow {
             undo_window: None,
             context: Box::new(NoContext),
             app_names: Box::new(Vec::new),
+            forced_skill: None,
         }
     }
 
@@ -426,6 +430,41 @@ impl Flow {
         }
     }
 
+    /// [`Flow::run_each`] for a saved plan: each step runs as the skill the plan named.
+    fn run_plan(
+        &mut self,
+        id: RequestId,
+        steps: &[String],
+        skills: &[String],
+        p: &mut dyn Prompter,
+    ) -> CoreEvent {
+        let mut said: Vec<String> = Vec::new();
+        for (i, step) in steps.iter().enumerate() {
+            self.forced_skill = skills.get(i).cloned();
+            let event = self.run(id, step, p);
+            self.forced_skill = None;
+            match event {
+                CoreEvent::Done { message, .. } => said.push(message),
+                CoreEvent::Failed { message, .. } => {
+                    said.push(message);
+                    if i + 1 < steps.len() {
+                        said.push("I stopped there.".into());
+                    }
+                    return CoreEvent::Failed {
+                        id,
+                        message: said.join(" "),
+                    };
+                }
+                other => return other,
+            }
+        }
+        CoreEvent::Done {
+            id,
+            message: said.join(" "),
+            undoable: false,
+        }
+    }
+
     /// Run several requests in order and report them as one. A step that fails or is
     /// cancelled stops the rest, so "then" never runs on top of something that did not happen.
     fn run_each(&mut self, id: RequestId, steps: &[String], p: &mut dyn Prompter) -> CoreEvent {
@@ -512,6 +551,25 @@ impl Flow {
             let steps: Vec<String> = apps.iter().map(|a| format!("open {a}")).collect();
             return self.run_each(id, &steps, p);
         }
+        // 0a'. A saved plan for a known chain ("focus mode", "mute notifications, dim the
+        // screen and play my focus playlist"): checked like any plan, then run in order, and
+        // it stops at the first step that fails. No model is involved.
+        if let Some(plan) = crate::plan::template(text) {
+            let ok = crate::plan::check(&plan, &|skill| {
+                self.router.skill(skill).map(crate::plan::SkillShape::of)
+            });
+            return match (ok, crate::plan::sentences(&plan)) {
+                (Ok(()), Some(steps)) => {
+                    let skills: Vec<String> = plan.steps.iter().map(|s| s.skill.clone()).collect();
+                    self.run_plan(id, &steps, &skills, p)
+                }
+                (Err(e), _) => {
+                    eprintln!("a saved plan was rejected: {e}");
+                    self.fail(id, text, None, "I can't do that yet.")
+                }
+                (Ok(()), None) => self.fail(id, text, None, "I can't do that yet."),
+            };
+        }
         if let Some(steps) = crate::normalize::sequence(text) {
             return self.run_each(id, &steps, p);
         }
@@ -541,12 +599,15 @@ impl Flow {
         let understanding = self.router.route_with(text, &known.note());
         // A sum typed with no words ("2+2") or a percentage of a number ("18% of 2450") is
         // the calculator, not a guess between skills.
-        let direct =
-            crate::normalize::direct_skill(said, text).filter(|id| self.router.skill(id).is_some());
+        let forced = self.forced_skill.take();
+        let direct = match forced {
+            Some(id) if self.router.skill(&id).is_some() => Some(id),
+            _ => crate::normalize::direct_skill(said, text)
+                .filter(|id| self.router.skill(id).is_some())
+                .map(str::to_string),
+        };
         let decision = match direct {
-            Some(id) => RouteDecision::Run {
-                skill_id: id.to_string(),
-            },
+            Some(id) => RouteDecision::Run { skill_id: id },
             None => decide(&understanding),
         };
         let skill_id = match decision {

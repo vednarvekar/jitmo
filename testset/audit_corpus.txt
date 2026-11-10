@@ -706,3 +706,10 @@ music.play|clean|play despacito|run:music.play;msg~playing despacito|
 music.play|ambiguous|play janam janam|run:music.play;url~janam janam|
 files.move|clean|move report.pdf to invoices|run:files.move;undo;msg~moved|undo
 system.volume|clean|turn the volume down|run:system.volume;msg~30%;undo|volume has no undo: the bar must not offer Undo
+
+# ---------------------------------------------------------------- saved plans (Phase 3, Track B)
+planner|clean|Focus mode for an hour.|done;msg~Do Not Disturb is on|W6, T44: music then Do Not Disturb
+planner|clean|focus mode|done;msg~Do Not Disturb is on|W6
+planner|clean|Mute notifications, dim the screen and play my focus playlist.|done;msg~Brightness|T81: three steps in order
+planner|clean|play my focus playlist and mute notifications for an hour|done;msg~Do Not Disturb is on|W6 said in words
+planner|partial|mute notifications and bake a cake|done|an unknown part is not a plan: the ordinary route asks "Did you mean Do Not Disturb?" first

@@ -151,6 +151,11 @@ fn is_send_capability(cap: &str) -> bool {
 }
 
 impl Skill {
+    /// Does this skill send or share something (so a plan must keep its confirm)?
+    pub fn sends(&self) -> bool {
+        self.capabilities.iter().any(|c| is_send_capability(c))
+    }
+
     /// Parse YAML without checking signatures. Use [`load_signed`] for real files.
     pub fn parse(yaml: &str) -> Result<Skill, SkillError> {
         let skill: Skill =

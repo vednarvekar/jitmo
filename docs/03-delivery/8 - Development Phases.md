@@ -149,6 +149,8 @@ WebView2 can use more than the ~40MB that 06 budgets for the command bar, and SP
 
 Two tracks run in parallel. Track B can test chains on offline connectors (T75, T79, T81), so it doesn't wait for Track A.
 
+**Status (10 Nov 2026): started, Track B first step done.** `crates/core/src/plan.rs` holds the plan format (at most 5 steps, `$stepN.result` links), the four plan checks, and saved templates for W6 and the offline chains T44 and T81 (T75 and T79 already ran through the chain splitter). Templates are checked like any plan and run step by step with the skill the plan names, stopping at the first failure. No model is involved yet: the llama.cpp planner, adapters and Track A (Microsoft 365) have not started. Track A needs the Microsoft app registration.
+
 **Depends on:** Phase 2. Track A needs the Microsoft app registration. Track B needs the SP3 and SP4 verdicts.
 
 **Goal:** Microsoft 365 works for email, calendar, files and Teams, and the planner handles chains, summaries and drafts.

@@ -8,6 +8,7 @@ pub mod flow;
 pub mod hinglish;
 pub mod known;
 pub mod normalize;
+pub mod plan;
 pub mod policy;
 pub mod resolver;
 pub mod router;
