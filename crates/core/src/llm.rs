@@ -52,4 +52,10 @@ pub trait Llm: Send {
     /// Pick a tool (and its arguments when it has them). `recent` is the last request that
     /// worked, for follow-ups.
     fn route(&mut self, request: &str, tools: &[ToolBrief], recent: Option<&str>) -> Pick;
+
+    /// Write an answer to `question` using ONLY `passage` (retrieved text), or `None`. The
+    /// engine shows it only if [`crate::grounding::supported`] agrees.
+    fn answer_from(&mut self, _question: &str, _passage: &str) -> Option<String> {
+        None
+    }
 }

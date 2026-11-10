@@ -32,6 +32,10 @@ pub struct LlmConfig {
     pub context: u32,
     /// Seconds without a request before the server is stopped.
     pub idle_seconds: u64,
+    /// Constrain the one-token pick with a grammar. Off by default: a fine-tuned picker answers
+    /// with the digit on its own (checked in code), and on Qwen3.5 a grammar made the server use
+    /// about 6 GB. For an untuned model on a small-vocabulary model only.
+    pub grammar: bool,
 }
 
 /// Physical cores minus one, at most three: the model must never take the whole CPU. (Logical
@@ -50,6 +54,7 @@ impl LlmConfig {
             threads: default_threads(),
             context: 2048,
             idle_seconds: 90,
+            grammar: false,
         }
     }
 }
@@ -185,10 +190,12 @@ fn agent(secs: u64) -> ureq::Agent {
 #[derive(Clone)]
 pub struct LocalLlm {
     host: Arc<Mutex<Host>>,
+    grammar: bool,
 }
 
 impl LocalLlm {
     pub fn new(cfg: LlmConfig) -> LocalLlm {
+        let grammar = cfg.grammar;
         let idle = Duration::from_secs(cfg.idle_seconds.max(10));
         let host = Arc::new(Mutex::new(Host {
             cfg,
@@ -210,7 +217,7 @@ impl LocalLlm {
                 }
             }
         });
-        LocalLlm { host }
+        LocalLlm { host, grammar }
     }
 
     /// Start loading the model in the background (when the bar opens: the load hides behind
@@ -264,7 +271,7 @@ impl LocalLlm {
     /// extra token expensive).
     pub fn pick_number(&self, system: &str, user: &str, tools: usize) -> Result<usize, String> {
         let last = tools.min(9);
-        let body = json!({
+        let mut body = json!({
             "messages": [
                 { "role": "system", "content": system },
                 { "role": "user", "content": user }
@@ -273,8 +280,10 @@ impl LocalLlm {
             "max_tokens": 1,
             "cache_prompt": true,
             "chat_template_kwargs": { "enable_thinking": false },
-            "grammar": format!("root ::= [0-{last}]"),
         });
+        if self.grammar {
+            body["grammar"] = json!(format!("root ::= [0-{last}]"));
+        }
         self.post(body)?
             .trim()
             .parse::<usize>()
@@ -414,6 +423,19 @@ pub fn parse_args(
 // answer only from retrieved text. Until then "none" means "I can't do that yet".
 
 impl Llm for LocalLlm {
+    fn answer_from(&mut self, question: &str, passage: &str) -> Option<String> {
+        let system = "Answer the question using ONLY the passage. Write at most three short sentences in plain words. If the passage does not answer the question, reply exactly: I'm not sure.";
+        let user = format!(
+            "Passage:
+{passage}
+
+Question: {question}"
+        );
+        let a = self.chat(system, &user, None, 160).ok()?;
+        let a = a.trim().to_string();
+        (!a.is_empty() && !a.to_lowercase().starts_with("i'm not sure")).then_some(a)
+    }
+
     fn route(&mut self, request: &str, tools: &[ToolBrief], recent: Option<&str>) -> Pick {
         let system = pick_system(tools);
         let user = match recent {

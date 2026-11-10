@@ -640,6 +640,49 @@ impl WebLookup {
         })
     }
 
+    /// Up to three page intros for the question: `n`, then `title0`, `url0`, `text0`, ...
+    fn passages(&self, question: &str) -> Result<Output, ConnError> {
+        let q = question.trim().trim_end_matches(['?', '.', '!']);
+        let url = format!(
+            "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={}\n             &gsrlimit=3&prop=extracts%7Cinfo&exintro=1&explaintext=1&exchars=1200&inprop=url\n             &format=json&formatversion=2",
+            encode(q)
+        );
+        let found = get_json(&*self.http, &url).map_err(|e| match e {
+            HttpError::Offline => ConnError::Failed(OFFLINE_MESSAGE.into()),
+            _ => not_found(),
+        })?;
+        let mut pages: Vec<&Value> = found
+            .pointer("/query/pages")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().collect())
+            .unwrap_or_default();
+        pages.sort_by_key(|p| p.get("index").and_then(Value::as_i64).unwrap_or(i64::MAX));
+        let mut out = std::collections::BTreeMap::new();
+        let mut n = 0;
+        for p in pages.iter().take(3) {
+            let text = p
+                .get("extract")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim();
+            let lower = text.to_lowercase();
+            if text.is_empty() || lower.contains("may refer to") || lower.contains("can refer to") {
+                continue;
+            }
+            let title = p.get("title").and_then(Value::as_str).unwrap_or("");
+            let url = p.get("fullurl").and_then(Value::as_str).unwrap_or("");
+            out.insert(format!("title{n}"), title.to_string());
+            out.insert(format!("url{n}"), url.to_string());
+            out.insert(format!("text{n}"), text.to_string());
+            n += 1;
+        }
+        if n == 0 {
+            return Err(not_found());
+        }
+        out.insert("n".to_string(), n.to_string());
+        Ok(Output(out))
+    }
+
     fn fact(&self, text: &str) -> Result<String, ConnError> {
         // "What does ephemeral mean": a dictionary, never an encyclopedia intro.
         if let Some(word) = definition_word(text) {
@@ -740,7 +783,7 @@ impl Connector for WebLookup {
     }
 
     fn actions(&self) -> Vec<ActionSpec> {
-        ["weather", "fact"]
+        ["weather", "fact", "passages"]
             .iter()
             .map(|a| ActionSpec {
                 name: a.to_string(),
@@ -758,6 +801,11 @@ impl Connector for WebLookup {
         let text = args
             .get("text")
             .ok_or_else(|| ConnError::MissingArg("text".into()))?;
+        // Passages for a grounded answer: up to three Wikipedia intros that match the words of
+        // the question (the caller judges which one really answers it).
+        if action == "passages" {
+            return self.passages(text);
+        }
         let message = match action {
             "weather" => self.weather(text)?,
             "fact" => self.fact(text)?,

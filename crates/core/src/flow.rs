@@ -196,6 +196,50 @@ impl Flow {
         event
     }
 
+    /// A written answer grounded in retrieved text, with its source; `None` when there is no
+    /// passage that covers the question, no answer, or the answer is not supported.
+    fn grounded_answer(&mut self, id: RequestId, text: &str) -> Option<CoreEvent> {
+        let conn = self.connectors.get("web_lookup")?.clone();
+        let args: Args = [("text".to_string(), text.to_string())].into();
+        let out = conn.execute("passages", &args).ok()?;
+        let n: usize = out.0.get("n")?.parse().ok()?;
+        // The page that covers the most of the question; weak coverage means a different thing
+        // with a similar name.
+        let (best, cover) = (0..n)
+            .map(|i| {
+                let page = format!(
+                    "{} {}",
+                    out.0.get(&format!("title{i}")).map_or("", String::as_str),
+                    out.0.get(&format!("text{i}")).map_or("", String::as_str)
+                );
+                (i, crate::grounding::coverage(text, &page))
+            })
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
+        if cover < 0.6 {
+            return None;
+        }
+        let passage = out.0.get(&format!("text{best}"))?.clone();
+        let url = out
+            .0
+            .get(&format!("url{best}"))
+            .cloned()
+            .unwrap_or_default();
+        let answer = self.llm.as_mut()?.answer_from(text, &passage)?;
+        if !crate::grounding::supported(&answer, &passage) {
+            return None;
+        }
+        let message = format!(
+            "{} (Wikipedia, CC BY-SA 4.0: {url})",
+            answer.split_whitespace().collect::<Vec<_>>().join(" ")
+        );
+        self.log(text, Some("web.fact"), Decision::Ran, &message, None);
+        Some(CoreEvent::Done {
+            id,
+            message,
+            undoable: false,
+        })
+    }
+
     fn learned_mut(&mut self) -> &mut crate::learned::Learned {
         if self.learned.is_none() {
             let saved = self
@@ -912,6 +956,16 @@ impl Flow {
                 }
             }
         };
+        // A question that is not a plain "what is X": with a model plugged in, retrieve passages,
+        // let it write from the best one, and show the answer only if the passage supports it.
+        if skill_id == "web.fact"
+            && self.llm.is_some()
+            && !jitmo_connectors::web_lookup::is_lookup_question(text)
+        {
+            if let Some(event) = self.grounded_answer(id, text) {
+                return event;
+            }
+        }
         // Weather with no place said and none saved: ask which city, then run it with
         // the answer, instead of failing with a message that quotes an example city.
         if skill_id == "web.weather"
@@ -3533,6 +3587,100 @@ mod tests {
         let ev = flow.handle(2, "blorp zibble wonk", &mut u);
         assert!(matches!(ev, CoreEvent::Failed { .. }), "{ev:?}");
         assert!(flow.learned_mut().get("blorp zibble wonk").is_none());
+    }
+
+    // ---- grounded answers -------------------------------------------------------------
+
+    struct Pages;
+    impl Connector for Pages {
+        fn id(&self) -> &str {
+            "web_lookup"
+        }
+        fn actions(&self) -> Vec<jitmo_connectors::ActionSpec> {
+            Vec::new()
+        }
+        fn health(&self) -> jitmo_connectors::Health {
+            jitmo_connectors::Health::Ready
+        }
+        fn execute(&self, action: &str, _args: &Args) -> Result<Output, ConnError> {
+            if action != "passages" {
+                return Err(ConnError::Failed("I'm not sure about that one.".into()));
+            }
+            let mut m = BTreeMap::new();
+            m.insert("n".to_string(), "2".to_string());
+            m.insert("title0".to_string(), "The Vaccines".to_string());
+            m.insert("url0".to_string(), "https://x/band".to_string());
+            m.insert(
+                "text0".to_string(),
+                "The Vaccines are an English indie rock band formed in London in 2010.".to_string(),
+            );
+            m.insert("title1".to_string(), "Vaccine".to_string());
+            m.insert("url1".to_string(), "https://x/vaccine".to_string());
+            m.insert(
+                "text1".to_string(),
+                "A vaccine trains the immune system to recognise a germ. It contains a weakened part of the germ, so the body makes antibodies.".to_string(),
+            );
+            Ok(Output(m))
+        }
+        fn check(&self, _a: &str, _g: &Args) -> Result<bool, ConnError> {
+            Ok(true)
+        }
+        fn undo(&self, _a: &str, _o: &Output) -> Option<Result<(), ConnError>> {
+            None
+        }
+    }
+
+    struct Writer(&'static str);
+    impl crate::llm::Llm for Writer {
+        fn route(
+            &mut self,
+            _r: &str,
+            _t: &[crate::llm::ToolBrief],
+            _recent: Option<&str>,
+        ) -> crate::llm::Pick {
+            crate::llm::Pick::Tool("web.fact".into())
+        }
+        fn answer_from(&mut self, _q: &str, _p: &str) -> Option<String> {
+            Some(self.0.to_string())
+        }
+    }
+
+    fn fact_flow(writer: &'static str) -> Flow {
+        const FACT: &str = include_str!("../../../skills/web.fact.yaml");
+        let skills = vec![Skill::parse(FACT).unwrap()];
+        let mut map: HashMap<String, Arc<dyn Connector>> = HashMap::new();
+        map.insert("web_lookup".into(), Arc::new(Pages));
+        Flow::new(Router::new(skills), Store::open_in_memory().unwrap(), map)
+            .with_clock(|| "2026-11-08T12:00:00Z".into())
+            .with_llm(Box::new(Writer(writer)))
+    }
+
+    #[test]
+    fn a_how_question_is_answered_from_the_matching_page_with_its_source() {
+        let mut flow = fact_flow(
+            "A vaccine trains your immune system by showing it a weakened part of the germ.",
+        );
+        let mut u = TestUser::default();
+        let ev = flow.handle(1, "how do vaccines work", &mut u);
+        match ev {
+            CoreEvent::Done { message, .. } => {
+                assert!(message.contains("weakened part of the germ"), "{message}");
+                // The band's page was skipped; the real one is cited.
+                assert!(message.contains("https://x/vaccine"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_answer_the_passage_does_not_support_is_not_shown() {
+        let mut flow = fact_flow("Vaccines were invented in 1850 by a famous king.");
+        let mut u = TestUser::default();
+        let ev = flow.handle(2, "how do vaccines work", &mut u);
+        assert!(
+            !matches!(&ev, CoreEvent::Done { message, .. } if message.contains("1850")),
+            "{ev:?}"
+        );
     }
 
     #[test]

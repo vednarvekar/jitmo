@@ -463,7 +463,9 @@ fn main() {
         if compact {
             body.as_object_mut().map(|o| o.remove("response_format"));
             body["max_tokens"] = json!(1);
-            body["grammar"] = json!(format!("root ::= [0-{}]", cand.len().min(9)));
+            if args.iter().any(|a| a == "--grammar") {
+                body["grammar"] = json!(format!("root ::= [0-{}]", cand.len().min(9)));
+            }
         }
         let t = Instant::now();
         let resp = ag
