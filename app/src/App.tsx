@@ -180,6 +180,7 @@ export default function App() {
   const alarmRef = useRef<string | null>(null);
   alarmRef.current = alarm;
   const [text, setText] = useState("");
+  const [asked, setAsked] = useState("");
   const [undoUntil, setUndoUntil] = useState(0);
   const [now, setNow] = useState(Date.now());
   const inputRef = useRef<HTMLInputElement>(null);
@@ -349,6 +350,7 @@ export default function App() {
     history.current = [trimmed, ...history.current.filter((h) => h !== trimmed)].slice(0, HISTORY_SIZE);
     historyAt.current = -1;
     dispatch({ type: "submitted", id });
+    setAsked(trimmed);
     setUndoUntil(0);
     setText(""); // ready for the next request as soon as this one is sent
     bridge.submit(id, trimmed);
@@ -513,6 +515,12 @@ export default function App() {
                 messageClass(answer ? answer.body : state.message) !== "message")
             }
           >
+            {/* What was asked stays visible, so a wrong answer or a confirm can be checked. */}
+            {asked && alarm === null && ["confirm", "choice", "asking", "done", "failed"].includes(state.phase) && (
+              <div className="asked" title={asked} data-tauri-drag-region>
+                {asked}
+              </div>
+            )}
             {/* Any empty part of the pill drags it; the input and buttons do not. */}
             <div className="row" data-tauri-drag-region>
               {OBSIDIAN ? (

@@ -223,6 +223,16 @@ html[data-design="obsidian"] .input:disabled {
   }
 }
 
+/* What was asked, above the answer or card. */
+.asked {
+  padding: 10px 22px 0;
+  font: italic 400 13px/1.3 var(--serif);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ---------- status, answers ---------- */
 html[data-design="obsidian"] .status .message {
   font-size: 14.5px;

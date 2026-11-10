@@ -96,6 +96,24 @@ where
 fn run(flow: &mut Flow, rx: Receiver<UiRequest>, emit: impl Fn(CoreEvent)) {
     while let Ok(req) = rx.recv() {
         match req {
+            // Typed "undo" / "undo that" does what the Undo button does.
+            UiRequest::Submit { id, text }
+                if matches!(
+                    text.trim()
+                        .trim_end_matches(['.', '!'])
+                        .to_lowercase()
+                        .as_str(),
+                    "undo" | "undo that" | "undo it" | "undo last" | "undo the last one"
+                ) =>
+            {
+                emit(CoreEvent::Started { id });
+                let message = flow.undo();
+                emit(CoreEvent::Done {
+                    id,
+                    message,
+                    undoable: false,
+                });
+            }
             UiRequest::Submit { id, text } => {
                 emit(CoreEvent::Started { id });
                 let mut prompter = ChannelPrompter {

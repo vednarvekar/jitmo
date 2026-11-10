@@ -641,6 +641,22 @@ impl WebLookup {
     }
 
     fn fact(&self, text: &str) -> Result<String, ConnError> {
+        // "What does ephemeral mean": a dictionary, never an encyclopedia intro.
+        if let Some(word) = definition_word(text) {
+            let key = format!("define|{word}");
+            return self.cached(&key, FACT_FRESH_SECS, FACT_STALE_SECS, || {
+                define(&*self.http, &word)
+            });
+        }
+        // How/why questions, sums and conversions are not "look up a title": the first
+        // Wikipedia hit answers some other question with confidence. Say so instead.
+        if !is_lookup_question(text) {
+            return Err(ConnError::Failed(
+                "I'm not sure about that one, and I'd rather not guess. \
+                 Say “search for …” to look it up on the web."
+                    .into(),
+            ));
+        }
         let subject = parse_fact_subject(text).ok_or_else(not_found)?;
         let key = format!("fact|{subject}");
         self.cached(&key, FACT_FRESH_SECS, FACT_STALE_SECS, || {
@@ -857,6 +873,100 @@ fn title_case(s: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// "what does ephemeral mean", "define ephemeral", "meaning of ephemeral" -> "ephemeral".
+pub fn definition_word(text: &str) -> Option<String> {
+    let t = text
+        .trim()
+        .trim_matches(|c: char| c.is_whitespace() || "?!.,".contains(c))
+        .to_lowercase();
+    let re = Regex::new(
+        r"^(?:what(?:'s|’s| is| does| do)? (?:the )?(?:meaning of |definition of )|(?:what does|what do) |define |definition of |meaning of )([a-z][a-z'-]{1,30})(?: mean| means)?$",
+    )
+    .ok()?;
+    re.captures(&t).map(|c| c[1].to_string())
+}
+
+/// True for "who/what/where is X" style lookups; false for how/why questions, explanations,
+/// sums and conversions that an encyclopedia intro cannot answer.
+pub fn is_lookup_question(text: &str) -> bool {
+    let t = text.trim().to_lowercase();
+    let t = t.trim_start_matches(|c: char| !c.is_alphanumeric());
+    let bad_start = [
+        "how ",
+        "why ",
+        "explain",
+        "solve",
+        "calculate",
+        "convert",
+        "difference between",
+        "derivative",
+        "integral",
+        "compare",
+        "when should",
+        "can i ",
+        "should i ",
+    ];
+    if bad_start.iter().any(|s| t.starts_with(s)) {
+        return false;
+    }
+    let bad_inside = [
+        "how many",
+        "how much",
+        "how do ",
+        "how does ",
+        "derivative of",
+        "integral of",
+        " in a ",
+        " in an ",
+        " per ",
+        "explain ",
+        "simply",
+        "work?",
+    ];
+    if bad_inside.iter().any(|s| t.contains(s)) {
+        return false;
+    }
+    // Anything with digits and an operator is arithmetic, not a title.
+    !(t.chars().any(|c| c.is_ascii_digit()) && t.chars().any(|c| "+-*/^=".contains(c)))
+}
+
+/// One dictionary entry from Wiktionary data (api.dictionaryapi.dev), with its credit.
+fn define(http: &dyn Http, word: &str) -> Result<String, HttpError> {
+    let url = format!(
+        "https://api.dictionaryapi.dev/api/v2/entries/en/{}",
+        encode(word)
+    );
+    let v = get_json(http, &url)?;
+    let entry = v
+        .as_array()
+        .and_then(|a| a.first())
+        .ok_or(HttpError::NotFound)?;
+    let meaning = entry
+        .get("meanings")
+        .and_then(Value::as_array)
+        .and_then(|m| m.first())
+        .ok_or(HttpError::NotFound)?;
+    let kind = meaning
+        .get("partOfSpeech")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let def = meaning
+        .pointer("/definitions/0/definition")
+        .and_then(Value::as_str)
+        .ok_or(HttpError::NotFound)?;
+    let word = title_case(word);
+    let head = if kind.is_empty() {
+        word.clone()
+    } else {
+        format!("{word} ({kind})")
+    };
+    Ok(format!(
+        "{head}: {} (Wiktionary, CC BY-SA 4.0: https://en.wiktionary.org/wiki/{})",
+        def.trim_end_matches('.').to_string() + ".",
+        encode(&word.to_lowercase())
+    ))
 }
 
 /// The phrase to look up for a quick fact, or `None` when nothing is left.
@@ -1706,5 +1816,46 @@ mod tests {
         ));
         assert_eq!(c.id(), "web_lookup");
         assert_eq!(c.actions().len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod honest_facts {
+    use super::*;
+
+    #[test]
+    fn definitions_are_found() {
+        assert_eq!(
+            definition_word("what does ephemeral mean"),
+            Some("ephemeral".into())
+        );
+        assert_eq!(
+            definition_word("define ephemeral"),
+            Some("ephemeral".into())
+        );
+        assert_eq!(
+            definition_word("what is the meaning of serendipity?"),
+            Some("serendipity".into())
+        );
+        assert_eq!(definition_word("what is the capital of france"), None);
+    }
+
+    #[test]
+    fn explanations_and_sums_are_not_lookups() {
+        for q in [
+            "how do vaccines work",
+            "how many grams in a pound",
+            "what's the derivative of x squared",
+            "explain newton's second law simply",
+        ] {
+            assert!(!is_lookup_question(q), "{q}");
+        }
+        for q in [
+            "what is the capital of australia",
+            "who is ada lovelace",
+            "what is photosynthesis",
+        ] {
+            assert!(is_lookup_question(q), "{q}");
+        }
     }
 }
