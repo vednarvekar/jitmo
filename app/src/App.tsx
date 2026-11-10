@@ -430,7 +430,13 @@ export default function App() {
             <div className="row" data-tauri-drag-region>
               {OBSIDIAN ? (
                 // The owner's face orb. (LivingOrb, the colour orb, is kept in orbs/ unused.)
-                <FaceOrb mood={mood} pulse={beat} size={32} />
+                <FaceOrb
+                  phase={state.phase}
+                  typed={text.length}
+                  pulse={beat}
+                  awake={anim === "in"}
+                  size={32}
+                />
               ) : (
                 /* Classic and glass2: the grey orb opens the suggestions. */
                 <button

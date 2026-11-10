@@ -23,7 +23,27 @@ const MAX_GAZE = 0.17;
 /** Glide speed toward the target each frame (0..1); smaller is smoother and slower. */
 const GLIDE = 0.16;
 
-export default function GreyOrb({ mood = "idle", size = 34 }: { mood?: GreyMood; size?: number }) {
+/** Posed expressions (used by FaceOrb on the obsidian bar). "idle" plays the long routine. */
+export type OrbPose =
+  | "idle"
+  | "listening"
+  | "thinking"
+  | "asking"
+  | "done"
+  | "failed"
+  | "squeeze"
+  | "asleep";
+
+export default function GreyOrb({
+  mood = "idle",
+  size = 34,
+  pose,
+}: {
+  mood?: GreyMood;
+  size?: number;
+  /** When set, a third pair of eyes takes the pose, moving smoothly from one to the next. */
+  pose?: OrbPose;
+}) {
   const ref = useRef<HTMLSpanElement>(null);
   const moodRef = useRef(mood);
   moodRef.current = mood;
@@ -104,10 +124,19 @@ export default function GreyOrb({ mood = "idle", size = 34 }: { mood?: GreyMood;
       data-look="0"
       data-over="0"
       data-poke="0"
+      data-pose={pose}
       aria-hidden="true"
     >
       <span className="gl gl1" />
       <span className="gl gl2" />
+      {/* The posed pair (only with `pose`): each expression is a set of eye shapes, and the
+          eyes glide between them. */}
+      {pose && (
+        <span className="geyes pose">
+          <span className="geye l" />
+          <span className="geye r" />
+        </span>
+      )}
       {/* The long sequence. */}
       <span className="geyes routine">
         <span className="geye l" />

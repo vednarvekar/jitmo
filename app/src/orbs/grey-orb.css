@@ -487,3 +487,118 @@
     animation: none !important;
   }
 }
+
+/* ---------- posed expressions (data-pose, FaceOrb on the obsidian bar) ----------
+   Like Anki's Cozmo: a feeling is a set of eye shapes (place, size, roundness, tilt) and
+   the eyes glide from one set to the next with a little overshoot, never cut. */
+.grey-orb .pose {
+  opacity: 0;
+  transition:
+    opacity 0.25s ease,
+    translate 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+  translate: calc(var(--look, 0) * 1%) 0;
+}
+.grey-orb .pose .geye {
+  transition:
+    left 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.15),
+    top 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.15),
+    width 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.15),
+    height 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.15),
+    border-radius 0.34s ease,
+    rotate 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.15),
+    background-color 0.2s ease,
+    border-width 0.2s ease;
+}
+/* Any pose but idle: the posed pair shows, the routine and the pointer pair step aside. */
+.grey-orb[data-pose]:not([data-pose="idle"]) .pose {
+  opacity: 1;
+}
+.grey-orb[data-pose]:not([data-pose="idle"]) .routine,
+.grey-orb[data-pose]:not([data-pose="idle"]) .attend {
+  opacity: 0;
+}
+
+/* Listening (the user is typing): wide, attentive, glancing along the line as it grows. */
+.grey-orb[data-pose="listening"] .pose .geye {
+  top: 25%;
+  width: 12%;
+  height: 38%;
+}
+.grey-orb[data-pose="listening"] .pose .geye.l { left: 33%; }
+.grey-orb[data-pose="listening"] .pose .geye.r { left: 62%; }
+
+/* Thinking (working): narrowed, looking up, scanning from side to side. */
+.grey-orb[data-pose="thinking"] .pose {
+  animation: pose-scan 1.6s ease-in-out infinite alternate;
+}
+.grey-orb[data-pose="thinking"] .pose .geye {
+  top: 22%;
+  width: 13%;
+  height: 16%;
+  border-radius: 99px 99px 45% 45%;
+}
+.grey-orb[data-pose="thinking"] .pose .geye.l { left: 28%; }
+.grey-orb[data-pose="thinking"] .pose .geye.r { left: 58%; }
+@keyframes pose-scan {
+  from { translate: -9% -2%; }
+  to { translate: 9% -2%; }
+}
+
+/* Asking (a question card is open): big round eyes looking down at it. */
+.grey-orb[data-pose="asking"] .pose .geye {
+  top: 38%;
+  width: 14%;
+  height: 30%;
+}
+.grey-orb[data-pose="asking"] .pose .geye.l { left: 28%; }
+.grey-orb[data-pose="asking"] .pose .geye.r { left: 58%; }
+
+/* Done: happy arcs (^^). */
+.grey-orb[data-pose="done"] .pose .geye {
+  top: 37%;
+  width: 16%;
+  height: 10%;
+  background-color: transparent;
+  box-shadow: none;
+  border: 2.4px solid #fff;
+  border-bottom-width: 0;
+  border-radius: 99px 99px 0 0;
+}
+.grey-orb[data-pose="done"] .pose .geye.l { left: 25%; }
+.grey-orb[data-pose="done"] .pose .geye.r { left: 58%; }
+
+/* Failed: droopy, the outer corners sliding down. */
+.grey-orb[data-pose="failed"] .pose .geye {
+  top: 40%;
+  width: 13%;
+  height: 20%;
+  border-radius: 30% 30% 99px 99px;
+}
+.grey-orb[data-pose="failed"] .pose .geye.l { left: 28%; rotate: -16deg; }
+.grey-orb[data-pose="failed"] .pose .geye.r { left: 58%; rotate: 16deg; }
+
+/* Squeeze (just clicked): eyes shut tight, > < */
+.grey-orb[data-pose="squeeze"] .pose .geye {
+  top: 41%;
+  width: 15%;
+  height: 7%;
+}
+.grey-orb[data-pose="squeeze"] .pose .geye.l { left: 27%; rotate: 22deg; }
+.grey-orb[data-pose="squeeze"] .pose .geye.r { left: 58%; rotate: -22deg; }
+
+/* Asleep (the bar is hidden): closed lines, so opening the bar is a wake-up. */
+.grey-orb[data-pose="asleep"] .pose .geye {
+  top: 46%;
+  width: 13%;
+  height: 4%;
+}
+.grey-orb[data-pose="asleep"] .pose .geye.l { left: 29%; }
+.grey-orb[data-pose="asleep"] .pose .geye.r { left: 58%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .grey-orb .pose,
+  .grey-orb .pose .geye {
+    transition: none;
+    animation: none !important;
+  }
+}

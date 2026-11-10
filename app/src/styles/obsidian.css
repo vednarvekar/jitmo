@@ -523,3 +523,69 @@ html[data-design="obsidian"] .grey-orb {
     filter: blur(4px);
   }
 }
+
+/* ---------- the face orb's body acting (FaceOrb data-pose) ---------- */
+.face-act {
+  display: block;
+  border-radius: 50%;
+  transition:
+    rotate 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+    translate 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+    filter 0.4s ease;
+}
+/* Idle: slow breathing. */
+.face-orb[data-pose="idle"] .face-act {
+  animation: face-breathe 4.2s ease-in-out infinite;
+}
+@keyframes face-breathe {
+  50% { scale: 1.035; }
+}
+/* Thinking: a gentle side-to-side wobble. */
+.face-orb[data-pose="thinking"] .face-act {
+  animation: face-wobble 1.6s ease-in-out infinite;
+}
+@keyframes face-wobble {
+  25% { rotate: -5deg; }
+  75% { rotate: 5deg; }
+}
+/* Asking: head tilted toward the question. */
+.face-orb[data-pose="asking"] .face-act {
+  rotate: -10deg;
+  translate: 0 1px;
+}
+/* Done: a hop, squashing on landing. */
+.face-orb[data-pose="done"] .face-act {
+  animation: face-hop 0.62s cubic-bezier(0.3, 0.8, 0.4, 1);
+}
+@keyframes face-hop {
+  0% { translate: 0 0; scale: 1 1; }
+  15% { translate: 0 1px; scale: 1.1 0.9; }
+  45% { translate: 0 -5px; scale: 0.94 1.07; }
+  75% { translate: 0 0; scale: 1.08 0.93; }
+  100% { translate: 0 0; scale: 1 1; }
+}
+/* Failed: shakes its head and dims a little. */
+.face-orb[data-pose="failed"] .face-act {
+  filter: brightness(0.85) saturate(0.8);
+  animation: face-no 0.6s ease-in-out;
+}
+@keyframes face-no {
+  20% { rotate: -9deg; }
+  45% { rotate: 8deg; }
+  70% { rotate: -4deg; }
+  100% { rotate: 0deg; }
+}
+/* Thinking and asking share the bar's light. */
+.face-orb[data-pose="thinking"] .face-body,
+.face-orb[data-pose="asking"] .face-body {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.3),
+    0 0 22px -2px color-mix(in srgb, var(--o-b) 60%, transparent),
+    0 3px 8px rgb(0 0 0 / 0.5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .face-act {
+    animation: none !important;
+    transition: none;
+  }
+}
