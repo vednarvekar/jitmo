@@ -85,6 +85,11 @@ pub(crate) fn start_alarm() {
         return; // already ringing
     }
     std::thread::spawn(|| {
+        // The volume change (started earlier, in parallel with the bar appearing) is done
+        // before the first note.
+        if let Some(prep) = PREP.lock().ok().and_then(|mut p| p.take()) {
+            let _ = prep.join();
+        }
         let wav = ALARM.get_or_init(alarm_wav);
         let started = std::time::Instant::now();
         while ALARMING.load(Ordering::SeqCst) && started.elapsed().as_secs() < ALARM_MAX_SECS {
@@ -98,8 +103,61 @@ pub(crate) fn start_alarm() {
             }
         }
         ALARMING.store(false, Ordering::SeqCst);
+        restore_system_volume();
     });
 }
+
+/// What the system volume was before the alarm raised it: (percent, was muted).
+static SAVED_VOLUME: std::sync::Mutex<Option<(String, bool)>> = std::sync::Mutex::new(None);
+static PREP: std::sync::Mutex<Option<std::thread::JoinHandle<()>>> = std::sync::Mutex::new(None);
+
+/// Begin raising the system volume to 100% and unmuting, in the background. An alarm that
+/// plays at a whisper (or into a muted PC) is a missed reminder. [`start_alarm`] waits for
+/// it; the old level comes back when the alarm stops.
+pub(crate) fn prepare_alarm() {
+    if let Ok(mut p) = PREP.lock() {
+        *p = Some(std::thread::spawn(raise_system_volume));
+    }
+}
+
+#[cfg(windows)]
+fn raise_system_volume() {
+    use jitmo_connectors::system_controls::{PowerShell, ScriptRunner, VOLUME_SCRIPT};
+    let run =
+        |op: &str, n: &str| PowerShell.run(VOLUME_SCRIPT, &[("JITMO_OP", op), ("JITMO_N", n)]);
+    // Never overwrite what an earlier alarm already saved.
+    let Ok(mut saved) = SAVED_VOLUME.lock() else {
+        return;
+    };
+    if saved.is_none() {
+        if let Ok(out) = run("get", "0") {
+            let (pct, state) = out.split_once(' ').unwrap_or((out.as_str(), ""));
+            *saved = Some((pct.to_string(), state == "muted"));
+        }
+    }
+    let _ = run("unmute", "0");
+    let _ = run("set", "100");
+}
+
+#[cfg(windows)]
+fn restore_system_volume() {
+    use jitmo_connectors::system_controls::{PowerShell, ScriptRunner, VOLUME_SCRIPT};
+    let Some((pct, muted)) = SAVED_VOLUME.lock().ok().and_then(|mut s| s.take()) else {
+        return;
+    };
+    let run =
+        |op: &str, n: &str| PowerShell.run(VOLUME_SCRIPT, &[("JITMO_OP", op), ("JITMO_N", n)]);
+    let _ = run("set", &pct);
+    if muted {
+        let _ = run("mute", "0");
+    }
+}
+
+#[cfg(not(windows))]
+fn raise_system_volume() {}
+
+#[cfg(not(windows))]
+fn restore_system_volume() {}
 
 /// Is an alarm ringing? The bar must not be put away by anything but the user's own
 /// dismissal while it is.

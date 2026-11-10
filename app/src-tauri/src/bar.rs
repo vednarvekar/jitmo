@@ -271,6 +271,8 @@ fn show_notice_inner(app: &AppHandle, text: &str, event: &str) {
 /// be silenced from the keyboard is worse than one that interrupts typing.
 pub(crate) fn show_alarm(app: &AppHandle, text: &str) {
     HOLD.store(false, Ordering::SeqCst);
+    // Raise the system volume while the bar comes up (it takes about a second).
+    crate::sound::prepare_alarm();
     // The bar first, then the sound a moment later: a sound with nothing on screen feels
     // broken.
     show_notice_inner(app, text, "bar-alarm");
