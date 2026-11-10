@@ -107,6 +107,37 @@ pub fn clarify(said: &str) -> Option<Clarify> {
     }
     let has = |names: &[&str]| w.iter().any(|x| names.contains(&x.as_str()));
 
+    // "turn on" with nothing after it: which setting?
+    if matches!(
+        w.iter().map(String::as_str).collect::<Vec<_>>().as_slice(),
+        ["turn" | "switch", "on" | "off"] | ["enable" | "disable"]
+    ) {
+        let on = w.iter().any(|x| x == "on" || x == "enable");
+        let (q, a, b, c) = if on {
+            (
+                "Turn on what?",
+                "turn on wifi",
+                "turn on bluetooth",
+                "turn on do not disturb",
+            )
+        } else {
+            (
+                "Turn off what?",
+                "turn off wifi",
+                "turn off bluetooth",
+                "turn off do not disturb",
+            )
+        };
+        return Some(pick(
+            q,
+            vec![
+                ("Wi-Fi", Some(a)),
+                ("Bluetooth", Some(b)),
+                ("Do Not Disturb", Some(c)),
+            ],
+        ));
+    }
+
     // Volume and brightness: up, down, mute, or a level.
     if is_bare(&w, &["volume", "sound", "audio", "loudness"]) {
         let mut c = pick(
@@ -510,6 +541,45 @@ pub fn question_for(
                     ("Turn off", "turn off bluetooth"),
                 ]),
             )),
+            // Neither radio was recognised ("turn on blue", "turn it off"): ask which, and
+            // keep the on or off they already said.
+            (false, false) => {
+                let words: Vec<&str> = lower
+                    .split(|c: char| !c.is_alphanumeric())
+                    .filter(|w| !w.is_empty())
+                    .collect();
+                let on = words
+                    .iter()
+                    .any(|w| matches!(*w, "on" | "enable" | "activate" | "chalu" | "start"));
+                let off = words
+                    .iter()
+                    .any(|w| matches!(*w, "off" | "of" | "disable" | "band" | "kill" | "stop"));
+                match (on, off) {
+                    (true, false) => Some((
+                        "Turn on which one?",
+                        opts(&[
+                            ("Wi-Fi", "turn on wifi"),
+                            ("Bluetooth", "turn on bluetooth"),
+                        ]),
+                    )),
+                    (false, true) => Some((
+                        "Turn off which one?",
+                        opts(&[
+                            ("Wi-Fi", "turn off wifi"),
+                            ("Bluetooth", "turn off bluetooth"),
+                        ]),
+                    )),
+                    _ => Some((
+                        "Which one?",
+                        opts(&[
+                            ("Wi-Fi on", "turn on wifi"),
+                            ("Wi-Fi off", "turn off wifi"),
+                            ("Bluetooth on", "turn on bluetooth"),
+                            ("Bluetooth off", "turn off bluetooth"),
+                        ]),
+                    )),
+                }
+            }
             _ => None,
         };
     }
@@ -567,13 +637,22 @@ mod tests {
         assert_eq!(opts[1], ("Turn off", "turn off bluetooth".to_string()));
         let (q, _) = question_for("Do you want it on or off?", "wi-fi chalu karo").unwrap();
         assert_eq!(q, "Wi-Fi: on or off?");
-        // Two radios, or none named: nothing sensible to offer.
+        // Two radios named: nothing sensible to offer.
         assert!(question_for(
             "Do you want it on or off?",
             "turn on wifi and off bluetooth"
         )
         .is_none());
-        assert!(question_for("Do you want it on or off?", "turn it off").is_none());
+        // No radio recognised ("turn on blue" fails to parse a name): ask which, keeping the
+        // on or off that was said.
+        let (q, opts) = question_for("Do you want it on or off?", "turn it off").unwrap();
+        assert_eq!(q, "Turn off which one?");
+        assert_eq!(opts[1], ("Bluetooth", "turn off bluetooth".to_string()));
+        let (q, opts) = question_for("Do you want it on or off?", "turn on xyz").unwrap();
+        assert_eq!(q, "Turn on which one?");
+        assert_eq!(opts[0].1, "turn on wifi");
+        let (_, opts) = question_for("Do you want it on or off?", "toggle it").unwrap();
+        assert_eq!(opts.len(), 4);
         let (_, opts) = question_for("Should I pause, resume or skip?", "music?").unwrap();
         assert_eq!(opts.len(), 4);
         let (q, _) = question_for(

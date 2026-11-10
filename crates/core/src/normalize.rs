@@ -269,6 +269,7 @@ pub fn normalize(text: &str) -> String {
         }
         _ => joined,
     };
+    let joined = file_search(&joined).unwrap_or(joined);
     youtube_search(&joined).unwrap_or(joined)
 }
 
@@ -495,6 +496,165 @@ pub fn direct_skill(said: &str, normalized: &str) -> Option<&'static str> {
     if question && !personal {
         return Some("web.fact");
     }
+    // "search ved", "search for best pizza in pune": on its own that means the web. Only a
+    // word about the PC (file, folder, downloads...) keeps it a file search.
+    if starts(&["search ", "searching "]) && !has(PC_WORDS) {
+        return Some("browser.search");
+    }
+    None
+}
+
+/// Words that make "search ..." a search of the PC's files and not of the web.
+const PC_WORDS: &[&str] = &[
+    "file",
+    "files",
+    "folder",
+    "folders",
+    "document",
+    "documents",
+    "doc",
+    "docs",
+    "pdf",
+    "docx",
+    "xlsx",
+    "pptx",
+    "jpg",
+    "png",
+    "txt",
+    "photo",
+    "photos",
+    "picture",
+    "pictures",
+    "image",
+    "images",
+    "screenshot",
+    "screenshots",
+    "downloads",
+    "desktop",
+    "pc",
+    "computer",
+    "laptop",
+    "drive",
+    "my",
+    "me",
+    "recent",
+    "latest",
+    "newest",
+    "invoice",
+    "invoices",
+    "resume",
+    "report",
+];
+
+/// "search my files for tax", "search invoice" -> "find tax", "find invoice": the file
+/// search says "find".
+fn file_search(s: &str) -> Option<String> {
+    let lower = s.to_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric() && c != '.' && c != '_' && c != '-')
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.first() != Some(&"search") || !words.iter().any(|w| PC_WORDS.contains(w)) {
+        return None;
+    }
+    let rest: Vec<&str> = words[1..]
+        .iter()
+        .copied()
+        .filter(|w| {
+            !matches!(
+                *w,
+                "for"
+                    | "my"
+                    | "the"
+                    | "all"
+                    | "file"
+                    | "files"
+                    | "me"
+                    | "in"
+                    | "on"
+                    | "downloads"
+                    | "desktop"
+                    | "folder"
+                    | "pc"
+                    | "computer"
+                    | "laptop"
+            )
+        })
+        .collect();
+    (!rest.is_empty()).then(|| format!("find {}", rest.join(" ")))
+}
+
+/// Answers that need no skill: greetings, thanks, and things Jitmo cannot do (said plainly
+/// instead of guessing at the nearest skill, which once opened Chrome for "close chrome").
+pub fn plain_reply(said: &str) -> Option<&'static str> {
+    let t: String = said
+        .trim()
+        .trim_end_matches(['?', '!', '.'])
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let words: Vec<&str> = t.split(' ').collect();
+    let first = *words.first()?;
+    let only = |allowed: &[&str]| words[1..].iter().all(|w| allowed.contains(w));
+    match t.as_str() {
+        "hello" | "hi" | "hii" | "hey" | "heya" | "yo" | "sup" | "hola" | "namaste"
+        | "hello jitmo" | "hi jitmo" | "hey jitmo" | "good morning" | "good afternoon"
+        | "good evening" | "good night" => {
+            return Some(
+                "Hi! Ask me to open an app, set a timer, check the weather or play music. \
+                 Say “help” to see everything.",
+            )
+        }
+        "thanks" | "thank you" | "thank u" | "thanks a lot" | "thx" | "ty" | "thanks jitmo"
+        | "shukriya" | "dhanyavad" => return Some("Anytime."),
+        "how are you" | "how r u" | "how are you doing" | "whats up" | "what's up" => {
+            return Some("All good, thanks. What can I do for you?")
+        }
+        "who are you" | "what are you" | "what is your name" | "whats your name"
+        | "what's your name" => return Some(
+            "I'm Jitmo, a small assistant that lives on your PC. Say “help” to see what I can do.",
+        ),
+        "tell me a joke" | "joke" | "tell a joke" | "say something funny" => {
+            return Some(
+                "I don't tell jokes yet. I can open apps, set timers, check the weather and more. \
+                 Say “help” to see everything.",
+            )
+        }
+        _ => {}
+    }
+    // Power: shutting down, restarting, sleeping.
+    let pc = [
+        "the", "my", "pc", "computer", "laptop", "system", "windows", "now", "it", "please",
+    ];
+    let power = match first {
+        "shutdown" | "reboot" | "restart" | "hibernate" | "logout" => only(&pc),
+        "shut" => words.get(1) == Some(&"down") && words[2..].iter().all(|w| pc.contains(w)),
+        "sleep" => only(&pc),
+        "log" | "sign" => words.get(1).is_some_and(|w| *w == "off" || *w == "out"),
+        "go" => words.get(1..3) == Some(&["to", "sleep"][..]),
+        "turn" | "switch" => {
+            words.get(1) == Some(&"off")
+                && words.len() > 2
+                && words[2..].iter().all(|w| pc.contains(w))
+                && words[2..]
+                    .iter()
+                    .any(|w| ["pc", "computer", "laptop", "system"].contains(w))
+        }
+        _ => false,
+    };
+    if power {
+        return Some("I can't shut down, restart or sleep the PC yet.");
+    }
+    // Closing an app: only opening is supported.
+    if matches!(first, "close" | "quit" | "exit") && words.len() > 1 {
+        let radio_or_other = words
+            .iter()
+            .any(|w| ["bluetooth", "wifi", "tab", "tabs", "timer", "music", "bar"].contains(w));
+        if !radio_or_other {
+            return Some("I can't close apps yet. I can open them, though.");
+        }
+    }
     None
 }
 
@@ -661,6 +821,29 @@ mod tests {
         let d = |s: &str| direct_skill(s, &normalize(s));
         assert_eq!(d("2+2"), Some("calc.math"));
         assert_eq!(d("18% of 2450"), Some("calc.math"));
+        // "search X" is the web, unless the words are about files on the PC.
+        assert_eq!(d("search ved"), Some("browser.search"));
+        assert_eq!(d("search for ved narvekar"), Some("browser.search"));
+        assert_eq!(d("search cats on youtube"), Some("browser.search"));
+        assert_eq!(normalize("search my files for tax"), "find tax");
+        assert_eq!(normalize("search invoice"), "find invoice");
+        assert_eq!(normalize("search downloads for invoice"), "find invoice");
+        assert_eq!(normalize("search ved"), "search ved");
+        // Plain answers, and plain refusals instead of the nearest skill.
+        assert!(plain_reply("hello").is_some());
+        assert_eq!(plain_reply("thanks!"), Some("Anytime."));
+        assert!(plain_reply("close chrome").unwrap().contains("can't close"));
+        assert!(plain_reply("shut down the pc")
+            .unwrap()
+            .contains("shut down"));
+        assert!(plain_reply("sleep").is_some());
+        assert!(plain_reply("restart").is_some());
+        assert_eq!(plain_reply("restart spotify"), None);
+        assert_eq!(plain_reply("open spotify"), None);
+        assert_eq!(plain_reply("close the timer"), None);
+        assert_eq!(plain_reply("turn off bluetooth"), None);
+        assert_ne!(d("search my files for tax"), Some("browser.search"));
+        assert_ne!(d("search downloads for invoice"), Some("browser.search"));
         assert_eq!(
             d("every Monday at 10 remind me to send the report"),
             Some("reminders.remind")

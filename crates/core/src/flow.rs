@@ -470,6 +470,16 @@ impl Flow {
                 undoable: false,
             };
         }
+        // 0. Greetings, thanks, and plain "I can't do that" for things that sound like a
+        // skill but are not one (closing an app, shutting down).
+        if let Some(message) = crate::normalize::plain_reply(text) {
+            self.log(text, None, Decision::Ran, message, None);
+            return CoreEvent::Done {
+                id,
+                message: message.into(),
+                undoable: false,
+            };
+        }
         if crate::normalize::place_with_symbols(text) {
             return self.fail(
                 id,

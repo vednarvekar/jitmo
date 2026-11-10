@@ -73,6 +73,65 @@ pub(crate) fn play(cue: Cue) {
     play_wav(wav);
 }
 
+static ALARMING: AtomicBool = AtomicBool::new(false);
+static ALARM: OnceLock<Vec<u8>> = OnceLock::new();
+/// The alarm gives up on its own after this long, so a forgotten one cannot ring all night.
+const ALARM_MAX_SECS: u64 = 90;
+
+/// Ring until [`stop_alarm`] (or [`ALARM_MAX_SECS`]): a bright four-note chime, again and
+/// again. Not muted by `bar_sounds`: an alarm nobody hears is a missed reminder.
+pub(crate) fn start_alarm() {
+    if ALARMING.swap(true, Ordering::SeqCst) {
+        return; // already ringing
+    }
+    std::thread::spawn(|| {
+        let wav = ALARM.get_or_init(alarm_wav);
+        let started = std::time::Instant::now();
+        while ALARMING.load(Ordering::SeqCst) && started.elapsed().as_secs() < ALARM_MAX_SECS {
+            play_wav(wav);
+            // The clip is about 1.1 s; wait it out in small steps so a stop is quick.
+            for _ in 0..16 {
+                if !ALARMING.load(Ordering::SeqCst) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
+        ALARMING.store(false, Ordering::SeqCst);
+    });
+}
+
+/// Silence the alarm at once.
+pub(crate) fn stop_alarm() {
+    if ALARMING.swap(false, Ordering::SeqCst) {
+        stop_wav();
+    }
+}
+
+/// Four bell-like notes (A5 A5 A5 E6), each with a fast attack and a ringing decay.
+fn alarm_wav() -> Vec<u8> {
+    let pi2 = 2.0 * std::f32::consts::PI;
+    let notes = [880.0f32, 880.0, 880.0, 1318.5];
+    let step = (RATE as f32 * 0.22) as usize;
+    let len = (RATE as f32 * 0.4) as usize;
+    let total = step * (notes.len() - 1) + len;
+    let mut mixed = vec![0.0f32; total];
+    for (n, freq) in notes.iter().enumerate() {
+        for i in 0..len {
+            let t = i as f32 / RATE as f32;
+            let attack = (i as f32 / (RATE as f32 * 0.004)).min(1.0);
+            let env = attack * (-t * 7.0).exp();
+            let tone = (pi2 * freq * t).sin() + 0.35 * (pi2 * freq * 2.0 * t).sin();
+            mixed[n * step + i] += tone * env;
+        }
+    }
+    let samples: Vec<i16> = mixed
+        .iter()
+        .map(|v| (v * 0.34 * i16::MAX as f32) as i16)
+        .collect();
+    wav_bytes(&samples)
+}
+
 /// A rounded "bubble" pop: a sine that glides from `from` to `to` Hz over about 90 ms
 /// (a soft pitch curve, not a beep), with a quick attack, a smooth decay, a faint
 /// overtone, and one quiet echo for a glassy tail. About 0.22 s in all.
@@ -150,8 +209,23 @@ fn play_wav(wav: &'static [u8]) {
     }
 }
 
+#[cfg(windows)]
+fn stop_wav() {
+    #[link(name = "winmm")]
+    extern "system" {
+        fn PlaySoundW(sound: *const u16, module: *mut core::ffi::c_void, flags: u32) -> i32;
+    }
+    // SAFETY: a null sound stops whatever PlaySound is playing; no pointer is read.
+    unsafe {
+        PlaySoundW(core::ptr::null(), core::ptr::null_mut(), 0);
+    }
+}
+
 #[cfg(not(windows))]
 fn play_wav(_wav: &'static [u8]) {}
+
+#[cfg(not(windows))]
+fn stop_wav() {}
 
 #[cfg(test)]
 mod tests {
@@ -173,6 +247,16 @@ mod tests {
                 .unwrap();
             assert!(peak > 1000 && peak < 12_000, "peak {peak}");
         }
+    }
+
+    #[test]
+    fn the_alarm_is_a_valid_clip_about_a_second_long() {
+        let wav = alarm_wav();
+        assert_eq!(&wav[..4], b"RIFF");
+        let data_len = u32::from_le_bytes(wav[40..44].try_into().unwrap()) as usize;
+        assert_eq!(wav.len(), 44 + data_len);
+        let seconds = (data_len / 2) as f32 / RATE as f32;
+        assert!((0.9..1.3).contains(&seconds), "{seconds}");
     }
 
     #[test]

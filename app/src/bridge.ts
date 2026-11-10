@@ -38,9 +38,22 @@ const listen = <T>(name: string, cb: (e: { payload: T }) => void): Promise<Unlis
 };
 
 export const submit = (id: number, text: string) => invoke<void>("submit", { id, text });
-export const confirm = (id: number, approved: boolean) => invoke<void>("confirm", { id, approved });
-export const choose = (id: number, choiceId: string) => invoke<void>("choose", { id, choiceId });
-export const answer = (id: number, text: string) => invoke<void>("answer", { id, text });
+/** Sent to the page itself when a question was answered, so the bar can show it is working. */
+export const RESUMED = "jitmo-resumed";
+const resumed = () => window.dispatchEvent(new Event(RESUMED));
+
+export const confirm = (id: number, approved: boolean) => {
+  if (approved) resumed();
+  return invoke<void>("confirm", { id, approved });
+};
+export const choose = (id: number, choiceId: string) => {
+  resumed();
+  return invoke<void>("choose", { id, choiceId });
+};
+export const answer = (id: number, text: string) => {
+  resumed();
+  return invoke<void>("answer", { id, text });
+};
 export const cancel = (id: number) => invoke<void>("cancel", { id });
 export const undo = (id: number) => invoke<void>("undo", { id });
 export const hideBar = () => invoke<void>("hide_bar");
@@ -55,9 +68,15 @@ export const openSource = (url: string) =>
 export const onCoreEvent = (cb: (e: CoreEvent) => void): Promise<UnlistenFn> =>
   listen<CoreEvent>("core-event", (e) => cb(e.payload));
 
-/** A message nobody asked for: a timer or reminder came due. */
+/** A message nobody asked for (a quiet one). */
 export const onBarNotice = (cb: (message: string) => void): Promise<UnlistenFn> =>
   listen<string>("bar-notice", (e) => cb(e.payload));
+
+/** A timer or reminder came due: the bar rings until it is dismissed. */
+export const onBarAlarm = (cb: (message: string) => void): Promise<UnlistenFn> =>
+  listen<string>("bar-alarm", (e) => cb(e.payload));
+/** Stop the ringing. */
+export const stopAlarm = () => invoke<void>("stop_alarm");
 
 export const onBarShown = (cb: () => void): Promise<UnlistenFn> => listen("bar-shown", () => cb());
 

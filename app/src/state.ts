@@ -24,6 +24,8 @@ export type BarState =
 
 export type Action =
   | { type: "submitted"; id: number }
+  // An answer, a choice or an approval was sent: the request is running again.
+  | { type: "resumed" }
   | { type: "core"; event: CoreEvent; now: number }
   | { type: "reset" };
 
@@ -40,6 +42,12 @@ export function reduce(state: BarState, action: Action): BarState {
       return initialState;
     case "submitted":
       return { phase: "working", id: action.id };
+    case "resumed":
+      // After a question is answered the engine takes a moment; show that it is working
+      // instead of leaving the old question on screen.
+      return state.phase === "confirm" || state.phase === "choice" || state.phase === "asking"
+        ? { phase: "working", id: state.id }
+        : state;
     case "core": {
       const e = action.event;
       // Ignore late events from an older request, except Undo results, which

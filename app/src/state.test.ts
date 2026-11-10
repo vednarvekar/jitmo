@@ -21,6 +21,16 @@ describe("command bar state", () => {
     expect(reduce(initialState, { type: "submitted", id: 1 })).toEqual({ phase: "working", id: 1 });
   });
 
+  it("shows working again after a question is answered", () => {
+    const asking: BarState = { phase: "asking", id: 3, question: "Which city?", hint: "" };
+    expect(reduce(asking, { type: "resumed" })).toEqual({ phase: "working", id: 3 });
+    const choice: BarState = { phase: "choice", id: 4, question: "?", choices: [] };
+    expect(reduce(choice, { type: "resumed" })).toEqual({ phase: "working", id: 4 });
+    // Anything else is left alone.
+    const done: BarState = { phase: "done", id: 5, message: "ok", undoable: false };
+    expect(reduce(done, { type: "resumed" })).toEqual(done);
+  });
+
   it("T01 path: started then done", () => {
     let s: BarState = reduce(initialState, { type: "submitted", id: 1 });
     s = reduce(s, core({ type: "started", id: 1 }));

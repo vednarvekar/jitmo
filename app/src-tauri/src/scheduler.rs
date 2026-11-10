@@ -1,11 +1,11 @@
 use crate::storage::open_store;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tauri::AppHandle;
 
-/// Every second, show the reminders and timers that have come due: as a Windows
-/// notification, and in the bar itself (Windows hides notifications under Focus assist
-/// or Do Not Disturb and still reports success, so the bar is the alert that cannot be
-/// missed). Runs on its own thread with its own database connection.
+/// Every second, ring the reminders and timers that have come due, in the bar itself (it
+/// pops up with an alarm sound; Windows notifications are hidden by Focus assist and Do Not
+/// Disturb while still reporting success, so they cannot be relied on). Runs on its own
+/// thread with its own database connection.
 pub(crate) fn start_reminder_scheduler(
     db: std::path::PathBuf,
     key: Option<jitmo_store::Key>,
@@ -19,33 +19,19 @@ pub(crate) fn start_reminder_scheduler(
                 return;
             }
         };
-        // A refused notification is tried again on later checks; the bar must not pop up
-        // again for the same one.
-        let mut last_in_bar: Option<(String, Instant)> = None;
         loop {
             let now = chrono_utc_now();
+            // The alarm is the bar itself: it pops up, rings, and stays until Esc, Enter or
+            // Backspace. (The Windows notification, which came from "Windows PowerShell" and
+            // was easy to miss, is no longer used.)
             let _ = jitmo_core::scheduler::fire_due(&store, &now, &mut |n| {
-                let first_time = !matches!(
-                    &last_in_bar,
-                    Some((text, at)) if *text == n.body && at.elapsed() < Duration::from_secs(150)
-                );
-                if first_time {
-                    last_in_bar = Some((n.body.clone(), Instant::now()));
-                    let text = if n.title == "Reminder" {
-                        format!("Reminder: {}", n.body)
-                    } else {
-                        n.body.clone()
-                    };
-                    crate::bar::show_notice(&app, &text);
-                }
-                #[cfg(windows)]
-                {
-                    jitmo_adapter_windows::toast::show_toast(&n.title, &n.body).is_ok()
-                }
-                #[cfg(not(windows))]
-                {
-                    false
-                }
+                let text = if n.title == "Reminder" {
+                    format!("Reminder: {}", n.body)
+                } else {
+                    n.body.clone()
+                };
+                crate::bar::show_alarm(&app, &text);
+                true
             });
             std::thread::sleep(Duration::from_secs(1));
         }

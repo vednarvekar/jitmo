@@ -377,6 +377,53 @@ pub enum Radio {
     Bluetooth,
 }
 
+/// A half-typed or misspelled radio name: "blue", "blu", "bt", "bluetoogh", "wfi", "wify".
+/// "blue light" and "blue filter" are the night-light setting, not Bluetooth.
+fn radio_by_word(text: &str) -> Option<Radio> {
+    let lower = text.to_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let night_light = words.windows(2).any(|p| {
+        p[0].starts_with("blu") && matches!(p[1], "light" | "lights" | "filter" | "shade")
+    });
+    for w in &words {
+        if !night_light && (*w == "bt" || (w.len() >= 3 && w.starts_with("blu"))) {
+            return Some(Radio::Bluetooth);
+        }
+        if !night_light && w.len() >= 5 && edit_distance(w, "bluetooth") <= 3 {
+            return Some(Radio::Bluetooth);
+        }
+        if matches!(
+            *w,
+            "wi" | "wfi" | "wify" | "wifii" | "wiif" | "wif" | "wi-fi"
+        ) || (w.len() >= 3
+            && !matches!(*w, "wife" | "wire" | "wise")
+            && edit_distance(w, "wifi") <= 1)
+        {
+            return Some(Radio::WiFi);
+        }
+    }
+    None
+}
+
+/// The number of single-letter edits between two words.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for i in 1..=a.len() {
+        let mut cur = vec![i];
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            cur.push((prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + cost));
+        }
+        prev = cur;
+    }
+    prev[b.len()]
+}
+
 /// "turn on bluetooth", "wifi off", "disable wi-fi".
 pub fn parse_radio(text: &str) -> Option<(Radio, bool)> {
     let t = text.to_lowercase().replace(['-', ' '], "");
@@ -388,7 +435,7 @@ pub fn parse_radio(text: &str) -> Option<(Radio, bool)> {
     } else if t.contains("wifi") || t.contains("wlan") || t.contains("wireless") {
         Radio::WiFi
     } else {
-        return None;
+        radio_by_word(text)?
     };
     let words: Vec<String> = text
         .to_lowercase()
@@ -780,6 +827,16 @@ mod tests {
         );
         assert_eq!(parse_radio("wifi off"), Some((Radio::WiFi, false)));
         assert_eq!(parse_radio("disable Wi-Fi"), Some((Radio::WiFi, false)));
+        // Half-typed and misspelled names.
+        for said in ["turn on blue", "turn on blu", "bt on", "turn on bluetoogh"] {
+            assert_eq!(parse_radio(said), Some((Radio::Bluetooth, true)), "{said}");
+        }
+        assert_eq!(parse_radio("turn of blue"), Some((Radio::Bluetooth, false)));
+        assert_eq!(parse_radio("turn on wfi"), Some((Radio::WiFi, true)));
+        assert_eq!(parse_radio("turn off wify"), Some((Radio::WiFi, false)));
+        // Not radios.
+        assert_eq!(parse_radio("turn on blue light filter"), None);
+        assert_eq!(parse_radio("turn on wife"), None);
         assert_eq!(parse_radio("turn wifi"), None);
         assert_eq!(parse_radio("turn on and off wifi"), None);
         assert_eq!(parse_radio("turn on the lights"), None);

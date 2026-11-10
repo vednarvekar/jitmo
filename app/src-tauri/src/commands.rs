@@ -51,6 +51,12 @@ pub(crate) fn bar_ready(app: AppHandle) {
     bar::show_when_ready(&app);
 }
 
+/// Silence a ringing timer or reminder (Esc, Enter or Backspace on the alarm).
+#[tauri::command]
+pub(crate) fn stop_alarm() {
+    crate::sound::stop_alarm();
+}
+
 #[tauri::command]
 pub(crate) fn hide_bar(app: AppHandle) {
     bar::hide(&app);

@@ -12,6 +12,7 @@ import { GreyOrb, type GreyMood } from "./orbs";
 import { paletteVars } from "./orbs/LivingOrb";
 import FaceOrb from "./orbs/FaceOrb";
 import Hints from "./components/Hints";
+import WorkingWord from "./components/WorkingWord";
 import Reveal from "./components/Reveal";
 import Answer, { isHelp } from "./components/Answer";
 import { ArrowUp, Check, Copy } from "./components/Icons";
@@ -174,6 +175,10 @@ function CopyButton({ text }: { text: string }) {
 
 export default function App() {
   const [state, dispatch] = useReducer(reduce, initialState);
+  // A timer or reminder that is ringing: it owns the bar until Esc, Enter or Backspace.
+  const [alarm, setAlarm] = useState<string | null>(null);
+  const alarmRef = useRef<string | null>(null);
+  alarmRef.current = alarm;
   const [text, setText] = useState("");
   const [undoUntil, setUndoUntil] = useState(0);
   const [now, setNow] = useState(Date.now());
@@ -207,6 +212,10 @@ export default function App() {
       const id = currentId(open);
       if (id !== null) bridge.cancel(id);
     }
+    if (alarmRef.current !== null) {
+      bridge.stopAlarm();
+      setAlarm(null);
+    }
     bridge.barSound("close");
     setAnim("out");
     setTimeout(() => bridge.hideBar(), POP_DOWN_MS);
@@ -237,6 +246,12 @@ export default function App() {
         resetBar();
         playIn();
       }),
+      // An answer or a choice was sent: show that the request is running again.
+      (() => {
+        const onResumed = () => dispatch({ type: "resumed" });
+        window.addEventListener(bridge.RESUMED, onResumed);
+        return Promise.resolve(() => window.removeEventListener(bridge.RESUMED, onResumed));
+      })(),
       bridge.onBarClose(closeBar),
       // A timer or reminder came due: show it as a result, unless the user is in the middle
       // of something (a running task, a question or a confirm), which must not be replaced.
@@ -248,15 +263,27 @@ export default function App() {
           now: Date.now(),
         });
       }),
+      // An alarm takes the bar even from a question in progress: that question is dropped.
+      bridge.onBarAlarm((message) => {
+        const open = stateRef.current;
+        const id = currentId(open);
+        if (id !== null && ["confirm", "choice", "asking", "working"].includes(open.phase)) {
+          bridge.cancel(id);
+        }
+        closing.current = false;
+        dispatch({ type: "reset" });
+        setText("");
+        setAlarm(message);
+      }),
       bridge.onBarBlurred(() => {
-        if (Date.now() < dragUntil.current) return;
+        if (Date.now() < dragUntil.current || alarmRef.current !== null) return;
         if (hideOnBlur(stateRef.current)) closeBar();
       }),
     ];
     // The page's own blur is a second signal for "clicked somewhere else", in case the
     // window event does not arrive (the bar is a transparent always-on-top window).
     const onWindowBlur = () => {
-      if (Date.now() < dragUntil.current) return;
+      if (Date.now() < dragUntil.current || alarmRef.current !== null) return;
       if (hideOnBlur(stateRef.current)) closeBar();
     };
     window.addEventListener("blur", onWindowBlur);
@@ -331,7 +358,12 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const s = stateRef.current;
       const id = currentId(s);
-      if (e.key === "Tab") {
+      if (alarmRef.current !== null) {
+        // Ringing: Esc, Enter, Backspace (or Delete or Space) stop it and put the bar away.
+        // Other keys do nothing, so a half-typed word elsewhere cannot land in the bar.
+        e.preventDefault();
+        if (["Escape", "Enter", "Backspace", "Delete", " "].includes(e.key)) closeBar();
+      } else if (e.key === "Tab") {
         // Tab never moves focus to a button; the input keeps it.
         e.preventDefault();
         inputRef.current?.focus();
@@ -379,7 +411,14 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [closeBar]);
+
+  // A ringing alarm stops by itself after a minute and a half (the sound does too).
+  useEffect(() => {
+    if (alarm === null) return;
+    const t = setTimeout(closeBar, 90_000);
+    return () => clearTimeout(t);
+  }, [alarm, closeBar]);
 
   const typing = acceptsTyping(state);
   const answering = state.phase === "asking";
@@ -415,7 +454,11 @@ export default function App() {
   // While a request runs or has finished, its status takes the place of the
   // input line, so the bar keeps its height. Only a confirm or choice card
   // makes it taller.
-  const showStatus = state.phase === "working" || state.phase === "done" || state.phase === "failed";
+  const showStatus =
+    alarm !== null ||
+    state.phase === "working" ||
+    state.phase === "done" ||
+    state.phase === "failed";
 
   // A looked-up answer carries its credit at the end; it is shown as a round button instead.
   const answer = state.phase === "done" ? splitSource(state.message) : null;
@@ -462,7 +505,7 @@ export default function App() {
       >
         <div className="fx-layer">
           <Surface
-            phase={state.phase}
+            phase={alarm !== null ? "alarm" : state.phase}
             block={
               sourceOpen ||
               ((state.phase === "done" || state.phase === "failed") &&
@@ -474,7 +517,7 @@ export default function App() {
               {OBSIDIAN ? (
                 // The owner's face orb. (LivingOrb, the colour orb, is kept in orbs/ unused.)
                 <FaceOrb
-                  phase={state.phase}
+                  phase={alarm !== null ? "done" : state.phase}
                   typed={text.length}
                   pulse={beat}
                   awake={anim === "in"}
@@ -495,26 +538,28 @@ export default function App() {
 
               {showStatus ? (
                 <div
-                  className={`status ${state.phase}`}
-                  role="status"
-                  aria-live="polite"
+                  className={`status ${alarm !== null ? "done alarm" : state.phase}`}
+                  role={alarm !== null ? "alert" : "status"}
+                  aria-live={alarm !== null ? "assertive" : "polite"}
                   title={state.phase === "working" ? undefined : "Type to ask something else"}
-                  onClick={() => state.phase !== "working" && resetBar()}
+                  onClick={() => {
+                    if (alarm !== null) closeBar();
+                    else if (state.phase !== "working") resetBar();
+                  }}
                 >
-                  {state.phase === "working" && (
+                  {alarm !== null && (
+                    <>
+                      <span className="message alarm-text" title={alarm}>
+                        {alarm}
+                      </span>
+                      <span className="alarm-hint" aria-hidden="true">
+                        Esc to stop
+                      </span>
+                    </>
+                  )}
+                  {alarm === null && state.phase === "working" && (
                     <span className="message muted working-text">
-                      {OBSIDIAN ? (
-                        <>
-                          Working
-                          <span className="dots" aria-hidden="true">
-                            <i>.</i>
-                            <i>.</i>
-                            <i>.</i>
-                          </span>
-                        </>
-                      ) : (
-                        "Working…"
-                      )}
+                      {OBSIDIAN ? <WorkingWord /> : "Working…"}
                     </span>
                   )}
                   {state.phase === "done" && answer && (

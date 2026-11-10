@@ -34,3 +34,40 @@ test("typing keeps focus in the input; Esc closes the bar", async ({ bar }) => {
   await bar.page.keyboard.press("Escape");
   await expect.poll(() => bar.shell.hidden).toBe(true);
 });
+
+test("'turn on blue' (a half-typed radio name) still turns Bluetooth on", async ({ bar }) => {
+  await bar.open();
+  await bar.say("turn on blue");
+  expect(await bar.line()).toBe("Bluetooth is on.");
+});
+
+test("a radio that cannot be told apart asks with buttons, never a bare question", async ({ bar }) => {
+  await bar.open();
+  await bar.say("turn on");
+  expect(await bar.line()).toBe("Turn on what?");
+  expect(await bar.buttons()).toEqual(["1 Wi-Fi", "2 Bluetooth", "3 Do Not Disturb"]);
+});
+
+test("after a typed answer the bar shows it is working, not the old question", async ({ bar }) => {
+  await bar.open();
+  await bar.say("weather");
+  expect(await bar.line()).toBe("Which city?");
+  await bar.page.keyboard.type("Pune");
+  await bar.page.keyboard.press("Enter");
+  // The old question must be gone at once; the result (or a working word) takes its place.
+  await expect(bar.page.locator(".card")).toHaveCount(0);
+});
+
+test("a ringing alarm stays until Esc, Enter or Backspace", async ({ bar }) => {
+  for (const key of ["Escape", "Enter", "Backspace"]) {
+    await bar.open();
+    await bar.page.evaluate(() => (window as any).__jitmo.emit("bar-alarm", "Reminder: Call mom"));
+    await expect(bar.page.locator(".status.alarm")).toContainText("Call mom");
+    await expect(bar.page.locator(".alarm-hint")).toBeVisible();
+    // Typing does not leak into the bar while it rings.
+    await bar.page.keyboard.type("x");
+    await expect(bar.page.locator(".status.alarm")).toBeVisible();
+    await bar.page.keyboard.press(key);
+    await expect.poll(() => bar.shell.hidden).toBe(true);
+  }
+});

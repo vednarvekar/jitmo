@@ -254,6 +254,23 @@ html[data-design="obsidian"] .working-text {
 html[data-design="obsidian"] .working-text::after {
   content: "";
 }
+/* Each new word fades up into place. */
+.working-text .ww {
+  display: inline-block;
+  animation: ww-in 0.36s var(--ease-out) both;
+}
+@keyframes ww-in {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .working-text .ww {
+    animation: none;
+  }
+}
 
 /* ---------- buttons in the row ---------- */
 html[data-design="obsidian"] .go {
@@ -705,4 +722,54 @@ html[data-design="obsidian"] .tool.copy:hover {
 html[data-design="obsidian"] .tool.copy svg {
   width: 17px;
   height: 17px;
+}
+
+/* ---------- a timer or reminder ringing ---------- */
+/* The edge light stays on and pulses, the bar rings side to side, and the line says how to
+   stop it. Nothing here fades out: it stays until Esc, Enter or Backspace. */
+.bar-ob[data-phase="alarm"] .ob-ring {
+  opacity: 1;
+  animation:
+    ob-spin 1.4s linear infinite,
+    ob-pulse 0.9s ease-in-out infinite;
+}
+.ob-wrap[data-phase="alarm"] .ob-glow {
+  opacity: 0.7;
+  animation:
+    ob-spin 1.4s linear infinite,
+    ob-pulse 0.9s ease-in-out infinite;
+}
+@keyframes ob-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.bar-ob[data-phase="alarm"] {
+  animation: ob-ring 0.9s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+@keyframes ob-ring {
+  0%, 55%, 100% { transform: rotate(0); }
+  10% { transform: rotate(-1.4deg); }
+  20% { transform: rotate(1.4deg); }
+  30% { transform: rotate(-1deg); }
+  40% { transform: rotate(1deg); }
+}
+.status.alarm .alarm-text {
+  font: italic 400 19px/1.25 var(--serif);
+  color: var(--paper);
+}
+.alarm-hint {
+  margin-left: auto;
+  padding-left: 14px;
+  flex: none;
+  font: 500 11px/1 var(--sans, system-ui);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-ob[data-phase="alarm"] {
+    animation: none;
+  }
 }

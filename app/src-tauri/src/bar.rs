@@ -222,7 +222,7 @@ pub(crate) fn create_bar(app: &AppHandle) {
 /// Show the bar with a message nobody asked for (a timer or reminder that came due).
 /// An existing window is shown without taking keyboard focus, so typing in another app is
 /// not swallowed by the bar. Runs on the caller's thread and waits for the page to be up.
-pub(crate) fn show_notice(app: &AppHandle, text: &str) {
+fn show_notice_inner(app: &AppHandle, text: &str, event: &str) {
     let existing = app.get_webview_window(BAR);
     let visible = existing
         .as_ref()
@@ -246,7 +246,18 @@ pub(crate) fn show_notice(app: &AppHandle, text: &str) {
             }
         }
     }
-    let _ = app.emit("bar-notice", text);
+    let _ = app.emit(event, text);
+}
+
+/// A timer or reminder came due: ring, show the bar and take the keyboard so Esc, Enter or
+/// Backspace stops it. Unlike [`show_notice`] this does take focus; an alarm that cannot
+/// be silenced from the keyboard is worse than one that interrupts typing.
+pub(crate) fn show_alarm(app: &AppHandle, text: &str) {
+    crate::sound::start_alarm();
+    show_notice_inner(app, text, "bar-alarm");
+    if let Some(w) = app.get_webview_window(BAR) {
+        let _ = w.set_focus();
+    }
 }
 
 pub(crate) fn toggle(app: &AppHandle) {
@@ -311,6 +322,7 @@ pub(crate) fn hide(app: &AppHandle) {
     let Some(w) = app.get_webview_window(BAR) else {
         return;
     };
+    crate::sound::stop_alarm(); // putting the bar away silences an alarm too
     let _ = w.hide();
     let mine = app
         .state::<AppState>()

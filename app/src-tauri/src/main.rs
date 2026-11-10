@@ -33,7 +33,7 @@ mod storage;
 
 use commands::{
     answer, bar_ready, bar_sound, cancel, choose, confirm, hide_bar, open_source, resize_bar,
-    submit, undo, AppState,
+    stop_alarm, submit, undo, AppState,
 };
 use core_client::CoreClient;
 
@@ -53,7 +53,8 @@ fn main() {
             resize_bar,
             bar_ready,
             bar_sound,
-            open_source
+            open_source,
+            stop_alarm
         ])
         .setup(|app| {
             // Own the per-user Core pipe first. If another jitmo already does,
