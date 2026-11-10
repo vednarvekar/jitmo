@@ -13,7 +13,8 @@ import { paletteVars } from "./orbs/LivingOrb";
 import FaceOrb from "./orbs/FaceOrb";
 import Hints from "./components/Hints";
 import Reveal from "./components/Reveal";
-import { ArrowUp } from "./components/Icons";
+import Answer, { isHelp } from "./components/Answer";
+import { ArrowUp, Check, Copy } from "./components/Icons";
 import {
   UNDO_WINDOW_MS,
   acceptsTyping,
@@ -36,7 +37,18 @@ const HISTORY_SIZE = 30;
 /** How long the pop-down animation runs before the window is hidden (see styles.css). */
 const POP_DOWN_MS = 260;
 /** A message that will take more than one line gets "multi": the row aligns to the top then. */
-const messageClass = (m: string) => (m.length > 44 ? "message multi" : "message");
+const messageClass = (m: string) =>
+  isHelp(m) ? "message multi rich" : m.length > 44 ? "message multi" : "message";
+
+/** Window width for an answer: short ones keep the compact bar; longer ones widen so they
+ *  wrap into about three lines, up to 680 px. The help reply always gets the wide card. */
+function answerWidth(message: string): number {
+  if (!message) return 0;
+  if (isHelp(message)) return 600;
+  if (message.length <= 60) return 0;
+  const px = message.length * 7.4; // Geist 14.5 px averages about 7.4 px a character
+  return Math.round(Math.min(680, Math.max(BAR_MIN_WIDTH, px / 3 + ROW_CHROME)));
+}
 
 /** The pasted component is untyped JS; it takes CSS sizes as well as numbers. */
 const GlassSurface = GlassSurfaceUntyped as unknown as React.FC<
@@ -133,6 +145,30 @@ function Surface({
       <div className="circle-overlay" aria-hidden="true" />
       {children}
     </div>
+  );
+}
+
+/** Copies an answer; the icon turns into a tick for a moment. */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className="tool copy"
+      aria-label={copied ? "Copied" : "Copy the answer"}
+      title={copied ? "Copied" : "Copy"}
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard
+          ?.writeText(text)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1400);
+          })
+          .catch(() => undefined);
+      }}
+    >
+      {copied ? <Check /> : <Copy />}
+    </button>
   );
 }
 
@@ -257,11 +293,18 @@ export default function App() {
   // (compact by default, wider only when the text would not fit).
   const textRef = useRef(text);
   textRef.current = text;
+  // A long answer widens the bar too, so it reads in a few comfortable lines instead of a
+  // tall narrow column (obsidian look).
+  const shownRef = useRef("");
+  shownRef.current =
+    OBSIDIAN && (state.phase === "done" || state.phase === "failed") ? state.message : "";
   const syncSize = useCallback(() => {
     const el = rootRef.current;
     if (!el) return;
-    bridge.resizeBar(Math.ceil(el.getBoundingClientRect().height), wantedWidth(textRef.current));
+    const width = Math.max(wantedWidth(textRef.current), answerWidth(shownRef.current));
+    bridge.resizeBar(Math.ceil(el.getBoundingClientRect().height), width);
   }, []);
+  useEffect(syncSize, [state, syncSize]);
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
@@ -477,7 +520,7 @@ export default function App() {
                   {state.phase === "done" && answer && (
                     <>
                       <span className={messageClass(answer.body)} title={answer.body}>
-                        {OBSIDIAN ? <Reveal text={answer.body} /> : answer.body}
+                        {OBSIDIAN ? <Answer text={answer.body} onRun={send} /> : answer.body}
                         {answer.source && (
                           <SourceChip
                             source={answer.source}
@@ -552,6 +595,8 @@ export default function App() {
                 >
                   {OBSIDIAN ? <ArrowUp /> : <Chevron />}
                 </button>
+              ) : OBSIDIAN && answer ? (
+                <CopyButton text={answer.body} />
               ) : (
                 <VoiceButtons />
               )}

@@ -31,3 +31,16 @@ export const ArrowUp = ({ size = 16 }: P) => (
     <path d="M12 19V5M5.5 11.5L12 5l6.5 6.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
+
+export const Copy = ({ size = 17 }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="8.5" y="8.5" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.7" />
+    <path d="M15.5 5.5v-.5a2 2 0 0 0-2-2H6a2.5 2.5 0 0 0-2.5 2.5v7.5a2 2 0 0 0 2 2h.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+  </svg>
+);
+
+export const Check = ({ size = 17 }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
