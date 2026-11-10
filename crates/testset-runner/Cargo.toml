@@ -40,3 +40,8 @@ path = "src/bin/e2e.rs"
 [[bin]]
 name = "jitmo-llmbench"
 path = "src/bin/llmbench.rs"
+
+# Writes training data for the tool-picker model (low-memory brief, step 5).
+[[bin]]
+name = "jitmo-gendata"
+path = "src/bin/gendata.rs"

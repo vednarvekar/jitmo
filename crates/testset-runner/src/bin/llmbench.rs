@@ -14,6 +14,8 @@
 //! (a stand-in for the shared encoder, step 4); its recall@3 is reported so a miss that the
 //! model could never have fixed is not blamed on the model.
 
+use jitmo_core::router::Router;
+use jitmo_model_worker::{WorkerClient, WorkerLauncher};
 use jitmo_skills::Skill;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -216,6 +218,38 @@ fn main() {
     let ids: Vec<String> = skills.iter().map(|s| s.id.clone()).collect();
     let by_id: HashMap<&str, &Skill> = skills.iter().map(|s| (s.id.as_str(), s)).collect();
     let retriever = Retriever::new(&skills);
+    // With `--worker`, candidates come from jitmo's real router (the shared encoder stand-in);
+    // otherwise from the plain word-overlap retrieval.
+    let router: Option<Router> = flag(&args, "--worker").map(|w| {
+        let models = flag(&args, "--models").unwrap_or_else(|| "models/router".into());
+        let ner = flag(&args, "--ner").unwrap_or_else(|| "models/ner".into());
+        let launcher = WorkerLauncher {
+            program: w.into(),
+            args: vec![
+                "--models".into(),
+                models,
+                "--idle-secs".into(),
+                "0".into(),
+                "--extractor".into(),
+                ner,
+            ],
+        };
+        Router::new(skills.clone())
+            .with_worker(WorkerClient::new(launcher, Duration::from_secs(20)))
+    });
+    let cands = |text: &str| -> Vec<String> {
+        match &router {
+            Some(r) => r
+                .route(text)
+                .tasks
+                .iter()
+                .filter(|t| ids.contains(&t.id))
+                .map(|t| t.id.clone())
+                .take(k)
+                .collect(),
+            None => retriever.top(text, k),
+        }
+    };
 
     let mut cases = load_cases(&corpus, &ids, &kinds);
     if cases.len() > limit {
@@ -234,7 +268,7 @@ fn main() {
     let recall = cases
         .iter()
         .filter(|c| c.expected != "none")
-        .filter(|c| retriever.top(&c.text, k).contains(&c.expected))
+        .filter(|c| cands(&c.text).contains(&c.expected))
         .count();
     let tool_cases = cases.iter().filter(|c| c.expected != "none").count();
     println!(
@@ -305,7 +339,7 @@ fn main() {
     let url = format!("{base}/v1/chat/completions");
     let ag = agent(120);
     let run = |case: &Case, cache: bool| -> (String, f64, f64, f64, Vec<String>) {
-        let cand = retriever.top(&case.text, k);
+        let cand = cands(&case.text);
         let catalog: String = cand
             .iter()
             .enumerate()
@@ -396,6 +430,7 @@ fn main() {
     };
 
     let (mut right, mut wrong_action, mut asked) = (0, 0, 0);
+    let (mut in_cand, mut in_cand_right) = (0, 0);
     let (mut totals, mut prompts, mut writes) = (Vec::new(), Vec::new(), Vec::new());
     let mut misses: Vec<String> = Vec::new();
     let mut peak_ws: f64 = ws_idle;
@@ -404,6 +439,12 @@ fn main() {
         totals.push(total);
         prompts.push(p_ms);
         writes.push(g_ms);
+        if c.expected != "none" && cand.contains(&c.expected) {
+            in_cand += 1;
+            if picked == c.expected {
+                in_cand_right += 1;
+            }
+        }
         if picked == c.expected {
             right += 1;
         } else {
@@ -451,6 +492,12 @@ fn main() {
         wrong_action,
         100.0 * wrong_action as f64 / n,
         asked
+    );
+    println!(
+        "when the right tool was among the candidates: {} of {} = {:.1}%",
+        in_cand_right,
+        in_cand,
+        100.0 * in_cand_right as f64 / in_cand.max(1) as f64
     );
     println!(
         "speed (ms): total p50 {:.0} p95 {:.0}   reading the prompt p50 {:.0}   writing p50 {:.0}   total p50 without prompt cache {:.0}",
