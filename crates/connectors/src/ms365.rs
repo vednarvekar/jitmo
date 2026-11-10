@@ -337,7 +337,7 @@ pub fn has_instructions_for_an_assistant(body: &str) -> bool {
 pub fn extract_summary(m: &Mail) -> String {
     if has_instructions_for_an_assistant(&m.body) {
         return format!(
-            "{} wrote â€œ{}â€. It contains instructions addressed to an assistant, so I ignored them and did nothing.",
+            "{} wrote “{}”. It contains instructions addressed to an assistant, so I ignored them and did nothing.",
             m.from_name, m.subject
         );
     }
@@ -531,6 +531,7 @@ impl Connector for Outlook {
         };
         vec![
             a("urgent", &[]),
+            a("inbox", &[]),
             a("find", &["text"]),
             a("unanswered", &[]),
             a("summarize", &["text"]),
@@ -549,6 +550,48 @@ impl Connector for Outlook {
     fn execute(&self, action: &str, args: &Args) -> Result<Output, ConnError> {
         ready(&*self.health, "Outlook")?;
         match action {
+            // "emails", "inbox", "check my email": how many are unread, and the newest few.
+            "inbox" => {
+                let mut mails = self.inbox()?;
+                mails.sort_by(|a, b| b.received.cmp(&a.received));
+                let unread: Vec<&Mail> = mails.iter().filter(|m| m.unread).collect();
+                let people: Vec<&&Mail> = unread.iter().filter(|m| !m.newsletter).collect();
+                let news = unread.len() - people.len();
+                let urgent = people.iter().filter(|m| m.urgent).count();
+                let message = if unread.is_empty() {
+                    "No unread email.".to_string()
+                } else {
+                    let mut head = format!("{} unread", unread.len());
+                    let mut parts = Vec::new();
+                    if urgent > 0 {
+                        parts.push(format!("{urgent} urgent"));
+                    }
+                    if news > 0 {
+                        parts.push(format!(
+                            "{news} newsletter{}",
+                            if news == 1 { "" } else { "s" }
+                        ));
+                    }
+                    if !parts.is_empty() {
+                        head = format!("{head} ({})", parts.join(", "));
+                    }
+                    let latest = people
+                        .iter()
+                        .take(3)
+                        .map(|m| line(m))
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    if latest.is_empty() {
+                        format!("{head}.")
+                    } else {
+                        format!("{head}. Newest: {latest}.")
+                    }
+                };
+                Ok(out(&[
+                    ("message", message),
+                    ("count", unread.len().to_string()),
+                ]))
+            }
             "urgent" => {
                 let mails: Vec<Mail> = self
                     .inbox()?
@@ -570,8 +613,15 @@ impl Connector for Outlook {
                 ]))
             }
             "find" => {
-                let (words, window) = search_terms(arg(args, "text")?, (self.now)());
-                if words.is_empty() && window.is_none() {
+                let request = arg(args, "text")?;
+                let (mut words, window) = search_terms(request, (self.now)());
+                // "mail from Rahul", "what did Priya send me": a person named narrows it to
+                // what they sent, and the name is not a word to look for in the text.
+                let from = person_in(request, &self.names()?);
+                if let Some(first) = &from {
+                    words.retain(|w| w != first);
+                }
+                if words.is_empty() && window.is_none() && from.is_none() {
                     return Err(ConnError::Failed(
                         "What should I look for? Try “find emails about the invoice”.".into(),
                     ));
@@ -584,11 +634,20 @@ impl Connector for Outlook {
                         let hay = format!("{} {} {}", m.subject, m.body, m.attachments.join(" "))
                             .to_lowercase();
                         let in_words = words.iter().all(|w| hay.contains(w.as_str()));
+                        let attach_ok = !request.to_lowercase().contains("attachment")
+                            || !m.attachments.is_empty();
+                        let from_ok = attach_ok
+                            && from.as_ref().is_none_or(|first| {
+                                m.from_name
+                                    .split_whitespace()
+                                    .next()
+                                    .is_some_and(|f| f.eq_ignore_ascii_case(first))
+                            });
                         let in_window = window.is_none_or(|(from, to)| {
                             NaiveDate::parse_from_str(&m.received, "%Y-%m-%d")
                                 .is_ok_and(|d| d >= from && d <= to)
                         });
-                        in_words && in_window
+                        in_words && in_window && from_ok
                     })
                     .collect();
                 let message = if mails.is_empty() {
@@ -649,6 +708,11 @@ impl Connector for Outlook {
                             .next()
                             .is_some_and(|f| f.eq_ignore_ascii_case(first))
                     });
+                }
+                // A newsletter is not "my latest email" unless a person was not named and nothing
+                // else exists.
+                if who.is_none() && mails.iter().any(|m| !m.newsletter) {
+                    mails.retain(|m| !m.newsletter);
                 }
                 // Latest first.
                 mails.sort_by(|a, b| b.received.cmp(&a.received).then(b.id.cmp(&a.id)));
@@ -768,7 +832,7 @@ impl Connector for Outlook {
                     .any(|o| o.to == to && o.sent == sent))
             }
             // Reads change nothing, so there is nothing to prove.
-            "urgent" | "find" | "unanswered" | "summarize" => Ok(true),
+            "urgent" | "inbox" | "find" | "unanswered" | "summarize" => Ok(true),
             other => Err(ConnError::UnknownAction(other.into())),
         }
     }
@@ -1020,5 +1084,30 @@ mod attachment_tests {
             Some("latest screenshot")
         );
         assert_eq!(attachment_name("email it"), None);
+    }
+}
+
+#[cfg(test)]
+mod inbox_tests {
+    use super::*;
+
+    #[test]
+    fn the_inbox_counts_unread_and_shows_people_before_newsletters() {
+        let o = Outlook::fake(Arc::new(FakeMailbox::seeded()));
+        let r = o.execute("inbox", &Args::new()).unwrap();
+        let m = &r.0["message"];
+        assert!(
+            m.starts_with("6 unread (2 urgent, 2 newsletters). Newest: "),
+            "{m}"
+        );
+        assert!(
+            !m.contains("Tech Weekly"),
+            "newsletters are counted, not listed: {m}"
+        );
+        assert_eq!(r.0["count"], "6");
+        // "my latest email" is a person's, not a newsletter.
+        let args: Args = [("text".to_string(), "read my latest email".to_string())].into();
+        let m = o.execute("summarize", &args).unwrap().0["message"].clone();
+        assert!(!m.contains("newsletter"), "{m}");
     }
 }

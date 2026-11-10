@@ -1,0 +1,27 @@
+id: mail.inbox
+title: "Check the inbox"
+version: 1
+category: email
+capabilities:
+  - mail.read
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: read_only
+examples:
+  - "emails"
+  - "check my inbox"
+  - "any new emails"
+  - "how many unread emails do i have"
+  - "show my emails"
+slots: {}
+steps:
+  - connector: outlook
+    action: inbox
+    args: {}
+check:
+  connector: outlook
+  action: inbox
+  args: {}
+undo: none

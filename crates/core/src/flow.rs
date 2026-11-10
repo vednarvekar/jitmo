@@ -544,6 +544,10 @@ impl Flow {
         // 0. Greetings, thanks, and plain "I can't do that" for things that sound like a
         // skill but are not one (closing an app, shutting down).
         if let Some(message) = crate::normalize::plain_reply(text) {
+            // A refusal is a failure (it shakes and stays); a greeting is a result.
+            if message.starts_with("I can't") {
+                return self.fail(id, text, None, message);
+            }
             self.log(text, None, Decision::Ran, message, None);
             return CoreEvent::Done {
                 id,
@@ -735,8 +739,74 @@ impl Flow {
                     id,
                     text,
                     Some(&skill_id),
-                    "Who should get the report? I can send this week's report to your manager: say â€œsend this week's report to my managerâ€.",
+                    "Who should get the report? I can send this week's report to your manager: say “send this week's report to my manager”.",
                 );
+            }
+        }
+        // "email the team": no file is named, so it is the plain email.
+        let skill_id = {
+            let l = text.to_lowercase();
+            let filey = [
+                ".xlsx",
+                ".docx",
+                ".pptx",
+                ".pdf",
+                ".csv",
+                ".png",
+                ".jpg",
+                "file",
+                "screenshot",
+                "attachment",
+                "photo",
+                "picture",
+                "document",
+            ]
+            .iter()
+            .any(|w| l.contains(w));
+            if skill_id == "files.email" && !filey {
+                "mail.send".to_string()
+            } else {
+                skill_id
+            }
+        };
+        // Other guards of the same kind: a skill runs only when the words really ask for it,
+        // so a guess by the router can never archive, move or decline something by accident.
+        {
+            let l = text.to_lowercase();
+            let any = |names: &[&str]| names.iter().any(|n| l.contains(n));
+            let refuse = match skill_id.as_str() {
+                "mail.archive_newsletters" if !l.contains("newsletter") => {
+                    Some("I only archive newsletters. Say “archive today's newsletters”.")
+                }
+                "calendar.move"
+                    if !any(&[
+                        "move",
+                        "reschedule",
+                        "push",
+                        "shift",
+                        "postpone",
+                        "change",
+                        "bring",
+                    ]) =>
+                {
+                    Some("To move a meeting, say “move my 3pm to tomorrow”.")
+                }
+                "calendar.decline"
+                    if !any(&[
+                        "decline",
+                        "reject",
+                        "turn down",
+                        "can't make",
+                        "cannot make",
+                        "pass on",
+                    ]) =>
+                {
+                    Some("To decline an invite, say “decline the Friday review”.")
+                }
+                _ => None,
+            };
+            if let Some(message) = refuse {
+                return self.fail(id, text, Some(&skill_id), message);
             }
         }
         let Some(skill) = self.router.skill(&skill_id).cloned() else {
@@ -895,6 +965,31 @@ impl Flow {
                                 "For example: call mom",
                             ) {
                                 Some(what) => self.run(id, &format!("{text} to {what}"), p),
+                                None => self.cancelled(id, text, Some(&skill.id)),
+                            };
+                        }
+                        // A mail or event that is missing one part: ask for it, then run the whole
+                        // sentence again.
+                        if message.starts_with("What should the email say") {
+                            return match ask_text_twice(
+                                p,
+                                "What should it say?",
+                                "For example: Friday works",
+                            ) {
+                                Some(what) => self.run(id, &format!("{text} saying {what}"), p),
+                                None => self.cancelled(id, text, Some(&skill.id)),
+                            };
+                        }
+                        if message.starts_with("For how long?") {
+                            return match ask_text_twice(p, "For how long?", "For example: 2 hours")
+                            {
+                                Some(len) => self.run(id, &format!("{text} for {len}"), p),
+                                None => self.cancelled(id, text, Some(&skill.id)),
+                            };
+                        }
+                        if message.starts_with("Which day?") {
+                            return match ask_text_twice(p, "Which day?", "For example: Thursday") {
+                                Some(day) => self.run(id, &format!("{text} on {day}"), p),
                                 None => self.cancelled(id, text, Some(&skill.id)),
                             };
                         }

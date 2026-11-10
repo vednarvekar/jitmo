@@ -1,0 +1,127 @@
+# Vision corpus: what the owner's stated goal ("a total personal assistant" for a student and an office
+# worker) asks of the engine. Same format as testset/audit_corpus.txt. Expectation = what a GOOD assistant
+# does. "done" means it completes the request (answers or acts); "ask" means a short question is right.
+# ---------------------------------------------------------------- student: answers and study
+student|clean|what is photosynthesis|done;msg~light|
+student|clean|explain newton's second law in simple words|done;msg~force|
+student|clean|what's the derivative of x squared|done;msg~2x|
+student|clean|solve 2x + 5 = 15|done;msg~5|
+student|clean|who was the first prime minister of india|done;msg~nehru|
+student|clean|when did world war 2 end|done;msg~1945|
+student|clean|define osmosis|done;msg~water|
+student|clean|what does ephemeral mean|done;msg~short|
+student|clean|translate good morning to french|done;msg~bonjour|
+student|clean|how many grams in a pound|done;msg~453|
+student|clean|convert 100 fahrenheit to celsius|done;msg~37|
+student|clean|summarize this pdf|done|selected file
+student|clean|explain the chapter i have open|done|
+student|clean|make flashcards from my biology notes|done|
+student|clean|quiz me on the french revolution|done|
+student|clean|what's the meaning of the word ubiquitous|done;msg~everywhere|
+student|clean|give me 3 tips to study for exams|done|
+student|clean|why is the sky blue|done;msg~scatter|
+student|clean|what is 15% of 3200|done;msg~480|
+student|clean|square root of 144|done;msg~12|
+# ---------------------------------------------------------------- student: apps, music, browsing
+student|clean|open notepad|run:apps.open|
+student|clean|open vs code and spotify|done|
+student|clean|play lofi beats|run:music.play|
+student|clean|play some arijit singh songs|run:music.play|
+student|clean|play the next song|run:music.control|
+student|clean|pause the music|run:music.control|
+student|clean|play kesariya on youtube|done;url~youtube|
+student|clean|search youtube for khan academy calculus|done;url~youtube|
+student|clean|open youtube|done;url~youtube|
+student|clean|google best laptops under 50000|done;url~google|
+student|clean|open my college website|ask|unknown site
+student|clean|go to wikipedia and search for black holes|done;url~wikipedia|
+student|clean|open instagram|done|
+student|clean|open chatgpt|done|
+student|clean|open my downloads folder|done|
+student|clean|find my resume|run:files.find|
+student|clean|open budget.xlsx|run:files.open|
+student|clean|what did i download today|run:files.recent|
+student|clean|take a screenshot|run:system.screenshot|
+student|clean|turn the volume up|run:system.volume|
+student|clean|set brightness to 40|done|
+student|clean|turn off wifi|run:system.radio|
+student|clean|lock my laptop|run:system.lock|
+student|clean|how much battery do i have|done;msg~%|
+student|clean|close spotify|done|
+student|clean|empty the recycle bin|ask|
+# ---------------------------------------------------------------- student: messages and schedule
+student|clean|text rahul on whatsapp that i'll be late|done;ui~rahul|confirm card
+student|clean|send priya a message saying happy birthday|ask|which app
+student|clean|any new messages on whatsapp|done|
+student|clean|what classes do i have today|done|
+student|clean|when is my next exam|done|
+student|clean|remind me to submit the assignment tomorrow at 9am|run:reminders.remind|
+student|clean|set a timer for 25 minutes|run:reminders.timer|
+student|clean|wake me up at 7am|done|
+student|clean|add maths test on friday at 10am|done|
+student|clean|what's the weather in pune tomorrow|run:web.weather|
+student|clean|will it rain today|done|
+student|clean|what time is it in london|run:calc.time_in|
+student|clean|what day is it today|done;msg~monday|
+student|clean|how many days until christmas|done;msg~45|
+# ---------------------------------------------------------------- worker: meetings, mail, files, chat
+worker|clean|what's on my calendar today|run:calendar.agenda|
+worker|clean|when is my next meeting|done|
+worker|clean|remind me 10 minutes before every meeting|done|
+worker|clean|join my next teams meeting|done|
+worker|clean|any urgent emails|run:mail.urgent|
+worker|clean|what's in my inbox|run:mail.inbox|
+worker|clean|summarize the latest email from rahul|run:mail.summarize|
+worker|clean|reply to rahul saying friday works|done;ui~rahul|
+worker|clean|draft a polite reply declining the vendor proposal|done|
+worker|clean|email the team that standup is moved to 11|done|
+worker|clean|find rahul's emails about the budget|run:mail.find|
+worker|clean|what haven't i replied to|run:mail.unanswered|
+worker|clean|archive today's newsletters|run:mail.archive_newsletters|
+worker|clean|send budget.xlsx to rahul|done;ui~rahul|
+worker|clean|share the project folder with my team|done|
+worker|clean|post in the team chat that i'm running 10 minutes late|done|
+worker|clean|block two hours tomorrow morning for focus|run:calendar.block|
+worker|clean|set up 30 minutes with rahul on thursday|done;ui~rahul|
+worker|clean|move my 3pm to tomorrow|run:calendar.move|
+worker|clean|decline the friday review|run:calendar.decline|
+worker|clean|when are rahul and i both free this week|run:calendar.free|
+worker|clean|prepare me for my 3pm|run:calendar.context|
+worker|clean|give me my morning brief|run:work.morning_brief|
+worker|clean|take notes for this meeting|done|
+worker|clean|note that the client wants the deck by friday|done|
+worker|clean|what did i note about the client|done|
+worker|clean|turn this email into a calendar event|run:work.event_from_email|
+worker|clean|save the invoice attachments to the finance folder|run:work.save_attachments|
+worker|clean|send this week's report to my manager|run:work.send_report|
+worker|clean|turn on do not disturb for an hour|run:system.dnd|
+worker|clean|focus mode|done|
+worker|clean|create a word document called meeting notes|done|
+worker|clean|open the q3 deck|done|
+worker|clean|copy the last screenshot to the work folder|done|
+worker|clean|rename report.pdf to final report.pdf|done|
+worker|clean|zip the invoices folder|done|
+worker|clean|what's the status of the jira ticket abc-123|done|
+worker|clean|schedule this email to send at 9am tomorrow|done|
+worker|clean|set my status to busy on teams|done|
+# ---------------------------------------------------------------- natural, multi-turn, context-heavy
+natural|clean|i'm bored|done|
+natural|clean|i need to focus for an hour|done|
+natural|clean|it's too dark in here|done|
+natural|clean|i can't hear anything|run:system.volume|
+natural|clean|play something relaxing|run:music.play|
+natural|clean|what's this song|done|
+natural|clean|how do i make pasta|done|
+natural|clean|book an uber to the airport|decline|out of scope
+natural|clean|order pizza|decline|out of scope
+natural|clean|open spotify && play arijit singh|run:music.play|two turns
+natural|clean|remind me to call mom && make it 7pm instead|done|follow-up correction
+natural|clean|weather in pune && what about tomorrow|done|follow-up
+natural|clean|find my resume && send it to rahul|done|"it" = last result
+natural|clean|what's the capital of australia && how far is it from sydney|done|follow-up
+natural|clean|open notepad and type hello world|done|
+natural|clean|play arijit singh and set volume to 30|done|chain
+natural|clean|set a timer for 10 minutes and turn on dnd|done|chain
+natural|clean|undo that|done|
+natural|clean|what can you do|done|
+natural|clean|thanks|done|

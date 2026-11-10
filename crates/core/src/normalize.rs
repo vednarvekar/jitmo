@@ -225,7 +225,16 @@ pub fn normalize(text: &str) -> String {
                     .to_lowercase()
             })
             .unwrap_or_default();
-        if words.len() > 1 && TRAILING.contains(&last.as_str()) {
+        // "draft a reply saying thanks": here "thanks" is the message, not politeness.
+        let is_message = words.len() > 1
+            && matches!(
+                words[words.len() - 2]
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_lowercase()
+                    .as_str(),
+                "saying" | "say" | "that" | "with" | "is" | "was" | "and" | "to"
+            );
+        if words.len() > 1 && TRAILING.contains(&last.as_str()) && !is_message {
             words.pop();
         } else {
             break;
@@ -536,6 +545,148 @@ fn work_skill(lower: &str) -> Option<&'static str> {
     if ms && (has("sign in") || has("log in") || has("login") || has("connect")) {
         return Some("account.ms365_sign_in");
     }
+    // The inbox and the calendar in general, said many ways, so by shape.
+    let mailish = has("email") || has("mail") || has("inbox");
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    // Verbs that mean something other than reading: never take these for a look at the inbox.
+    let other_verb = [
+        "send",
+        "draft",
+        "archive",
+        "reply",
+        "forward",
+        "delete",
+        "remove",
+        "trash",
+        "mark",
+        "write",
+        "compose",
+        "find",
+        "search",
+        "save",
+        "attach",
+        "unsubscribe",
+    ]
+    .iter()
+    .any(|v| words.contains(v));
+    if mailish && (has("urgent") || has("important")) && words.len() <= 6 && !other_verb {
+        return Some("mail.urgent");
+    }
+    // "summarize my inbox", "summarize today's emails": the inbox, not one email.
+    if mailish
+        && (has("summarize") || has("summary") || has("sum up") || has("tldr"))
+        && (has("inbox") || has("emails") || has("my mail"))
+        && !has(" from ")
+    {
+        return Some("mail.inbox");
+    }
+    if mailish
+        && (has("latest email")
+            || has("last email")
+            || has("newest email")
+            || has("read my latest")
+            || has("latest mail")
+            || has("last mail"))
+        && !has("from ")
+        && !other_verb
+    {
+        return Some("mail.summarize");
+    }
+    // "search my email for the invoice", "look in my mail for tickets".
+    if mailish
+        && words.len() >= 3
+        && (starts("search")
+            || starts("look")
+            || starts("find")
+            || starts("any mail")
+            || starts("anything"))
+        && !has("file")
+    {
+        return Some("mail.find");
+    }
+    // "what did Priya send me", "mail from Rahul".
+    if starts("what did ") && (has(" send ") || has(" sent ") || has(" say ")) && has(" me") {
+        return Some("mail.find");
+    }
+    // The first word says it is a look at the mail ("email" and "mail" only when alone).
+    let reads_mail = words.first().is_some_and(|w| {
+        [
+            "emails", "inbox", "my", "check", "show", "read", "any", "new", "unread", "how", "do",
+            "what", "whats", "latest", "recent", "view", "see", "get", "have", "i", "is", "are",
+        ]
+        .contains(w)
+    }) || (words.len() == 1 && words[0] == "mail");
+    if mailish
+        && reads_mail
+        && words.len() <= 7
+        && !other_verb
+        && !has(" from ")
+        && !has(" about ")
+        && !has(" with ")
+        && !has("replied")
+        && !has("attachment")
+    {
+        return Some("mail.inbox");
+    }
+    if has("next meeting") || has("next event") || has("next appointment") {
+        return Some("calendar.agenda");
+    }
+    // Mail that has attachments (a look, not saving them).
+    if mailish && has("attachment") && !starts("save") && !has("folder") && !starts("send") {
+        return Some("mail.find");
+    }
+    if (starts("open my calendar")
+        || starts("open calendar")
+        || starts("show my calendar")
+        || starts("show calendar"))
+        && !has("app")
+    {
+        return Some("calendar.agenda");
+    }
+    // Invitations waiting, and answering them.
+    if (starts("any invites")
+        || starts("pending invites")
+        || starts("my invites")
+        || starts("new invites")
+        || starts("do i have any invites")
+        || starts("show my invites")
+        || starts("any invitations")
+        || starts("pending invitations")
+        || starts("check my invites"))
+        && !has("send")
+    {
+        return Some("calendar.agenda");
+    }
+    if (starts("accept ") || starts("rsvp ") || starts("say yes to "))
+        && (has("invite")
+            || has("meeting")
+            || has("review")
+            || has("sync")
+            || has("call")
+            || has("event"))
+    {
+        return Some("calendar.accept");
+    }
+    // Questions about meetings with a person are a look at the calendar, never an invite.
+    if starts("do i have a meeting with")
+        || starts("do i have meetings with")
+        || starts("when am i meeting")
+        || starts("when is my meeting with")
+        || starts("am i meeting")
+        || starts("when do i meet")
+    {
+        return Some("calendar.agenda");
+    }
+    if starts("how's my week")
+        || starts("hows my week")
+        || starts("how is my week")
+        || starts("my week")
+    {
+        return Some("calendar.agenda");
+    }
     if has("morning brief") {
         return Some("work.morning_brief");
     }
@@ -714,6 +865,31 @@ pub fn plain_reply(said: &str) -> Option<&'static str> {
     if power {
         return Some("I can't shut down, restart or sleep the PC yet.");
     }
+    // Mail and calendar things that are not supported: say so, never the nearest skill.
+    let mail = t.contains("email") || t.contains("mail") || t.contains("inbox");
+    if first == "forward" && mail {
+        return Some("I can't do that yet. I can send a new email: say “email Rahul that …”.");
+    }
+    if matches!(first, "delete" | "remove" | "trash") && (mail || t.contains("message")) {
+        return Some(
+            "I can't do that yet. I can archive today's newsletters, but not delete email.",
+        );
+    }
+    if first == "mark" && t.contains("read") && mail {
+        return Some("I can't do that yet. I can't mark email as read.");
+    }
+    let clock = words.iter().any(|w| {
+        w.chars().next().is_some_and(|c| c.is_ascii_digit())
+            && (w.ends_with("pm") || w.ends_with("am"))
+    });
+    if matches!(first, "cancel" | "delete" | "remove")
+        && (t.contains("meeting") || t.contains("event") || t.contains("appointment") || clock)
+        && !t.contains("timer")
+        && !t.contains("remind")
+        && !t.contains("alarm")
+    {
+        return Some("I can't do that yet. I can move or decline a meeting, but not cancel it.");
+    }
     // Closing an app: only opening is supported.
     if matches!(first, "close" | "quit" | "exit") && words.len() > 1 {
         let radio_or_other = words
@@ -889,6 +1065,25 @@ mod tests {
         let d = |s: &str| direct_skill(s, &normalize(s));
         assert_eq!(d("2+2"), Some("calc.math"));
         assert_eq!(d("18% of 2450"), Some("calc.math"));
+        // The inbox in general, said many ways (and never the newsletter archive).
+        for said in [
+            "emails",
+            "inbox",
+            "check my email",
+            "any new emails",
+            "unread mail",
+            "how many unread emails do i have",
+            "show my inbox",
+        ] {
+            assert_eq!(d(said), Some("mail.inbox"), "{said}");
+        }
+        assert_eq!(d("any urgent emails"), Some("mail.urgent"));
+        assert_eq!(d("read my latest email"), Some("mail.summarize"));
+        assert_eq!(d("when is my next meeting"), Some("calendar.agenda"));
+        // Not the inbox: other verbs, other things.
+        assert_ne!(d("send an email to rahul"), Some("mail.inbox"));
+        assert_ne!(d("remind me to mail the letter"), Some("mail.inbox"));
+        assert_ne!(d("find emails about the invoice"), Some("mail.inbox"));
         // "search X" is the web, unless the words are about files on the PC.
         assert_eq!(d("search ved"), Some("browser.search"));
         assert_eq!(d("search for ved narvekar"), Some("browser.search"));

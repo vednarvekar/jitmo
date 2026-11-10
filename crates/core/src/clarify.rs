@@ -186,6 +186,44 @@ pub fn clarify(said: &str) -> Option<Clarify> {
         ));
     }
 
+    // Writing mail or making an event with nothing said: ask what, then run the sentence.
+    match w.join(" ").trim_end_matches(['.', '?', '!']) {
+        "email" | "send an email" | "write an email" | "compose an email" | "new email"
+        | "send email" | "email someone" => {
+            return Some(text(
+                "Who should I email, and what should it say?",
+                "For example: Rahul that the report is ready",
+                "email {0}",
+            ));
+        }
+        "new event" | "add a meeting" | "add an event" | "create an event" | "new meeting"
+        | "schedule a meeting" | "add event" | "add meeting" | "create a meeting" => {
+            return Some(text(
+                "What event, and when?",
+                "For example: dentist on Friday at 4pm",
+                "add {0}",
+            ));
+        }
+        _ => {}
+    }
+    // "email Rahul": to whom is clear, what to say is not.
+    if let Some(who) = w.join(" ").strip_prefix("email ") {
+        let who = who.trim().trim_end_matches(['.', '?', '!']);
+        let one_name = !who.is_empty()
+            && who.split_whitespace().count() <= 2
+            && !who.contains(" that ")
+            && !who.contains(" saying ")
+            && !["me", "it", "this", "that", "the", "a", "my"].contains(&who);
+        if one_name && !who.starts_with("the ") && !who.starts_with("my ") {
+            let mut c = text(
+                "What should the email say?",
+                "For example: the report is ready",
+                "email {0} that {1}",
+            );
+            c.known = vec![who.to_string()];
+            return Some(c);
+        }
+    }
     // "send" alone, or "send to Ved": what is the message or file?
     let joined = w.join(" ");
     let said_plain = joined.trim_end_matches(['.', '?', '!']);

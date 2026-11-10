@@ -45,6 +45,8 @@ pub trait CalendarBackend: Send + Sync {
         end: NaiveDateTime,
     ) -> Result<(), ConnError>;
     fn set_declined(&self, id: &str, declined: bool) -> Result<(), ConnError>;
+    /// Accept an invitation (and tell the organiser).
+    fn accept(&self, id: &str) -> Result<(), ConnError>;
     /// Add a person to an existing event (and send them the invite).
     fn add_attendee(&self, id: &str, who: &str) -> Result<(), ConnError>;
     fn remove_attendee(&self, id: &str, who: &str) -> Result<(), ConnError>;
@@ -209,6 +211,17 @@ impl CalendarBackend for FakeCalendar {
             .ok_or_else(|| ConnError::Failed("I can't find that invite.".into()))?;
         e.declined = declined;
         e.invite_pending = !declined;
+        Ok(())
+    }
+
+    fn accept(&self, id: &str) -> Result<(), ConnError> {
+        let mut g = self.lock()?;
+        let e = g
+            .iter_mut()
+            .find(|e| e.id == id)
+            .ok_or_else(|| ConnError::Failed("I can't find that invite.".into()))?;
+        e.declined = false;
+        e.invite_pending = false;
         Ok(())
     }
 
@@ -518,6 +531,7 @@ impl Connector for OutlookCalendar {
             a("invite", &["to", "text"]),
             a("move", &["text"]),
             a("decline", &["text"]),
+            a("accept", &["text"]),
             a("context", &["text"]),
         ]
     }
@@ -531,6 +545,149 @@ impl Connector for OutlookCalendar {
         let text = arg(args, "text").unwrap_or("");
         let today = self.today();
         match action {
+            // "when is my next meeting": the next one that has not started yet.
+            "agenda"
+                if {
+                    let l = text.to_lowercase();
+                    l.contains("next meeting")
+                        || l.contains("next event")
+                        || l.contains("next appointment")
+                } =>
+            {
+                let now = (self.now)().naive_local();
+                let mut upcoming: Vec<Event> = self
+                    .backend
+                    .all()?
+                    .into_iter()
+                    .filter(|e| e.start > now && !e.declined)
+                    .collect();
+                upcoming.sort_by_key(|e| e.start);
+                let message = match upcoming.first() {
+                    None => "You have no upcoming meetings.".to_string(),
+                    Some(e) => {
+                        let mins = (e.start - now).num_minutes();
+                        let when = if mins < 60 {
+                            format!("in {mins} minutes")
+                        } else if e.start.date() == now.date() {
+                            format!("at {}", short(e.start))
+                        } else {
+                            format!("{} at {}", day_name(e.start.date()), short(e.start))
+                        };
+                        format!("Your next meeting is “{}” {when}.", e.title)
+                    }
+                };
+                Ok(out(&[("message", message)]))
+            }
+            // "any invites", "pending invites": the invitations not answered yet.
+            "agenda"
+                if {
+                    let l = text.to_lowercase();
+                    l.contains("invite") || l.contains("invitation")
+                } =>
+            {
+                let mut pending: Vec<Event> = self
+                    .backend
+                    .all()?
+                    .into_iter()
+                    .filter(|e| e.invite_pending && !e.declined)
+                    .collect();
+                pending.sort_by_key(|e| e.start);
+                let message = if pending.is_empty() {
+                    "You have no invites waiting.".to_string()
+                } else {
+                    format!(
+                        "{} invite{} waiting: {}.",
+                        pending.len(),
+                        if pending.len() == 1 { "" } else { "s" },
+                        pending
+                            .iter()
+                            .map(|e| format!(
+                                "{} ({} {})",
+                                e.title,
+                                day_name(e.start.date()),
+                                short(e.start)
+                            ))
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    )
+                };
+                Ok(out(&[
+                    ("message", message),
+                    ("count", pending.len().to_string()),
+                ]))
+            }
+            // "do I have a meeting with Rahul", "when am I meeting Rahul": their meetings.
+            "agenda"
+                if {
+                    let l = text.to_lowercase();
+                    (l.contains("meeting") || l.contains("meet"))
+                        && person_in(text, &self.backend.people().unwrap_or_default()).is_some()
+                } =>
+            {
+                let who = person_in(text, &self.backend.people()?).unwrap_or_default();
+                let now = (self.now)().naive_local();
+                let mut mine: Vec<Event> = self
+                    .backend
+                    .all()?
+                    .into_iter()
+                    .filter(|e| e.start > now && !e.declined)
+                    .filter(|e| {
+                        e.attendees.iter().any(|a| {
+                            a.split_whitespace()
+                                .next()
+                                .is_some_and(|f| f.eq_ignore_ascii_case(&who))
+                        })
+                    })
+                    .collect();
+                mine.sort_by_key(|e| e.start);
+                let message = if mine.is_empty() {
+                    format!("You have no meetings coming up with {who}.")
+                } else {
+                    format!(
+                        "With {who}: {}.",
+                        mine.iter()
+                            .map(|e| format!(
+                                "{} {} {}",
+                                day_name(e.start.date()),
+                                short(e.start),
+                                e.title
+                            ))
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    )
+                };
+                Ok(out(&[
+                    ("message", message),
+                    ("count", mine.len().to_string()),
+                ]))
+            }
+            // "how's my week": a line for each day.
+            "agenda" if text.to_lowercase().contains("week") => {
+                let mut lines = Vec::new();
+                let mut day = today;
+                for _ in 0..7 {
+                    if matches!(day.weekday(), Weekday::Sat | Weekday::Sun) {
+                        day = day.succ_opt().unwrap_or(day);
+                        continue;
+                    }
+                    let n = self
+                        .backend
+                        .all()?
+                        .iter()
+                        .filter(|e| e.start.date() == day && !e.declined)
+                        .count();
+                    if n > 0 {
+                        lines.push(format!("{} {n}", day_name(day)));
+                    }
+                    day = day.succ_opt().unwrap_or(day);
+                }
+                let message = if lines.is_empty() {
+                    "Your week is clear.".to_string()
+                } else {
+                    format!("This week: {}.", lines.join("; "))
+                };
+                Ok(out(&[("message", message)]))
+            }
             "agenda" => {
                 let day = day_in(text, today).unwrap_or(today);
                 let part = part_of_day(text);
@@ -662,6 +819,20 @@ impl Connector for OutlookCalendar {
                 let (len, _) = durations(&digits).unwrap_or((Duration::minutes(30), vec![]));
                 let len = Duration::seconds(len.num_seconds());
                 // "invite Priya to the project review": add her to a meeting that exists.
+                if day_in(text, today).is_none() && !clock_times(text).is_empty() {
+                    // "invite Rahul to my 3pm": the meeting at that time today.
+                    if let Ok(e) = self.find_by_hour(text, today) {
+                        self.backend.add_attendee(&e.id, who)?;
+                        return Ok(out(&[
+                            (
+                                "message",
+                                format!("Invited {who} to “{}” at {}.", e.title, short(e.start)),
+                            ),
+                            ("attendee_of", e.id.clone()),
+                            ("who", who.to_string()),
+                        ]));
+                    }
+                }
                 if day_in(text, today).is_none() {
                     let words: Vec<String> = text
                         .to_lowercase()
@@ -745,6 +916,8 @@ impl Connector for OutlookCalendar {
                 // time when one is given after the first.
                 let to_day = day_in(&text.to_lowercase().replace("my ", ""), today)
                     .filter(|d| *d != today)
+                    // "move my 3pm to 4pm": the same day, a new time.
+                    .or_else(|| times.get(1).map(|_| today))
                     .ok_or_else(|| {
                         ConnError::Failed("To when? Try “move my 3pm to tomorrow”.".into())
                     })?;
@@ -810,6 +983,43 @@ impl Connector for OutlookCalendar {
                     _ => Err(ConnError::Failed("Which invite should I decline?".into())),
                 }
             }
+            "accept" => {
+                let day = day_in(text, today);
+                let words: Vec<String> = text
+                    .to_lowercase()
+                    .split(|c: char| !c.is_alphanumeric())
+                    .filter(|w| w.len() > 2)
+                    .map(str::to_string)
+                    .collect();
+                let mut pending: Vec<Event> = self
+                    .backend
+                    .all()?
+                    .into_iter()
+                    .filter(|e| e.invite_pending && !e.declined)
+                    .filter(|e| day.is_none_or(|d| e.start.date() == d))
+                    .collect();
+                let named: Vec<Event> = pending
+                    .iter()
+                    .filter(|e| {
+                        e.title
+                            .to_lowercase()
+                            .split_whitespace()
+                            .any(|t| words.iter().any(|w| w == t))
+                    })
+                    .cloned()
+                    .collect();
+                if !named.is_empty() {
+                    pending = named;
+                }
+                match pending.as_slice() {
+                    [one] => {
+                        self.backend.accept(&one.id)?;
+                        Ok(out(&[("message", format!("Accepted “{}”.", one.title))]))
+                    }
+                    [] => Err(ConnError::Failed("I can't find that invite.".into())),
+                    _ => Err(ConnError::Failed("Which invite should I accept?".into())),
+                }
+            }
             "context" => {
                 // "Show me what I need for my 3pm": the meeting, and its people.
                 let e = self.find_by_hour(text, today)?;
@@ -835,7 +1045,9 @@ impl Connector for OutlookCalendar {
         match action {
             "agenda" | "free" | "context" => Ok(true),
             // A check sees only the arguments, so these prove the calendar is reachable.
-            "add" | "block" | "invite" | "move" | "decline" => Ok(self.backend.all().is_ok()),
+            "add" | "block" | "invite" | "move" | "decline" | "accept" => {
+                Ok(self.backend.all().is_ok())
+            }
             other => {
                 let _ = args;
                 Err(ConnError::UnknownAction(other.into()))
@@ -1119,5 +1331,19 @@ mod tests {
             "Please sign in to Microsoft 365 again."
         );
         assert_eq!(b.all().unwrap().len(), 6);
+    }
+}
+
+#[cfg(test)]
+mod next_tests {
+    use super::*;
+
+    #[test]
+    fn the_next_meeting_is_the_next_one_not_yet_started() {
+        let c = OutlookCalendar::fake(Arc::new(FakeCalendar::seeded()));
+        let args: Args = [("text".to_string(), "when is my next meeting".to_string())].into();
+        let m = c.execute("agenda", &args).unwrap().0["message"].clone();
+        // It is 10:00 on Monday: the 09:30 standup has started, the 15:00 review has not.
+        assert_eq!(m, "Your next meeting is “Project review” at 15:00.");
     }
 }

@@ -571,6 +571,16 @@ impl CalendarBackend for GraphCalendar {
         Ok(())
     }
 
+    fn accept(&self, id: &str) -> Result<(), ConnError> {
+        self.g.call(
+            "POST",
+            &format!("/me/events/{}/accept", enc(id)),
+            None,
+            Some(&json!({ "sendResponse": true })),
+        )?;
+        Ok(())
+    }
+
     fn add_attendee(&self, id: &str, who: &str) -> Result<(), ConnError> {
         let address = if who.contains('@') {
             who.to_string()
@@ -971,5 +981,63 @@ mod tests {
             "Teams is not connected yet."
         );
         assert_eq!(enc("Rahul S"), "Rahul%20S");
+    }
+}
+
+#[cfg(all(test, windows))]
+mod live {
+    use super::*;
+    use crate::oauth::{CredentialTokenStore, OAuthConfig, UreqTransport};
+
+    /// Reads the signed-in account through Graph and prints only counts, never subjects,
+    /// bodies or names. Run with `JITMO_MS365_CLIENT_ID=<id> cargo test -p jitmo-connectors
+    /// live_ -- --ignored --nocapture` after `sign in to Microsoft` in the app.
+    #[test]
+    #[ignore = "reads the real signed-in Microsoft account"]
+    fn live_read_only_smoke() {
+        let Ok(client_id) = std::env::var("JITMO_MS365_CLIENT_ID") else {
+            println!("set JITMO_MS365_CLIENT_ID to run this");
+            return;
+        };
+        let session = Arc::new(Session::new(
+            OAuthConfig {
+                client_id,
+                tenant: "common".into(),
+                redirect_uri: String::new(),
+                scopes: crate::ms365_account::default_scopes(),
+            },
+            Box::new(UreqTransport),
+            Box::new(CredentialTokenStore),
+        ));
+        println!(
+            "signed in (a refresh token is stored): {}",
+            session.is_signed_in()
+        );
+        let g = Arc::new(Graph::new(Arc::new(UreqHttp), session));
+        match GraphMail::new(g.clone()).all() {
+            Ok(m) => println!(
+                "mail: {} messages, {} unread, {} urgent, {} newsletters, {} replied, {} in archive",
+                m.len(),
+                m.iter().filter(|x| x.unread).count(),
+                m.iter().filter(|x| x.urgent).count(),
+                m.iter().filter(|x| x.newsletter).count(),
+                m.iter().filter(|x| x.replied).count(),
+                m.iter().filter(|x| x.folder == "Archive").count(),
+            ),
+            Err(e) => println!("mail FAILED: {e}"),
+        }
+        match GraphCalendar::new(g.clone()).all() {
+            Ok(e) => println!(
+                "calendar: {} events in the next 3 weeks, {} pending invites, {} declined",
+                e.len(),
+                e.iter().filter(|x| x.invite_pending).count(),
+                e.iter().filter(|x| x.declined).count(),
+            ),
+            Err(e) => println!("calendar FAILED: {e}"),
+        }
+        match GraphCalendar::new(g).people() {
+            Ok(p) => println!("people: {} names", p.len()),
+            Err(e) => println!("people FAILED: {e}"),
+        }
     }
 }

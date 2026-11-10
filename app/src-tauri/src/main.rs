@@ -137,6 +137,21 @@ fn main() {
                     }
                 })?;
             let core = CoreClient::start(move |event| {
+                // A card that waits for a key (choose, confirm, answer) must be able to get it.
+                // After a trip to the browser (sign-in) the bar may be on screen without the
+                // keyboard, and pressing 1, 2 or Enter would go nowhere.
+                if matches!(
+                    event,
+                    jitmo_ipc::CoreEvent::ConfirmNeeded { .. }
+                        | jitmo_ipc::CoreEvent::ChoiceNeeded { .. }
+                        | jitmo_ipc::CoreEvent::TextNeeded { .. }
+                ) {
+                    if let Some(w) = handle.get_webview_window(bar::BAR) {
+                        if w.is_visible().unwrap_or(false) {
+                            let _ = w.set_focus();
+                        }
+                    }
+                }
                 let _ = handle.emit("core-event", &event);
             });
             app.manage(AppState {

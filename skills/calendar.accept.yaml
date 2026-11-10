@@ -1,0 +1,27 @@
+id: calendar.accept
+title: "Accept an invite"
+version: 1
+category: calendar
+capabilities:
+  - calendar.send
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: sends_or_shares
+examples:
+  - "accept the friday review"
+  - "accept the budget sync"
+  - "accept the thursday meeting"
+slots: {}
+confirm:
+  text: "Accept this invite? {request}"
+steps:
+  - connector: outlook_calendar
+    action: accept
+    args: { text: "{request}" }
+check:
+  connector: outlook_calendar
+  action: accept
+  args: { text: "{request}" }
+undo: none

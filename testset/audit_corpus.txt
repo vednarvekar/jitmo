@@ -754,3 +754,31 @@ files.share|ambiguous|Share the folder.|ask|which folder, and with whom?
 work.send_report|ambiguous|Email the report.|ask|which report, and to whom?
 account.ms365_sign_in|clean|sign in to microsoft|fail:account.ms365_sign_in|no client id saved in the audit world, so it says it is not set up
 account.ms365_client|clean|set microsoft client id to banana|fail:account.ms365_client|not an id
+
+# ---------------------------------------------------------------- everyday mail and calendar wording (Phase 3, found on the real account)
+mail.inbox|clean|emails|run:mail.inbox;msg~unread|the bare word is a look at the inbox
+mail.inbox|clean|inbox|run:mail.inbox;nocall=outlook.archive_newsletters|it once archived the newsletters
+mail.inbox|slang|check my email|run:mail.inbox;msg~newsletters|
+mail.inbox|slang|any new emails|run:mail.inbox|
+mail.inbox|clean|how many unread emails do i have|run:mail.inbox|
+mail.inbox|clean|summarize my inbox|run:mail.inbox|not one email
+mail.summarize|clean|read my latest email|run:mail.summarize;msg!~newsletter|a person's mail, not the newsletter
+mail.find|clean|search my email for invoice|run:mail.find;msg~found|
+mail.find|clean|what did priya send me|run:mail.find|
+mail.draft|ambiguous|reply to rahul|ask;say=Friday works;msg~Draft saved|asks what to say, then drafts
+mail.draft|clean|reply to rahul saying thanks|run:mail.draft;msg~Thanks|the word thanks is the message here
+mail.send|ambiguous|email rahul|ask|what should it say?
+mail.send|clean|email the team|ask;say=hello;nocall=outlook.inbox|no file named: the plain email, asks what to say
+mail.archive_newsletters|adversarial|archive everything|fail:mail.archive_newsletters|only newsletters
+mail.archive_newsletters|adversarial|mark all emails as read|decline|not supported, said plainly
+mail.send|adversarial|forward the email to priya|decline|not supported, said plainly
+mail.inbox|adversarial|delete my last email|decline|never summarised, never deleted
+calendar.agenda|clean|when is my next meeting|run:calendar.agenda;msg~Project review|
+calendar.agenda|clean|any invites|run:calendar.agenda;msg~2 invites|
+calendar.agenda|clean|do i have a meeting with rahul|run:calendar.agenda;msg~Project review;nocall=outlook_calendar.invite|a question, not an invite
+calendar.agenda|clean|how's my week|run:calendar.agenda;msg~This week|
+calendar.accept|clean|accept the friday review|run:calendar.accept;msg~Accepted|it once declined it
+calendar.move|clean|reschedule my 3pm to 4pm|run:calendar.move;msg~16:00|same day, new time
+calendar.move|adversarial|cancel my 3pm|decline|cannot cancel, said plainly; never "move"
+calendar.invite|clean|invite rahul to my 3pm|run:calendar.invite;msg~Invited|
+calendar.block|ambiguous|block friday afternoon|ask;say=2 hours;msg~Blocked|asks for how long, then blocks
