@@ -1845,6 +1845,7 @@ dependencies = [
  "jitmo-connectors",
  "jitmo-core",
  "jitmo-ipc",
+ "jitmo-llm",
  "jitmo-model-worker",
  "jitmo-skills",
  "jitmo-store",
@@ -1895,6 +1896,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "jitmo-llm"
+version = "0.1.0"
+dependencies = [
+ "jitmo-core",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
 name = "jitmo-model-worker"
 version = "0.1.0"
 dependencies = [
@@ -1942,6 +1952,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "ureq",
 ]
 
 [[package]]

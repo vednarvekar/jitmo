@@ -23,6 +23,7 @@ serde_json.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 jitmo-connectors = { path = "../../crates/connectors" }
 jitmo-core = { path = "../../crates/core" }
+jitmo-llm = { path = "../../crates/llm" }
 jitmo-adapter-windows = { path = "../../crates/adapter-windows" }
 jitmo-model-worker = { path = "../../crates/model-worker", default-features = false }
 jitmo-ipc = { path = "../../crates/ipc" }

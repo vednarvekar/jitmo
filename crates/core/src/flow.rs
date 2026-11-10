@@ -69,6 +69,8 @@ pub struct Flow {
     drafter: Option<Box<dyn crate::plan::PlanDrafter>>,
     /// The last request that worked, for follow-ups ("what about tomorrow").
     last_ok: Option<(String, Instant)>,
+    /// A local language model, consulted only when the router is unsure or declined.
+    llm: Option<Box<dyn crate::llm::Llm>>,
 }
 
 impl Flow {
@@ -89,7 +91,16 @@ impl Flow {
             forced_skill: None,
             drafter: None,
             last_ok: None,
+            llm: None,
         }
+    }
+
+    /// Plug in a local language model: it picks a tool when the router is unsure or has
+    /// declined, or answers a question no tool covers. Everything it picks is still guarded,
+    /// resolved, confirmed and checked like any other request.
+    pub fn with_llm(mut self, llm: Box<dyn crate::llm::Llm>) -> Self {
+        self.llm = Some(llm);
+        self
     }
 
     /// Plug in a plan drafter (the model planner). Its plans are checked before they run.
@@ -656,10 +667,51 @@ impl Flow {
                 .filter(|id| self.router.skill(id).is_some())
                 .map(str::to_string),
         };
-        let decision = match direct {
+        let mut decision = match direct {
             Some(id) => RouteDecision::Run { skill_id: id },
             None => decide(&understanding),
         };
+        // The router is unsure or said no: a language model gets the catalog and may pick a
+        // tool or answer in words. Sure routes (and chains) never wait for it.
+        if self.llm.is_some()
+            && matches!(
+                decision,
+                RouteDecision::Decline
+                    | RouteDecision::Ask { .. }
+                    | RouteDecision::ConfirmTask { .. }
+            )
+        {
+            let tools: Vec<crate::llm::ToolBrief> = self
+                .router
+                .skills()
+                .iter()
+                .map(|s| crate::llm::ToolBrief {
+                    id: s.id.clone(),
+                    title: s.title.clone().unwrap_or_else(|| s.id.clone()),
+                    examples: s.examples.clone(),
+                })
+                .collect();
+            let recent = self.last_ok.as_ref().map(|(t, _)| t.clone());
+            let pick = self
+                .llm
+                .as_mut()
+                .map(|m| m.route(text, &tools, recent.as_deref()))
+                .unwrap_or(crate::llm::Pick::Nothing);
+            match pick {
+                crate::llm::Pick::Tool(skill_id) if self.router.skill(&skill_id).is_some() => {
+                    decision = RouteDecision::Run { skill_id };
+                }
+                crate::llm::Pick::Answer(answer) => {
+                    self.log(text, None, Decision::Ran, &answer, None);
+                    return CoreEvent::Done {
+                        id,
+                        message: answer,
+                        undoable: false,
+                    };
+                }
+                _ => {}
+            }
+        }
         let skill_id = match decision {
             RouteDecision::Decline => return self.fail(id, text, None, "I can't do that yet."),
             RouteDecision::Chained => {
@@ -3190,6 +3242,67 @@ mod tests {
             "undo restores the previous place"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- the local language model behind the engine ------------------------------------
+
+    struct Scripted(Vec<crate::llm::Pick>);
+    impl crate::llm::Llm for Scripted {
+        fn route(
+            &mut self,
+            _request: &str,
+            _tools: &[crate::llm::ToolBrief],
+            _recent: Option<&str>,
+        ) -> crate::llm::Pick {
+            if self.0.is_empty() {
+                crate::llm::Pick::Nothing
+            } else {
+                self.0.remove(0)
+            }
+        }
+    }
+
+    #[test]
+    fn a_declined_request_goes_to_the_model_which_can_answer() {
+        let c = Arc::new(FakeConnector::new("windows_system"));
+        let mut flow =
+            flow_with(&[OPEN], vec![("windows_system", c)]).with_llm(Box::new(Scripted(vec![
+                crate::llm::Pick::Answer("Boil the pasta for ten minutes.".into()),
+            ])));
+        let mut u = TestUser::default();
+        let ev = flow.handle(1, "blorp the zibble pasta recipe please", &mut u);
+        assert!(
+            matches!(&ev, CoreEvent::Done { message, .. } if message.contains("Boil the pasta")),
+            "{ev:?}"
+        );
+    }
+
+    #[test]
+    fn a_picked_tool_still_runs_through_the_normal_pipeline() {
+        let c = Arc::new(FakeConnector::new("windows_system"));
+        let mut flow = flow_with(&[OPEN], vec![("windows_system", c.clone())]).with_llm(Box::new(
+            Scripted(vec![crate::llm::Pick::Tool("apps.open".into())]),
+        ));
+        flow = flow.with_app_names(|| vec!["Spotify".to_string()]);
+        let mut u = TestUser::default();
+        let ev = flow.handle(2, "blorp spotify zibble", &mut u);
+        // The picked skill went through slot resolution like any other: with no app named it
+        // says so instead of running.
+        assert!(
+            matches!(&ev, CoreEvent::Failed { message, .. } if message.contains("missing the app")),
+            "{ev:?}"
+        );
+        assert!(c.calls().is_empty());
+    }
+
+    #[test]
+    fn nothing_from_the_model_keeps_the_old_answer() {
+        let c = Arc::new(FakeConnector::new("windows_system"));
+        let mut flow =
+            flow_with(&[OPEN], vec![("windows_system", c)]).with_llm(Box::new(Scripted(vec![])));
+        let mut u = TestUser::default();
+        let ev = flow.handle(3, "blorp zibble wonk", &mut u);
+        assert!(matches!(ev, CoreEvent::Failed { .. }), "{ev:?}");
     }
 }
 

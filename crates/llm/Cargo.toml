@@ -1,0 +1,12 @@
+[package]
+name = "jitmo-llm"
+description = "A local language model (llama.cpp's server on this PC) behind the engine's Llm trait."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+jitmo-core = { path = "../core" }
+serde_json.workspace = true
+ureq = { version = "3", default-features = false }

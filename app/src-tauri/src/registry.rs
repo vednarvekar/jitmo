@@ -599,6 +599,52 @@ pub(crate) fn calendar_connector(
     key: Option<&jitmo_store::Key>,
 ) -> Arc<dyn Connector> {
     let mut all = connectors(db, key);
-    all.remove("outlook_calendar")
-        .unwrap_or_else(|| Arc::new(jitmo_connectors::fake::FakeConnector::new("outlook_calendar")))
+    all.remove("outlook_calendar").unwrap_or_else(|| {
+        Arc::new(jitmo_connectors::fake::FakeConnector::new(
+            "outlook_calendar",
+        ))
+    })
+}
+
+/// The local language model, when its two files are on this PC: `llama-server.exe` and a
+/// `.gguf` model, by default in `<app data>/models/` (`models/llama/llama-server.exe` and the
+/// first `.gguf` there), or wherever the settings `llm_server` and `llm_model` point. Off with
+/// the setting `llm` = `off`. Without the files the engine runs exactly as before.
+pub(crate) fn local_llm(
+    store: &jitmo_store::Store,
+    data_dir: &std::path::Path,
+) -> Option<Box<dyn jitmo_core::llm::Llm>> {
+    use jitmo_llm::{LlmConfig, LocalLlm};
+    let setting = |k: &str| {
+        store
+            .get_setting(k)
+            .ok()
+            .flatten()
+            .filter(|v| !v.trim().is_empty())
+    };
+    if setting("llm").is_some_and(|v| v.eq_ignore_ascii_case("off")) {
+        return None;
+    }
+    let models = data_dir.join("models");
+    let server = setting("llm_server")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| models.join("llama").join("llama-server.exe"));
+    let model = setting("llm_model")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::fs::read_dir(&models)
+                .ok()?
+                .flatten()
+                .map(|e| e.path())
+                .find(|p| p.extension().and_then(|x| x.to_str()) == Some("gguf"))
+        })?;
+    if !server.is_file() || !model.is_file() {
+        return None;
+    }
+    let mut cfg = LlmConfig::new(server, model);
+    if let Some(t) = setting("llm_threads").and_then(|t| t.parse().ok()) {
+        cfg.threads = t;
+    }
+    eprintln!("local language model: {}", cfg.model.display());
+    Some(Box::new(LocalLlm::new(cfg)))
 }

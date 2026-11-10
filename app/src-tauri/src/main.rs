@@ -110,12 +110,16 @@ fn main() {
                 .unwrap_or_else(|| DEFAULT_HOTKEY.to_string());
 
             let selection = SelectionSnapshot::default();
-            let flow = Flow::new(
+            let llm = registry::local_llm(&store, &dir);
+            let mut flow = Flow::new(
                 registry::router(),
                 store,
                 registry::connectors(&db_path, key.as_ref()),
             )
             .with_context(FsContext::for_current_user(selection.clone()));
+            if let Some(llm) = llm {
+                flow = flow.with_llm(llm);
+            }
             // Installed apps are a closed list for understanding and resolving requests.
             #[cfg(windows)]
             let flow = flow.with_app_names(jitmo_adapter_windows::apps::installed_app_names);

@@ -18,6 +18,7 @@ jitmo-model-worker = { path = "../model-worker", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng = "0.10"
+ureq = { version = "3", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [target.'cfg(windows)'.dependencies]
@@ -34,3 +35,8 @@ path = "src/bin/audit.rs"
 [[bin]]
 name = "jitmo-e2e"
 path = "src/bin/e2e.rs"
+
+# Benchmarks a local language model (a llama-server already running) as the tool picker.
+[[bin]]
+name = "jitmo-llmbench"
+path = "src/bin/llmbench.rs"
