@@ -167,6 +167,21 @@ pub fn check(plan: &Plan, shape_of: &dyn Fn(&str) -> Option<SkillShape>) -> Resu
     Ok(())
 }
 
+/// A skill as the planner sees it: its id and a short name. Only the best five are shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillBrief {
+    pub id: String,
+    pub title: String,
+}
+
+/// Drafts a plan for a request no saved template and no part-wise routing could handle. The
+/// model planner (llama.cpp, Track B) is an implementation of this; its draft is free text per
+/// step (`PlanStep::request`), shaped and then **checked by [`check`] like any other plan**,
+/// so a model can only combine skills that exist, never invent an action.
+pub trait PlanDrafter: Send {
+    fn draft(&mut self, request: &str, skills: &[SkillBrief]) -> Option<Plan>;
+}
+
 /// The sentences to run, in order, for a plan made of [`PlanStep::request`] steps. `None`
 /// when a step has no plain sentence (it links to an earlier result): the caller runs such
 /// a plan step by step instead.
@@ -216,6 +231,22 @@ fn phrase_static(part: &str) -> Option<(&'static str, String)> {
         let who = who.trim();
         if !who.is_empty() && !who.contains(char::is_whitespace) {
             return Some(("files.email", format!("email the screenshot to {who}")));
+        }
+    }
+    // "open Chrome": an app, by name.
+    if let Some(app) = p.strip_prefix("open ") {
+        let app = app.trim();
+        if !app.is_empty() && app.split_whitespace().count() <= 3 {
+            return Some(("apps.open", format!("open {app}")));
+        }
+    }
+    // "search for flights to Goa": a web search.
+    if let Some(q) = p
+        .strip_prefix("search for ")
+        .or_else(|| p.strip_prefix("search "))
+    {
+        if !q.trim().is_empty() {
+            return Some(("browser.search", format!("search for {}", q.trim())));
         }
     }
     // "invite Priya": add her to the meeting the previous step made.
@@ -316,7 +347,7 @@ fn phrase_fixed(part: &str) -> Option<(&'static str, &'static str)> {
 }
 
 /// Split "a, b and c" / "a then b" into its parts.
-fn parts(text: &str) -> Vec<String> {
+pub(crate) fn parts(text: &str) -> Vec<String> {
     let mut out = vec![text.to_string()];
     for sep in [" and then ", " then ", ", and ", ",", " and ", " & "] {
         out = out
@@ -572,7 +603,13 @@ mod tests {
         assert!(template("mute notifications and bake a cake").is_none());
         assert!(template("mute notifications").is_none()); // one step is not a chain
         assert!(template("dnd and dnd").is_none());
-        assert!(template("open chrome and search for flights to goa").is_none());
+        let p = template("Open Chrome and search for flights to Goa.").unwrap();
+        assert_eq!(
+            sentences(&p).unwrap(),
+            ["open chrome", "search for flights to goa"]
+        );
+        assert_eq!(p.steps[1].skill, "browser.search");
+        assert!(template("open chrome and bake a cake").is_none());
         assert!(template("").is_none());
     }
 }

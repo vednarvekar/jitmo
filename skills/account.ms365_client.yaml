@@ -1,0 +1,24 @@
+id: account.ms365_client
+title: "Set the Microsoft client id"
+version: 1
+category: account
+capabilities:
+  - account.write
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "set microsoft client id to 12345678-abcd-4ef0-9876-1234567890ab"
+  - "save the microsoft app id"
+slots: {}
+steps:
+  - connector: ms365_account
+    action: set_client_id
+    args: { text: "{request}" }
+check:
+  connector: ms365_account
+  action: set_client_id
+  args: { text: "{request}" }
+undo: none

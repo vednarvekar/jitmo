@@ -92,6 +92,32 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/browser.youtube_latest.yaml"),
         include_str!("../../../skills/browser.search.yaml"),
         include_str!("../../../skills/browser.site.yaml"),
+        include_str!("../../../skills/mail.urgent.yaml"),
+        include_str!("../../../skills/mail.summarize.yaml"),
+        include_str!("../../../skills/mail.find.yaml"),
+        include_str!("../../../skills/mail.unanswered.yaml"),
+        include_str!("../../../skills/mail.draft.yaml"),
+        include_str!("../../../skills/mail.archive_newsletters.yaml"),
+        include_str!("../../../skills/mail.send.yaml"),
+        include_str!("../../../skills/files.email.yaml"),
+        include_str!("../../../skills/files.share.yaml"),
+        include_str!("../../../skills/chat.post.yaml"),
+        include_str!("../../../skills/calendar.agenda.yaml"),
+        include_str!("../../../skills/calendar.free.yaml"),
+        include_str!("../../../skills/calendar.context.yaml"),
+        include_str!("../../../skills/calendar.add.yaml"),
+        include_str!("../../../skills/calendar.block.yaml"),
+        include_str!("../../../skills/calendar.invite.yaml"),
+        include_str!("../../../skills/calendar.move.yaml"),
+        include_str!("../../../skills/calendar.decline.yaml"),
+        include_str!("../../../skills/work.morning_brief.yaml"),
+        include_str!("../../../skills/work.event_from_email.yaml"),
+        include_str!("../../../skills/work.save_attachments.yaml"),
+        include_str!("../../../skills/work.forward_attachment.yaml"),
+        include_str!("../../../skills/work.send_report.yaml"),
+        include_str!("../../../skills/account.ms365_sign_in.yaml"),
+        include_str!("../../../skills/account.ms365_sign_out.yaml"),
+        include_str!("../../../skills/account.ms365_client.yaml"),
     ]
     .iter()
     .map(|y| Skill::parse(y).expect("built-in skill is invalid"))
@@ -238,5 +264,132 @@ pub(crate) fn connectors(
         "windows_system".into(),
         Arc::new(FakeConnector::new("windows_system")),
     );
+    add_ms365(&mut map, db, key);
     map
+}
+
+/// Microsoft 365: the real connectors when an app registration (a client id) is saved,
+/// otherwise stand-ins that say plainly that it is not set up (Phase 3, Track A).
+fn add_ms365(
+    map: &mut HashMap<String, Arc<dyn Connector>>,
+    db: &std::path::Path,
+    key: Option<&jitmo_store::Key>,
+) {
+    use jitmo_connectors::graph::{Graph, GraphCalendar, GraphMail, NoChat, NoDrive, UreqHttp};
+    use jitmo_connectors::ms365::Outlook;
+    use jitmo_connectors::ms365_account::{default_scopes, Ms365Account, NotSetUp};
+    use jitmo_connectors::ms365_cal::OutlookCalendar;
+    use jitmo_connectors::ms365_work::{fake_suite, OneDrive, Teams, WorkflowParts, Workflows};
+    use jitmo_connectors::oauth::{OAuthConfig, Session, UreqTransport};
+    use jitmo_connectors::Health;
+
+    let client_id = setting_reader(db, key, "ms365_client_id")().filter(|s| !s.trim().is_empty());
+    let tenant = setting_reader(db, key, "ms365_tenant")()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "common".to_string());
+    let cfg = client_id.map(|id| OAuthConfig {
+        client_id: id.trim().to_string(),
+        tenant,
+        redirect_uri: String::new(),
+        scopes: default_scopes(),
+    });
+    #[cfg(windows)]
+    let tokens: Box<dyn jitmo_connectors::oauth::TokenStore> =
+        Box::new(jitmo_connectors::oauth::CredentialTokenStore);
+    #[cfg(not(windows))]
+    let tokens: Box<dyn jitmo_connectors::oauth::TokenStore> =
+        Box::new(jitmo_connectors::oauth::MemoryTokenStore::default());
+    let session = cfg
+        .clone()
+        .map(|c| Arc::new(Session::new(c, Box::new(UreqTransport), tokens)));
+
+    let (save_db, save_key) = (db.to_path_buf(), key.copied());
+    let saver = move |id: &str| -> Result<(), String> {
+        open_store(&save_db, save_key.as_ref())
+            .map_err(|e| e.to_string())?
+            .set_setting("ms365_client_id", id)
+            .map_err(|e| e.to_string())
+    };
+    map.insert(
+        "ms365_account".into(),
+        Arc::new(Ms365Account::new(
+            cfg,
+            session.clone(),
+            Box::new(open_in_browser),
+            Box::new(saver),
+        )),
+    );
+
+    let Some(session) = session else {
+        // No app registration yet: the same connectors, each saying so.
+        for c in fake_suite().connectors {
+            let id = c.id().to_string();
+            map.insert(id.clone(), Arc::new(NotSetUp::new(&id, c.as_ref())));
+        }
+        return;
+    };
+
+    // Signed in means a refresh token is stored on this PC.
+    let health = {
+        let session = session.clone();
+        move || -> Box<dyn Fn() -> Health + Send + Sync> {
+            let s = session.clone();
+            Box::new(move || {
+                if s.is_signed_in() {
+                    Health::Ready
+                } else {
+                    Health::NotSignedIn
+                }
+            })
+        }
+    };
+    let graph = Arc::new(Graph::new(Arc::new(UreqHttp), session));
+    let mail = Arc::new(GraphMail::new(graph.clone()));
+    let calendar = Arc::new(GraphCalendar::new(graph));
+    let now = || -> Box<dyn Fn() -> chrono::DateTime<chrono::Local> + Send + Sync> {
+        Box::new(chrono::Local::now)
+    };
+    let outlook: Arc<dyn Connector> = Arc::new(Outlook::new(mail.clone(), health(), now()));
+    let agenda: Arc<dyn Connector> =
+        Arc::new(OutlookCalendar::new(calendar.clone(), health(), now()));
+    let drive = Arc::new(NoDrive);
+    let chat = Arc::new(NoChat);
+    let workflows: Arc<dyn Connector> = Arc::new(Workflows::new(
+        WorkflowParts {
+            mail,
+            calendar,
+            drive: drive.clone(),
+            chat: chat.clone(),
+            outlook: outlook.clone(),
+            agenda: agenda.clone(),
+        },
+        health(),
+        now(),
+    ));
+    for c in [
+        outlook,
+        agenda,
+        Arc::new(OneDrive::new(drive, health())) as Arc<dyn Connector>,
+        Arc::new(Teams::new(chat, health())),
+        workflows,
+    ] {
+        map.insert(c.id().to_string(), c);
+    }
+}
+
+/// Open a web page in the default browser (no shell involved).
+fn open_in_browser(url: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url])
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = url;
+        Err("not supported here".into())
+    }
 }

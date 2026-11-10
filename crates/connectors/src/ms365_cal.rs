@@ -250,7 +250,7 @@ impl CalendarBackend for FakeCalendar {
         Ok(vec![
             "Rahul Sharma".into(),
             "Priya Nair".into(),
-            "Ved Narvekar".into(),
+            "Neha Joshi".into(),
         ])
     }
 }

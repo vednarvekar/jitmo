@@ -310,7 +310,7 @@ system.screenshot|slang|screenshot lo|run:system.screenshot/ask|Hinglish
 system.screenshot|ambiguous|screenshot of this window|run:system.screenshot/ask|only full screen is supported
 system.screenshot|ambiguous|screenshot in 5 seconds|ask/decline/run:system.screenshot|delay unsupported
 system.screenshot|ambiguous|take a picture|ask/decline|camera?
-system.screenshot|adversarial|screenshot and send it to ved|decline/ask|chain with a send
+system.screenshot|adversarial|screenshot and send it to ved|done|a saved chain: screenshot, then an email confirm
 
 # ---------------------------------------------------------------- system.dnd
 system.dnd|clean|don't disturb me for an hour|run:system.dnd;msg~until|
@@ -634,9 +634,9 @@ settings.place|adversarial|set my city to <long:80:pune>|ask/fail:settings.place
 # ---------------------------------------------------------------- messaging (Phase 3: not built yet, so declined)
 stub.send|clean|send hello to ved|decline|confirm card then "test: nothing was sent"
 stub.send|clean|send running late to rahul|decline|
-stub.send|partial|send|decline|send what to whom?
+stub.send|partial|send|ask|send what to whom?
 stub.send|partial|send hello|decline|to whom?
-stub.send|partial|send to ved|decline|what?
+stub.send|partial|send to ved|ask|what to send?
 stub.send|slang|text ved that i am late|decline|
 stub.send|ambiguous|send hello to ved and rahul|decline|several recipients
 stub.send|adversarial|send hello to everyone|decline/fail:stub.send|whole address book
@@ -647,7 +647,7 @@ whatsapp.send_file|clean|send this file to ved on whatsapp|decline|skill not shi
 whatsapp.send_file|clean|whatsapp the pdf to ved|decline|
 whatsapp.send_file|clean|send report.pdf to ved on whatsapp|decline|
 whatsapp.send_file|partial|whatsapp|decline/ask|
-whatsapp.send_file|slang|ved ko report bhej do|decline|
+whatsapp.send_file|slang|ved ko report bhej do|decline/ask|the weekly report goes only to the manager
 whatsapp.send_file|adversarial|send report.pdf to everyone on whatsapp|decline|
 
 # ---------------------------------------------------------------- general / cross-skill
@@ -681,7 +681,7 @@ general|adversarial|order pizza|decline|
 general|adversarial|call mom|decline|
 general|adversarial|set an alarm for 7am|ask/run:reminders.remind;msg~7:00|alarm = reminder
 general|adversarial|alarm for tomorrow 6 am|ask/run:reminders.remind;msg~6:00 AM|
-general|adversarial|what's on my calendar|decline|
+general|adversarial|what's on my calendar|run:calendar.agenda|now a skill (Phase 3)
 general|adversarial|play music and set a timer for 10 minutes|decline/ask|chained
 general|adversarial|open spotify and play arijit|run:music.play/ask/decline|chained: runs in order
 general|adversarial|pause then turn the volume up|run:system.volume/ask/decline|chained: runs in order
@@ -713,3 +713,44 @@ planner|clean|focus mode|done;msg~Do Not Disturb is on|W6
 planner|clean|Mute notifications, dim the screen and play my focus playlist.|done;msg~Brightness|T81: three steps in order
 planner|clean|play my focus playlist and mute notifications for an hour|done;msg~Do Not Disturb is on|W6 said in words
 planner|partial|mute notifications and bake a cake|done|an unknown part is not a plan: the ordinary route asks "Did you mean Do Not Disturb?" first
+
+# ---------------------------------------------------------------- Microsoft 365 (Phase 3, Track A)
+# These run against the seeded fake mailbox, calendar, drive and chat (Monday 9 Nov 2026, 10:00).
+mail.urgent|clean|Any urgent emails?|run:mail.urgent;msg~2 urgent|E1
+mail.urgent|slang|anything important in my inbox?|run:mail.urgent;msg~2 urgent|E1 loose
+mail.summarize|clean|Summarize the latest email from Rahul.|run:mail.summarize;msg~Meeting request|E2
+mail.summarize|slang|tldr rahul's mail|run:mail.summarize;msg~Rahul Sharma wrote|E2 loose
+mail.find|clean|Find emails about the invoice from last month.|run:mail.find;msg~2 found|E3
+mail.unanswered|clean|What haven't I replied to?|run:mail.unanswered;msg~waiting for a reply|E4
+mail.draft|clean|Draft a reply to Rahul saying Friday works.|run:mail.draft;msg~Draft saved|E5 draft only
+mail.archive_newsletters|clean|Archive today's newsletters.|run:mail.archive_newsletters;msg~Archived 2 newsletters|E6
+mail.send|clean|Email Rahul that the report is ready.|run:mail.send;msg~Sent to|E7 confirm then send
+files.share|clean|Share the Project folder with Priya.|run:files.share;msg~Shared the Project folder|F6
+chat.post|clean|Tell the team channel standup moves to 11.|run:chat.post;msg~Posted in team|M4
+calendar.agenda|clean|What's on my calendar today?|run:calendar.agenda;msg~09:30 Standup|C1
+calendar.agenda|slang|am i free thurs afternoon|run:calendar.agenda;msg~Thu 12 Nov|C1 loose
+calendar.free|clean|When are Rahul and I both free this week?|run:calendar.free;msg~both free|C2
+calendar.context|clean|Show me what I need for my 3pm.|run:calendar.context;msg~Project review|C3
+calendar.add|clean|Add dentist on Friday at 4pm.|run:calendar.add;msg~Added “Dentist”|C4
+calendar.block|clean|Block two hours tomorrow morning.|run:calendar.block;msg~Blocked 09:00–11:00|C5
+calendar.invite|clean|Set up 30 minutes with Rahul on Thursday.|run:calendar.invite;msg~Invited|C6
+calendar.move|clean|Move my 3pm to tomorrow, same time.|run:calendar.move;msg~Moved “Project review”|C7
+calendar.decline|clean|Decline the Friday review.|run:calendar.decline;msg~Declined “Friday review”|C8
+work.morning_brief|clean|Give me my morning brief.|run:work.morning_brief;msg~2 urgent|W1
+work.event_from_email|clean|Add this meeting request to my calendar.|run:work.event_from_email;msg~Added “Project review”|W2
+work.save_attachments|clean|Save the invoices from Rahul's email to the Finance folder.|run:work.save_attachments;msg~Finance folder|W3
+work.forward_attachment|clean|Send the attachment from Rahul's email to the project chat.|run:work.forward_attachment;msg~Posted|W4
+work.send_report|clean|Send this week's report to my manager.|run:work.send_report;msg~Sent weekly_report.pdf|W5
+planner|clean|Archive the newsletters and show what's urgent.|done;msg~Archived 2 newsletters|T78 saved plan
+planner|clean|Take a screenshot and email it to Rahul.|done;msg~Sent to|T80 saved plan
+planner|clean|Turn Rahul's email into a meeting and invite Priya.|done;msg~Invited Priya|T82 saved plan
+planner|clean|Open Chrome and search for flights to Goa.|done;msg~Opened|T79 saved plan
+planner|clean|pause the music and lock my laptop|done;msg~Locked|second approach: each part routed on its own
+planner|clean|what's on my calendar today and any urgent emails|done;msg~urgent|second approach
+planner|clean|archive today's newsletters and add dentist on friday at 4pm|done;msg~Dentist|second approach
+mail.summarize|ambiguous|Move my meeting.|ask|which meeting, and to when?
+calendar.decline|ambiguous|Decline it.|ask|which invite?
+files.share|ambiguous|Share the folder.|ask|which folder, and with whom?
+work.send_report|ambiguous|Email the report.|ask|which report, and to whom?
+account.ms365_sign_in|clean|sign in to microsoft|fail:account.ms365_sign_in|no client id saved in the audit world, so it says it is not set up
+account.ms365_client|clean|set microsoft client id to banana|fail:account.ms365_client|not an id

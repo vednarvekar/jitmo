@@ -32,7 +32,8 @@ const NOT_TYPOS: &[&str] = &[
     "sent", "send", "lick", "lock", "look", "luck", "fine", "find", "fond", "show", "shop",
     "shows", "stop", "step", "star", "stay", "move", "mode", "more", "moved", "moves", "turn",
     "torn", "tune", "sat", "set", "sit", "pose", "poet", "mute", "mate", "mere", "restart",
-    "opens", "opened", "opener", "opening", "starts", "started", "launcher", "startup",
+    "opens", "opened", "opener", "opening", "starts", "started", "launcher", "startup", "block",
+    "blocks", "blocked",
 ];
 
 fn is_adjacent_swap(a: &[char], b: &[char]) -> bool {
@@ -514,6 +515,27 @@ fn work_skill(lower: &str) -> Option<&'static str> {
     let has = |s: &str| lower.contains(s);
     let starts = |s: &str| lower.starts_with(s);
     const FILE_EXT: &[&str] = &[".xlsx", ".docx", ".pptx", ".pdf", ".csv", ".png", ".jpg"];
+    // A file sent on WhatsApp is not an attachment posted to a chat.
+    if has("whatsapp")
+        && [
+            "pdf", "file", "photo", "picture", "doc", "image", "document",
+        ]
+        .iter()
+        .any(|w| lower.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w))
+    {
+        return Some("whatsapp.send_file");
+    }
+    // The Microsoft account: set the app id, sign in, sign out.
+    let ms = has("microsoft") || has("outlook") || has("office 365") || has("m365");
+    if ms && (has("client id") || has("app id")) && (starts("set") || starts("save")) {
+        return Some("account.ms365_client");
+    }
+    if ms && (has("sign out") || has("log out") || has("logout") || has("disconnect")) {
+        return Some("account.ms365_sign_out");
+    }
+    if ms && (has("sign in") || has("log in") || has("login") || has("connect")) {
+        return Some("account.ms365_sign_in");
+    }
     if has("morning brief") {
         return Some("work.morning_brief");
     }

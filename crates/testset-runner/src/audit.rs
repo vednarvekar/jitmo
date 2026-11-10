@@ -1077,6 +1077,17 @@ pub fn build_world(
             ))),
         ),
         rec("stub_messenger", None),
+        rec(
+            "ms365_account",
+            Some(Arc::new(
+                jitmo_connectors::ms365_account::Ms365Account::new(
+                    None,
+                    None,
+                    Box::new(|_| Ok(())),
+                    Box::new(|_| Ok(())),
+                ),
+            )),
+        ),
         rec("whatsapp_desktop", None),
         rec("web_lookup", Some(Arc::new(web))),
         rec("local_calc", Some(Arc::new(calc))),
@@ -1132,6 +1143,10 @@ pub fn build_world(
     .collect();
 
     let store = Store::open(&db, None).expect("store");
+    // The people the Microsoft 365 lines talk to (one of each name, so no question is asked).
+    for name in ["Rahul Sharma", "Priya Nair"] {
+        let _ = store.upsert_contact(name, None, "manual");
+    }
     if flags.contains("city_pune") {
         let _ = store.set_setting("default_place", "Pune");
     }

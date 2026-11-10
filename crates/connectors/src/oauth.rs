@@ -85,7 +85,20 @@ fn decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// A redirect to this PC only.
+pub fn is_loopback(uri: &str) -> bool {
+    uri.starts_with("http://127.0.0.1:") || uri.starts_with("http://localhost:")
+}
+
 impl OAuthConfig {
+    /// The same registration with the redirect of one sign-in (its own free port).
+    pub fn with_redirect(&self, redirect_uri: &str) -> OAuthConfig {
+        OAuthConfig {
+            redirect_uri: redirect_uri.to_string(),
+            ..self.clone()
+        }
+    }
+
     fn base(&self) -> String {
         format!(
             "https://login.microsoftonline.com/{}/oauth2/v2.0",
@@ -113,8 +126,7 @@ impl OAuthConfig {
 
     /// Only loopback redirects are allowed: the code must never leave this PC.
     pub fn redirect_is_loopback(&self) -> bool {
-        self.redirect_uri.starts_with("http://127.0.0.1:")
-            || self.redirect_uri.starts_with("http://localhost:")
+        is_loopback(&self.redirect_uri)
     }
 }
 
@@ -445,8 +457,15 @@ impl Session {
     }
 
     /// Swap the code from the redirect for tokens.
-    pub fn exchange_code(&self, code: &str, verifier: &str, now: i64) -> Result<(), AuthError> {
-        if !self.cfg.redirect_is_loopback() {
+    pub fn exchange_code(
+        &self,
+        code: &str,
+        verifier: &str,
+        redirect_uri: &str,
+        now: i64,
+    ) -> Result<(), AuthError> {
+        // The redirect of this sign-in (the loopback port is chosen when it starts).
+        if !is_loopback(redirect_uri) {
             return Err(AuthError::Failed(
                 "The redirect must be a loopback address.".into(),
             ));
@@ -460,7 +479,7 @@ impl Session {
                     ("client_id", &self.cfg.client_id),
                     ("grant_type", "authorization_code"),
                     ("code", code),
-                    ("redirect_uri", &self.cfg.redirect_uri),
+                    ("redirect_uri", redirect_uri),
                     ("code_verifier", verifier),
                     ("scope", &scope),
                 ],
@@ -637,7 +656,8 @@ mod tests {
     fn a_code_becomes_tokens_and_the_refresh_token_is_stored() {
         let (s, script) = session(vec![tokens("A1", "R1", 3600)]);
         assert!(!s.is_signed_in());
-        s.exchange_code("the-code", "the-verifier", 1000).unwrap();
+        s.exchange_code("the-code", "the-verifier", "http://127.0.0.1:53682/", 1000)
+            .unwrap();
         assert!(s.is_signed_in());
         // Cached: no second request while the token is good.
         assert_eq!(s.access_token(1100).unwrap(), "A1");
@@ -650,7 +670,8 @@ mod tests {
     #[test]
     fn an_expiring_token_is_refreshed_and_the_new_refresh_token_kept() {
         let (s, script) = session(vec![tokens("A1", "R1", 3600), tokens("A2", "R2", 3600)]);
-        s.exchange_code("c", "v", 1000).unwrap();
+        s.exchange_code("c", "v", "http://127.0.0.1:53682/", 1000)
+            .unwrap();
         // 59 s before expiry is inside the slack.
         assert_eq!(s.access_token(1000 + 3600 - 59).unwrap(), "A2");
         let asked = script.asked.lock().unwrap();
@@ -665,7 +686,8 @@ mod tests {
             tokens("A1", "R1", 10),
             Ok((400, r#"{"error":"invalid_grant"}"#.into())),
         ]);
-        s.exchange_code("c", "v", 0).unwrap();
+        s.exchange_code("c", "v", "http://127.0.0.1:53682/", 0)
+            .unwrap();
         assert_eq!(s.access_token(100), Err(AuthError::SignInAgain));
         assert!(!s.is_signed_in());
         // And with nothing stored there is nothing to try.
@@ -677,7 +699,8 @@ mod tests {
     #[test]
     fn no_network_is_offline_not_signed_out() {
         let (s, _) = session(vec![tokens("A1", "R1", 10), Err("dns".into())]);
-        s.exchange_code("c", "v", 0).unwrap();
+        s.exchange_code("c", "v", "http://127.0.0.1:53682/", 0)
+            .unwrap();
         assert_eq!(s.access_token(100), Err(AuthError::Offline));
         assert!(s.is_signed_in(), "being offline must not sign the user out");
     }
@@ -693,7 +716,7 @@ mod tests {
             Box::new(MemoryTokenStore::default()),
         );
         assert!(matches!(
-            s2.exchange_code("c", "v", 0),
+            s2.exchange_code("c", "v", "https://evil.example/cb", 0),
             Err(AuthError::Failed(_))
         ));
         drop(s);

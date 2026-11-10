@@ -65,6 +65,8 @@ pub struct Flow {
     /// The skill a saved plan names for the step now running: it is used as the route, so
     /// the router cannot decline a step the plan already chose.
     forced_skill: Option<String>,
+    /// The third way to plan a chain (after saved templates and part-wise routing): a model.
+    drafter: Option<Box<dyn crate::plan::PlanDrafter>>,
 }
 
 impl Flow {
@@ -83,7 +85,14 @@ impl Flow {
             context: Box::new(NoContext),
             app_names: Box::new(Vec::new),
             forced_skill: None,
+            drafter: None,
         }
+    }
+
+    /// Plug in a plan drafter (the model planner). Its plans are checked before they run.
+    pub fn with_drafter(mut self, drafter: Box<dyn crate::plan::PlanDrafter>) -> Self {
+        self.drafter = Some(drafter);
+        self
     }
 
     /// Where selected files, downloads and file names come from.
@@ -430,6 +439,29 @@ impl Flow {
         }
     }
 
+    /// A plan made by routing each part of a chained request on its own: every part must
+    /// be one the router is sure of, and the whole plan must pass the plan checks.
+    fn plan_by_parts(&self, text: &str, known: &Known) -> Option<crate::plan::Plan> {
+        let parts = crate::plan::parts(text);
+        if !(2..=crate::plan::MAX_STEPS).contains(&parts.len()) {
+            return None;
+        }
+        let mut steps = Vec::new();
+        for part in &parts {
+            let u = self.router.route_with(part, &known.note());
+            let RouteDecision::Run { skill_id } = decide(&u) else {
+                return None;
+            };
+            steps.push(crate::plan::PlanStep::request(&skill_id, part));
+        }
+        let plan = crate::plan::Plan { steps };
+        crate::plan::check(&plan, &|s| {
+            self.router.skill(s).map(crate::plan::SkillShape::of)
+        })
+        .ok()
+        .map(|()| plan)
+    }
+
     /// [`Flow::run_each`] for a saved plan: each step runs as the skill the plan named.
     fn run_plan(
         &mut self,
@@ -613,12 +645,45 @@ impl Flow {
         let skill_id = match decision {
             RouteDecision::Decline => return self.fail(id, text, None, "I can't do that yet."),
             RouteDecision::Chained => {
+                // No saved plan matched. Second approach: route each part on its own; if
+                // every part is a request the router is sure of, that is the plan. (A model
+                // planner is the third approach, and plugs in behind the same checks.)
+                if let Some(plan) = self.plan_by_parts(text, &known) {
+                    let skills: Vec<String> = plan.steps.iter().map(|s| s.skill.clone()).collect();
+                    if let Some(steps) = crate::plan::sentences(&plan) {
+                        return self.run_plan(id, &steps, &skills, p);
+                    }
+                }
+                // Third approach: a drafter, if one is plugged in. The best five skills go in.
+                if self.drafter.is_some() {
+                    let top: Vec<crate::plan::SkillBrief> = understanding
+                        .tasks
+                        .iter()
+                        .filter_map(|t| self.router.skill(&t.id))
+                        .take(crate::plan::MAX_STEPS)
+                        .map(|s| crate::plan::SkillBrief {
+                            id: s.id.clone(),
+                            title: s.title.clone().unwrap_or_else(|| s.id.clone()),
+                        })
+                        .collect();
+                    let drafted = self.drafter.as_mut().and_then(|d| d.draft(text, &top));
+                    if let Some(plan) = drafted {
+                        let checked = crate::plan::check(&plan, &|s| {
+                            self.router.skill(s).map(crate::plan::SkillShape::of)
+                        });
+                        if let (Ok(()), Some(steps)) = (checked, crate::plan::sentences(&plan)) {
+                            let skills: Vec<String> =
+                                plan.steps.iter().map(|s| s.skill.clone()).collect();
+                            return self.run_plan(id, &steps, &skills, p);
+                        }
+                    }
+                }
                 return self.fail(
                     id,
                     text,
                     None,
                     "I can't plan that right now. Try a simpler request.",
-                )
+                );
             }
             RouteDecision::Run { skill_id } => skill_id,
             RouteDecision::ConfirmTask { skill_id } => {
@@ -661,14 +726,30 @@ impl Flow {
                 };
             }
         }
+        // The weekly report goes to the manager and nobody else: "send the report to Ved" is
+        // not that request, whatever the router guessed.
+        if skill_id == "work.send_report" {
+            let l = text.to_lowercase();
+            if !(l.contains("manager") || l.contains("boss")) {
+                return self.fail(
+                    id,
+                    text,
+                    Some(&skill_id),
+                    "Who should get the report? I can send this week's report to your manager: say â€œsend this week's report to my managerâ€.",
+                );
+            }
+        }
         let Some(skill) = self.router.skill(&skill_id).cloned() else {
             return self.fail(id, text, Some(&skill_id), "Something went wrong.");
         };
 
-        // 2. Fill slots.
+        // 2. Fill slots. When the extractor found no person in the words but a saved contact
+        // is named in them ("Email Rahul that ..."), that name is the contact.
+        let mut spans = understanding.spans.clone();
+        add_named_contact(&skill, &mut spans, text, &known);
         let (mut slots, learned) = match resolve_slots(
             &skill,
-            &understanding.spans,
+            &spans,
             self.context.as_ref(),
             &known,
             &self.store,
@@ -1023,6 +1104,36 @@ enum SlotError {
     Message(String),
     /// The user dismissed the question.
     Cancelled,
+}
+
+/// A saved contact whose first or full name appears in the request, as a `contact` span,
+/// when the skill wants a contact and the extractor found none.
+fn add_named_contact(skill: &Skill, spans: &mut Vec<Span>, text: &str, known: &Known) {
+    let wants = skill
+        .slots
+        .values()
+        .any(|s| matches!(s, Slot::Param(sp) if sp.kind == "contact"));
+    if !wants || spans.iter().any(|s| s.kind == "contact") {
+        return;
+    }
+    let words: Vec<String> = text
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect();
+    for c in &known.contacts {
+        let Some(first) = c.name.split_whitespace().next() else {
+            continue;
+        };
+        if words.iter().any(|w| *w == first.to_lowercase()) {
+            spans.push(Span {
+                text: first.to_string(),
+                kind: "contact".into(),
+            });
+            return;
+        }
+    }
 }
 
 /// Fill each slot from the spans the router found (first unused span of the

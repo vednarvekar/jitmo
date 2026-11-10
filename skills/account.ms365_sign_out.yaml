@@ -1,0 +1,25 @@
+id: account.ms365_sign_out
+title: "Sign out of Microsoft 365"
+version: 1
+category: account
+capabilities:
+  - account.write
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "sign out of microsoft"
+  - "disconnect outlook"
+  - "log out of microsoft 365"
+slots: {}
+steps:
+  - connector: ms365_account
+    action: sign_out
+    args: {}
+check:
+  connector: ms365_account
+  action: sign_out
+  args: {}
+undo: none

@@ -1,0 +1,25 @@
+id: account.ms365_sign_in
+title: "Sign in to Microsoft 365"
+version: 1
+category: account
+capabilities:
+  - account.write
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "sign in to microsoft"
+  - "connect my outlook"
+  - "log in to microsoft 365"
+slots: {}
+steps:
+  - connector: ms365_account
+    action: sign_in
+    args: {}
+check:
+  connector: ms365_account
+  action: sign_in
+  args: {}
+undo: none

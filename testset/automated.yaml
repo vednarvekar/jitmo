@@ -150,3 +150,109 @@ T50: { needs_model: true, request: "put on some arijit", expect: ran, skill: mus
 # Do Not Disturb (fake connector here; the real UI Automation route was not run live, see the Decision Log).
 T48: { request: "Don't disturb me for an hour.", expect: ran, skill: system.dnd, calls: [{ connector: dnd, action: set, args: { text: "Don't disturb me for an hour." } }] }
 T63: { needs_model: true, request: "shut notifications up for 1 hr", expect: ran, skill: system.dnd, calls: [{ connector: dnd, action: set, args: { text: "shut notifications up for 1 hr" } }] }
+
+# ---------------------------------------------------------------------------
+# Phase 3: Microsoft 365 and the planner. Connectors are fakes here (they only record the
+# calls); each connector has its own tests over a seeded mailbox and calendar. Two Rahuls
+# exist as contacts only where a test is about that (T65); elsewhere one Rahul is saved.
+# ---------------------------------------------------------------------------
+
+# Mail (E1-E7, F5, F6, M4)
+T11: { needs_model: true, request: "Any urgent emails?", expect: ran, skill: mail.urgent, calls: [{ connector: outlook, action: urgent, args: {} }] }
+T53: { needs_model: true, request: "anything important in my inbox?", expect: ran, skill: mail.urgent, calls: [{ connector: outlook, action: urgent, args: {} }] }
+T12: { needs_model: true, request: "Summarize the latest email from Rahul.", expect: ran, skill: mail.summarize, calls: [{ connector: outlook, action: summarize, args: { text: "Summarize the latest email from Rahul." } }] }
+T54: { needs_model: true, request: "tldr rahul's mail", expect: ran, skill: mail.summarize, calls: [{ connector: outlook, action: summarize, args: { text: "tldr rahul's mail" } }] }
+T13: { needs_model: true, request: "Find emails about the invoice from last month.", expect: ran, skill: mail.find, calls: [{ connector: outlook, action: find, args: { text: "Find emails about the invoice from last month." } }] }
+T14: { needs_model: true, request: "What haven't I replied to?", expect: ran, skill: mail.unanswered, calls: [{ connector: outlook, action: unanswered, args: {} }] }
+T15:
+  needs_model: true
+  request: "Draft a reply to Rahul saying Friday works."
+  contacts: [{ name: "Rahul Sharma" }]
+  expect: ran
+  skill: mail.draft
+  calls: [{ connector: outlook, action: draft, args: { to: "Rahul Sharma", text: "Draft a reply to Rahul saying Friday works." } }]
+T16: { needs_model: true, request: "Archive today's newsletters.", expect: ran, skill: mail.archive_newsletters, calls: [{ connector: outlook, action: archive_newsletters, args: {} }] }
+T17:
+  needs_model: true
+  request: "Email Rahul that the report is ready."
+  contacts: [{ name: "Rahul Sharma" }]
+  expect: ran
+  skill: mail.send
+  confirm_contains: "Rahul Sharma"
+  calls: [{ connector: outlook, action: send, args: { to: "Rahul Sharma", text: "Email Rahul that the report is ready." } }]
+T27:
+  needs_model: true
+  request: "Email budget.xlsx to Rahul."
+  contacts: [{ name: "Rahul Sharma" }]
+  expect: ran
+  skill: files.email
+  confirm_contains: "Rahul Sharma"
+  calls: [{ connector: outlook, action: send, args: { to: "Rahul Sharma", text: "Email budget.xlsx to Rahul.", file: "Email budget.xlsx to Rahul." } }]
+T28:
+  needs_model: true
+  request: "Share the Project folder with Priya."
+  contacts: [{ name: "Priya Nair" }]
+  expect: ran
+  skill: files.share
+  confirm_contains: "Priya Nair"
+  calls: [{ connector: onedrive, action: share, args: { text: "Share the Project folder with Priya.", with: "Priya Nair" } }]
+T10: { needs_model: true, request: "Tell the team channel standup moves to 11.", expect: ran, skill: chat.post, confirm_contains: "standup moves to 11", calls: [{ connector: teams, action: post, args: { text: "Tell the team channel standup moves to 11." } }] }
+
+# Calendar (C1-C8)
+T29: { needs_model: true, request: "What's on my calendar today?", expect: ran, skill: calendar.agenda, calls: [{ connector: outlook_calendar, action: agenda, args: { text: "What's on my calendar today?" } }] }
+T60: { needs_model: true, request: "am i free thurs afternoon", expect: ran, skill: calendar.agenda, calls: [{ connector: outlook_calendar, action: agenda, args: { text: "am i free thurs afternoon" } }] }
+T30: { needs_model: true, request: "When are Rahul and I both free this week?", expect: ran, skill: calendar.free, calls: [{ connector: outlook_calendar, action: free, args: { text: "When are Rahul and I both free this week?" } }] }
+T31: { needs_model: true, request: "Show me what I need for my 3pm.", expect: ran, skill: calendar.context, calls: [{ connector: outlook_calendar, action: context, args: { text: "Show me what I need for my 3pm." } }] }
+T32: { needs_model: true, request: "Add dentist on Friday at 4pm.", expect: ran, skill: calendar.add, calls: [{ connector: outlook_calendar, action: add, args: { text: "Add dentist on Friday at 4pm." } }] }
+T33: { needs_model: true, request: "Block two hours tomorrow morning.", expect: ran, skill: calendar.block, calls: [{ connector: outlook_calendar, action: block, args: { text: "Block two hours tomorrow morning." } }] }
+T34:
+  needs_model: true
+  request: "Set up 30 minutes with Rahul on Thursday."
+  contacts: [{ name: "Rahul Sharma" }]
+  expect: ran
+  skill: calendar.invite
+  confirm_contains: "Rahul Sharma"
+  calls: [{ connector: outlook_calendar, action: invite, args: { to: "Rahul Sharma", text: "Set up 30 minutes with Rahul on Thursday." } }]
+T35: { needs_model: true, request: "Move my 3pm to tomorrow, same time.", expect: ran, skill: calendar.move, calls: [{ connector: outlook_calendar, action: move, args: { text: "Move my 3pm to tomorrow, same time." } }] }
+T36: { needs_model: true, request: "Decline the Friday review.", expect: ran, skill: calendar.decline, calls: [{ connector: outlook_calendar, action: decline, args: { text: "Decline the Friday review." } }] }
+
+# Work flows (W1-W5)
+T39: { needs_model: true, request: "Give me my morning brief.", expect: ran, skill: work.morning_brief, calls: [{ connector: ms365_workflows, action: morning_brief, args: {} }] }
+T40: { needs_model: true, request: "Add this meeting request to my calendar.", expect: ran, skill: work.event_from_email, calls: [{ connector: ms365_workflows, action: event_from_email, args: { text: "Add this meeting request to my calendar." } }] }
+T41: { needs_model: true, request: "Save the invoices from Rahul's email to the Finance folder.", expect: ran, skill: work.save_attachments, calls: [{ connector: ms365_workflows, action: save_attachments, args: { text: "Save the invoices from Rahul's email to the Finance folder." } }] }
+T42: { needs_model: true, request: "Send the attachment from Rahul's email to the project chat.", expect: ran, skill: work.forward_attachment, confirm_contains: "Teams", calls: [{ connector: ms365_workflows, action: forward_attachment, args: { text: "Send the attachment from Rahul's email to the project chat." } }] }
+T43: { needs_model: true, request: "Send this week's report to my manager.", expect: ran, skill: work.send_report, confirm_contains: "manager", calls: [{ connector: ms365_workflows, action: send_report, args: { text: "Send this week's report to my manager." } }] }
+
+# Questions instead of guesses (T65, T67, T68, T71, T72)
+T65:
+  needs_model: true
+  request: "Send this to Rahul."
+  contacts: [{ name: "Rahul Sharma" }, { name: "Rahul Mehta" }]
+  expect: asks_question
+T67: { needs_model: true, request: "Move my meeting.", expect: asks_text }
+T68: { needs_model: true, request: "Email the report.", expect: asks_text }
+T71: { needs_model: true, request: "Decline it.", expect: asks_text }
+T72: { needs_model: true, request: "Share the folder.", expect: asks_text }
+
+# Chains: saved plans (T44, T75, T78, T79, T80, T81, T82). `skill` is the last step's.
+T44: { needs_model: true, request: "Focus mode for an hour.", expect: ran, skill: system.dnd, calls: [{ connector: spotify, action: search, args: { text: "play deep focus" } }, { connector: dnd, action: set, args: { text: "turn on do not disturb" } }] }
+T75: { needs_model: true, request: "Play lo-fi and turn on Do Not Disturb.", expect: ran, skill: system.dnd, calls: [{ connector: spotify, action: search, args: { text: "play lo-fi" } }, { connector: dnd, action: set, args: { text: "turn on do not disturb." } }] }
+T81: { needs_model: true, request: "Mute notifications, dim the screen and play my focus playlist.", expect: ran, skill: music.play, calls: [{ connector: dnd, action: set, args: { text: "turn on do not disturb" } }, { connector: system_controls, action: adjust, args: { text: "turn the brightness down" } }, { connector: spotify, action: search, args: { text: "play deep focus" } }] }
+T78: { needs_model: true, request: "Archive the newsletters and show what's urgent.", expect: ran, skill: mail.urgent, calls: [{ connector: outlook, action: archive_newsletters, args: {} }, { connector: outlook, action: urgent, args: {} }] }
+T80:
+  needs_model: true
+  request: "Take a screenshot and email it to Rahul."
+  contacts: [{ name: "Rahul Sharma" }]
+  expect: ran
+  skill: files.email
+  confirm_contains: "Rahul Sharma"
+  calls: [{ connector: system_controls, action: screenshot, args: {} }, { connector: outlook, action: send, args: { to: "Rahul Sharma", text: "email the screenshot to rahul", file: "email the screenshot to rahul" } }]
+T82:
+  needs_model: true
+  request: "Turn Rahul's email into a meeting and invite Priya."
+  contacts: [{ name: "Priya Nair" }]
+  expect: ran
+  skill: calendar.invite
+  confirm_contains: "Priya Nair"
+  calls: [{ connector: ms365_workflows, action: event_from_email, args: { text: "add this meeting request to my calendar" } }, { connector: outlook_calendar, action: invite, args: { to: "Priya Nair", text: "invite priya to the project review" } }]
+T79: { needs_model: true, request: "Open Chrome and search for flights to Goa.", apps: ["Google Chrome", "Notepad"], expect: ran, skill: browser.search, calls: [{ connector: windows_system, action: open_app, args: { app: "Google Chrome" } }, { connector: browser, action: search, args: { text: "search for flights to goa" } }] }

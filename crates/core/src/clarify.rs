@@ -186,8 +186,33 @@ pub fn clarify(said: &str) -> Option<Clarify> {
         ));
     }
 
+    // "send" alone, or "send to Ved": what is the message or file?
+    let joined = w.join(" ");
+    let said_plain = joined.trim_end_matches(['.', '?', '!']);
+    if matches!(
+        said_plain,
+        "send" | "send something" | "send a message" | "send a file" | "send it" | "send this"
+    ) {
+        return Some(text(
+            "What should I send, and to whom?",
+            "For example: the report to Rahul",
+            "send {0}",
+        ));
+    }
+    if let Some(who) = said_plain.strip_prefix("send to ") {
+        let who = who.trim();
+        if !who.is_empty() && who.split_whitespace().count() <= 2 {
+            let mut c = text(
+                "What should I send?",
+                "For example: the report",
+                "send {1} to {0}",
+            );
+            c.known = vec![who.to_string()];
+            return Some(c);
+        }
+    }
     // Work commands that name no target: ask for the missing part, then run the full sentence.
-    match w.join(" ").trim_end_matches(['.', '?', '!']) {
+    match said_plain {
         "move my meeting"
         | "move the meeting"
         | "move a meeting"
@@ -758,6 +783,10 @@ mod tests {
             ("open the", "Which app?", false),
             ("launch my", "Which app?", false),
             ("remind me later", "What should I remind you about?", false),
+            ("send", "What should I send, and to whom?", false),
+            ("send to ved", "What should I send?", false),
+            ("move my meeting", "Which meeting, and to when?", false),
+            ("decline it", "Which invite?", false),
             ("what is", "What would you like to know?", false),
             ("tell me about", "What would you like to know?", false),
             ("time in", "Which city?", false),
