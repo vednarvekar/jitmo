@@ -1,0 +1,29 @@
+id: work.save_attachments
+title: "Save attachments"  # task W3
+task: W3
+version: 1
+category: work
+capabilities:
+  - mail.read
+  - files.write
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "save the invoices from rahul's email to the finance folder"
+  - "save the attachments from rahul's email to the finance folder"
+  - "put the attachments in the finance folder"
+slots: {}
+steps:
+  - connector: ms365_workflows
+    action: save_attachments
+    args: { text: "{request}" }
+check:
+  connector: ms365_workflows
+  action: save_attachments
+  args: { text: "{request}" }
+undo:
+  - connector: ms365_workflows
+    action: save_attachments

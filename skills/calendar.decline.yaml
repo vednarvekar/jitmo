@@ -1,0 +1,30 @@
+id: calendar.decline
+title: "Decline an invite"  # task C8
+task: C8
+version: 1
+category: calendar
+capabilities:
+  - calendar.send
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: sends_or_shares
+examples:
+  - "decline the friday review"
+  - "decline the budget sync"
+  - "decline the thursday meeting"
+slots: {}
+confirm:
+  text: "Decline this invite? {request}"
+steps:
+  - connector: outlook_calendar
+    action: decline
+    args: { text: "{request}" }
+check:
+  connector: outlook_calendar
+  action: decline
+  args: { text: "{request}" }
+undo:
+  - connector: outlook_calendar
+    action: decline

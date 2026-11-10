@@ -1,0 +1,27 @@
+id: mail.urgent
+title: "Urgent emails"  # task E1
+task: E1
+version: 1
+category: email
+capabilities:
+  - mail.read
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: read_only
+examples:
+  - "any urgent emails"
+  - "show urgent emails"
+  - "anything important in my inbox"
+  - "what is urgent"
+slots: {}
+steps:
+  - connector: outlook
+    action: urgent
+    args: {}
+check:
+  connector: outlook
+  action: urgent
+  args: {}
+undo: none

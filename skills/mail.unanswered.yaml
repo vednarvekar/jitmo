@@ -1,0 +1,26 @@
+id: mail.unanswered
+title: "Emails to reply to"  # task E4
+task: E4
+version: 1
+category: email
+capabilities:
+  - mail.read
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: read_only
+examples:
+  - "what haven't i replied to"
+  - "which emails need a reply"
+  - "unanswered emails"
+slots: {}
+steps:
+  - connector: outlook
+    action: unanswered
+    args: {}
+check:
+  connector: outlook
+  action: unanswered
+  args: {}
+undo: none

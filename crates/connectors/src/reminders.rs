@@ -38,7 +38,7 @@ fn dur_unit(unit: &str) -> Duration {
 }
 
 /// "10 minutes", "an hour", "half an hour", "1 hour 30 minutes" -> total.
-fn durations(text: &str) -> Option<(Duration, Vec<(usize, usize)>)> {
+pub(crate) fn durations(text: &str) -> Option<(Duration, Vec<(usize, usize)>)> {
     let re = Regex::new(
         r"(?i)\b(half an|half a|an|a|one|\d+(?:\.\d+)?)\s*[- ]?\s*(hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?)\b",
     )
@@ -188,7 +188,7 @@ fn calendar_date(text: &str, today: chrono::NaiveDate) -> Result<Option<FoundDat
     Ok(None)
 }
 
-fn weekday(word: &str) -> Option<Weekday> {
+pub(crate) fn weekday(word: &str) -> Option<Weekday> {
     Some(match word {
         "monday" | "mon" => Weekday::Mon,
         "tuesday" | "tue" | "tues" => Weekday::Tue,

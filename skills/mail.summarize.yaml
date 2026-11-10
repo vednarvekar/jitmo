@@ -1,0 +1,27 @@
+id: mail.summarize
+title: "Summarize an email"  # task E2
+task: E2
+version: 1
+category: email
+capabilities:
+  - mail.read
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: read_only
+examples:
+  - "summarize the latest email from rahul"
+  - "tldr rahul's mail"
+  - "sum up my last email"
+  - "what did rahul write"
+slots: {}
+steps:
+  - connector: outlook
+    action: summarize
+    args: { text: "{request}" }
+check:
+  connector: outlook
+  action: summarize
+  args: { text: "{request}" }
+undo: none

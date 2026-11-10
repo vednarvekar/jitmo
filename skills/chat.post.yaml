@@ -1,0 +1,28 @@
+id: chat.post
+title: "Post in Teams"  # task M4
+task: M4
+version: 1
+category: messaging
+capabilities:
+  - teams.send
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: sends_or_shares
+examples:
+  - "tell the team channel standup moves to 11"
+  - "post in the project channel that the build is ready"
+  - "message the team channel that i am late"
+slots: {}
+confirm:
+  text: "Post this in Teams: {request}"
+steps:
+  - connector: teams
+    action: post
+    args: { text: "{request}" }
+check:
+  connector: teams
+  action: post
+  args: { text: "{request}" }
+undo: none

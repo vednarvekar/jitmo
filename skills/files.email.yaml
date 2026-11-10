@@ -1,0 +1,32 @@
+id: files.email
+title: "Email a file"  # task F5
+task: F5
+version: 1
+category: files
+capabilities:
+  - mail.send
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: sends_or_shares
+examples:
+  - "email budget.xlsx to rahul"
+  - "send the budget file to rahul by email"
+  - "email the report to priya"
+slots:
+  contact:
+    type: contact
+    required: true
+    resolve: [named_contact]
+confirm:
+  text: "Email {contact} this file?"
+steps:
+  - connector: outlook
+    action: send
+    args: { to: "{contact}", text: "{request}", file: "{request}" }
+check:
+  connector: outlook
+  action: send
+  args: { to: "{contact}", text: "{request}", file: "{request}" }
+undo: none

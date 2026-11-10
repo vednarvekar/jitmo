@@ -1,0 +1,30 @@
+id: calendar.move
+title: "Move a meeting"  # task C7
+task: C7
+version: 1
+category: calendar
+capabilities:
+  - calendar.send
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: sends_or_shares
+examples:
+  - "move my 3pm to tomorrow same time"
+  - "move my 3pm meeting to friday at 4pm"
+  - "reschedule my 3pm to tomorrow"
+slots: {}
+confirm:
+  text: "Move the meeting and tell the attendees? {request}"
+steps:
+  - connector: outlook_calendar
+    action: move
+    args: { text: "{request}" }
+check:
+  connector: outlook_calendar
+  action: move
+  args: { text: "{request}" }
+undo:
+  - connector: outlook_calendar
+    action: move

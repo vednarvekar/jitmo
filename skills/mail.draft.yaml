@@ -1,0 +1,32 @@
+id: mail.draft
+title: "Draft a reply"  # task E5
+task: E5
+version: 1
+category: email
+capabilities:
+  - mail.write
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "draft a reply to rahul saying friday works"
+  - "draft an email to rahul that the report is ready"
+  - "write a draft reply to priya saying thanks"
+slots:
+  contact:
+    type: contact
+    required: true
+    resolve: [named_contact]
+steps:
+  - connector: outlook
+    action: draft
+    args: { to: "{contact}", text: "{request}" }
+check:
+  connector: outlook
+  action: draft
+  args: { to: "{contact}", text: "{request}" }
+undo:
+  - connector: outlook
+    action: draft

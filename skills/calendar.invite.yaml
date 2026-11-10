@@ -1,0 +1,34 @@
+id: calendar.invite
+title: "Set up a meeting"  # task C6
+task: C6
+version: 1
+category: calendar
+capabilities:
+  - calendar.send
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: sends_or_shares
+examples:
+  - "set up 30 minutes with rahul on thursday"
+  - "schedule a meeting with priya on friday"
+  - "find time with rahul tomorrow and invite him"
+slots:
+  contact:
+    type: contact
+    required: true
+    resolve: [named_contact]
+confirm:
+  text: "Send {contact} an invite?"
+steps:
+  - connector: outlook_calendar
+    action: invite
+    args: { to: "{contact}", text: "{request}" }
+check:
+  connector: outlook_calendar
+  action: invite
+  args: { to: "{contact}", text: "{request}" }
+undo:
+  - connector: outlook_calendar
+    action: invite

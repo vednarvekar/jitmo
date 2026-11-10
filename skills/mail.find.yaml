@@ -1,0 +1,26 @@
+id: mail.find
+title: "Find emails"  # task E3
+task: E3
+version: 1
+category: email
+capabilities:
+  - mail.read
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: read_only
+examples:
+  - "find emails about the invoice from last month"
+  - "search my email for the contract"
+  - "find mail about the budget"
+slots: {}
+steps:
+  - connector: outlook
+    action: find
+    args: { text: "{request}" }
+check:
+  connector: outlook
+  action: find
+  args: { text: "{request}" }
+undo: none

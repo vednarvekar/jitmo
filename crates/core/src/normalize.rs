@@ -401,6 +401,9 @@ pub fn direct_skill(said: &str, normalized: &str) -> Option<&'static str> {
         .map(String::from)
         .collect();
     let has = |names: &[&str]| words.iter().any(|w| names.contains(&w.as_str()));
+    if let Some(id) = work_skill(&normalized.to_lowercase()) {
+        return Some(id);
+    }
     // Playing or stopping music is not a timer or a reminder, whatever else the sentence says.
     if has(&["pause", "resume", "play", "skip", "song", "music"]) {
         return None;
@@ -500,6 +503,49 @@ pub fn direct_skill(said: &str, normalized: &str) -> Option<&'static str> {
     // word about the PC (file, folder, downloads...) keeps it a file search.
     if starts(&["search ", "searching "]) && !has(PC_WORDS) {
         return Some("browser.search");
+    }
+    None
+}
+
+/// Work requests the router tends to confuse with each other (email, calendar, files and
+/// chat share many words): the phrasing that settles them, so a send is never taken for a
+/// summary and a reply list is never taken for a draft.
+fn work_skill(lower: &str) -> Option<&'static str> {
+    let has = |s: &str| lower.contains(s);
+    let starts = |s: &str| lower.starts_with(s);
+    const FILE_EXT: &[&str] = &[".xlsx", ".docx", ".pptx", ".pdf", ".csv", ".png", ".jpg"];
+    if has("morning brief") {
+        return Some("work.morning_brief");
+    }
+    if has("meeting request") && (has("calendar") || has("event")) {
+        return Some("work.event_from_email");
+    }
+    if (starts("save ") || starts("put ")) && (has("attachment") || has("email")) {
+        return Some("work.save_attachments");
+    }
+    if (starts("send the attachment")
+        || starts("post the attachment")
+        || starts("share the attachment"))
+        && (has("chat") || has("channel"))
+    {
+        return Some("work.forward_attachment");
+    }
+    if has("report") && has("manager") && (starts("send") || starts("email")) {
+        return Some("work.send_report");
+    }
+    if (has("replied to") && (starts("what") || starts("which") || starts("who")))
+        || has("unanswered")
+        || has("need a reply")
+        || has("need to reply")
+        || has("waiting for a reply")
+    {
+        return Some("mail.unanswered");
+    }
+    if starts("email ") && FILE_EXT.iter().any(|e| has(e)) {
+        return Some("files.email");
+    }
+    if starts("email ") && (has(" that ") || has(" saying ")) {
+        return Some("mail.send");
     }
     None
 }

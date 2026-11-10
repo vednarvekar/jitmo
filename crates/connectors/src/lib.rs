@@ -11,6 +11,8 @@ pub mod fake;
 pub mod files;
 pub mod local_calc;
 pub mod ms365;
+pub mod ms365_cal;
+pub mod ms365_work;
 pub mod oauth;
 pub mod reminders;
 pub mod repeat;

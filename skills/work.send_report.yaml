@@ -1,0 +1,29 @@
+id: work.send_report
+title: "Send the weekly report"  # task W5
+task: W5
+version: 1
+category: work
+capabilities:
+  - files.read
+  - mail.send
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: sends_or_shares
+examples:
+  - "send this week's report to my manager"
+  - "email the weekly report to my manager"
+  - "send my manager the report"
+slots: {}
+confirm:
+  text: "Send this week's report to your manager?"
+steps:
+  - connector: ms365_workflows
+    action: send_report
+    args: { text: "{request}" }
+check:
+  connector: ms365_workflows
+  action: send_report
+  args: { text: "{request}" }
+undo: none

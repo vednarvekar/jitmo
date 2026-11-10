@@ -1,0 +1,28 @@
+id: calendar.block
+title: "Block focus time"  # task C5
+task: C5
+version: 1
+category: calendar
+capabilities:
+  - calendar.write
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "block two hours tomorrow morning"
+  - "block an hour this afternoon for focus"
+  - "block 90 minutes tomorrow"
+slots: {}
+steps:
+  - connector: outlook_calendar
+    action: block
+    args: { text: "{request}" }
+check:
+  connector: outlook_calendar
+  action: block
+  args: { text: "{request}" }
+undo:
+  - connector: outlook_calendar
+    action: block

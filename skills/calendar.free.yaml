@@ -1,0 +1,26 @@
+id: calendar.free
+title: "Find a free time"  # task C2
+task: C2
+version: 1
+category: calendar
+capabilities:
+  - calendar.read
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: read_only
+examples:
+  - "when are rahul and i both free this week"
+  - "find a time that works for rahul and me"
+  - "when am i free this week"
+slots: {}
+steps:
+  - connector: outlook_calendar
+    action: free
+    args: { text: "{request}" }
+check:
+  connector: outlook_calendar
+  action: free
+  args: { text: "{request}" }
+undo: none

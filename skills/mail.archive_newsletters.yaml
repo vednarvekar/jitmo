@@ -1,0 +1,28 @@
+id: mail.archive_newsletters
+title: "Archive newsletters"  # task E6
+task: E6
+version: 1
+category: email
+capabilities:
+  - mail.write
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "archive today's newsletters"
+  - "archive the newsletters"
+  - "clear out the newsletters"
+slots: {}
+steps:
+  - connector: outlook
+    action: archive_newsletters
+    args: {}
+check:
+  connector: outlook
+  action: archive_newsletters
+  args: {}
+undo:
+  - connector: outlook
+    action: archive_newsletters

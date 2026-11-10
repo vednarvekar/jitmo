@@ -1,0 +1,29 @@
+id: work.event_from_email
+title: "Email to calendar event"  # task W2
+task: W2
+version: 1
+category: work
+capabilities:
+  - mail.read
+  - calendar.write
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "add this meeting request to my calendar"
+  - "put this email's meeting in my calendar"
+  - "turn this email into an event"
+slots: {}
+steps:
+  - connector: ms365_workflows
+    action: event_from_email
+    args: { text: "{request}" }
+check:
+  connector: ms365_workflows
+  action: event_from_email
+  args: { text: "{request}" }
+undo:
+  - connector: ms365_workflows
+    action: event_from_email

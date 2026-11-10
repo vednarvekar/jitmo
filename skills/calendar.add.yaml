@@ -1,0 +1,28 @@
+id: calendar.add
+title: "Add an event"  # task C4
+task: C4
+version: 1
+category: calendar
+capabilities:
+  - calendar.write
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "add dentist on friday at 4pm"
+  - "put lunch with ved on thursday at 1pm in my calendar"
+  - "schedule a call tomorrow at 11am"
+slots: {}
+steps:
+  - connector: outlook_calendar
+    action: add
+    args: { text: "{request}" }
+check:
+  connector: outlook_calendar
+  action: add
+  args: { text: "{request}" }
+undo:
+  - connector: outlook_calendar
+    action: add

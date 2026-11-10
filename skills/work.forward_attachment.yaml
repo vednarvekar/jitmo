@@ -1,0 +1,29 @@
+id: work.forward_attachment
+title: "Forward an attachment to a chat"  # task W4
+task: W4
+version: 1
+category: work
+capabilities:
+  - mail.read
+  - teams.send
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: sends_or_shares
+examples:
+  - "send the attachment from rahul's email to the project chat"
+  - "post the attachment from rahul's email in the project chat"
+  - "share the attachment with the project chat"
+slots: {}
+confirm:
+  text: "Post the attachment in Teams? {request}"
+steps:
+  - connector: ms365_workflows
+    action: forward_attachment
+    args: { text: "{request}" }
+check:
+  connector: ms365_workflows
+  action: forward_attachment
+  args: { text: "{request}" }
+undo: none

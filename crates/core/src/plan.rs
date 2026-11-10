@@ -143,7 +143,13 @@ pub fn check(plan: &Plan, shape_of: &dyn Fn(&str) -> Option<SkillShape>) -> Resu
                 });
             }
         }
-        for slot in &shape.required_slots {
+        // A step that carries its own sentence (`request`) has its slots filled from that
+        // sentence when it runs, and asked for if they are missing: the ordinary route.
+        let from_sentence = step
+            .slots
+            .get("request")
+            .is_some_and(|r| !r.trim().is_empty());
+        for slot in shape.required_slots.iter().filter(|_| !from_sentence) {
             if step.slots.get(slot).is_none_or(|v| v.trim().is_empty()) {
                 return Err(PlanError::MissingSlot {
                     step: n,
@@ -181,7 +187,51 @@ pub fn sentences(plan: &Plan) -> Option<Vec<String>> {
 // ---------------------------------------------------------------------------
 
 /// What one phrase of a chained request means: the skill and the sentence that runs it.
-fn phrase(part: &str) -> Option<(&'static str, &'static str)> {
+fn phrase(part: &str) -> Option<(&'static str, String)> {
+    let (skill, sentence) = phrase_static(part)?;
+    Some((skill, sentence))
+}
+
+/// The phrases with a fixed meaning, then the ones that carry a name ("email it to Rahul").
+fn phrase_static(part: &str) -> Option<(&'static str, String)> {
+    if let Some(found) = phrase_fixed(part) {
+        return Some((found.0, found.1.to_string()));
+    }
+    let p = part
+        .trim()
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase();
+    let p = p
+        .trim_start_matches("please ")
+        .trim_start_matches("and ")
+        .trim_start_matches("then ")
+        .trim();
+    // "email it to Rahul", "email the screenshot to Rahul": a send of what came before.
+    if let Some(who) = p
+        .strip_prefix("email it to ")
+        .or_else(|| p.strip_prefix("email that to "))
+        .or_else(|| p.strip_prefix("email the screenshot to "))
+        .or_else(|| p.strip_prefix("send it to "))
+    {
+        let who = who.trim();
+        if !who.is_empty() && !who.contains(char::is_whitespace) {
+            return Some(("files.email", format!("email the screenshot to {who}")));
+        }
+    }
+    // "invite Priya": add her to the meeting the previous step made.
+    if let Some(who) = p.strip_prefix("invite ") {
+        let who = who.trim();
+        if !who.is_empty() && !who.contains(char::is_whitespace) {
+            return Some((
+                "calendar.invite",
+                format!("invite {who} to the project review"),
+            ));
+        }
+    }
+    None
+}
+
+fn phrase_fixed(part: &str) -> Option<(&'static str, &'static str)> {
     let p = part
         .trim()
         .trim_matches(|c: char| !c.is_alphanumeric())
@@ -228,6 +278,39 @@ fn phrase(part: &str) -> Option<(&'static str, &'static str)> {
         "start my focus playlist",
     ]) {
         return Some(("music.play", "play deep focus"));
+    }
+    if any(&[
+        "archive the newsletters",
+        "archive today's newsletters",
+        "archive newsletters",
+        "clear the newsletters",
+    ]) {
+        return Some(("mail.archive_newsletters", "archive today's newsletters"));
+    }
+    if any(&[
+        "show what's urgent",
+        "show me what's urgent",
+        "show what is urgent",
+        "show urgent emails",
+        "show me urgent emails",
+        "list what's urgent",
+        "check urgent emails",
+    ]) {
+        return Some(("mail.urgent", "any urgent emails"));
+    }
+    if any(&["take a screenshot", "take a screen shot", "screenshot"]) {
+        return Some(("system.screenshot", "take a screenshot"));
+    }
+    if any(&[
+        "turn rahul's email into a meeting",
+        "turn this email into a meeting",
+        "turn the email into a meeting",
+        "make rahul's email a meeting",
+    ]) {
+        return Some((
+            "work.event_from_email",
+            "add this meeting request to my calendar",
+        ));
     }
     None
 }
@@ -288,7 +371,7 @@ pub fn template(text: &str) -> Option<Plan> {
             ],
         });
     }
-    let mapped: Option<Vec<(&str, &str)>> = parts(body).iter().map(|p| phrase(p)).collect();
+    let mapped: Option<Vec<(&str, String)>> = parts(body).iter().map(|p| phrase(p)).collect();
     let mapped = mapped?;
     if mapped.len() < 2 {
         return None;
@@ -302,7 +385,7 @@ pub fn template(text: &str) -> Option<Plan> {
     Some(Plan {
         steps: mapped
             .into_iter()
-            .map(|(skill, sentence)| PlanStep::request(skill, sentence))
+            .map(|(skill, sentence)| PlanStep::request(skill, &sentence))
             .collect(),
     })
 }
@@ -393,6 +476,37 @@ mod tests {
             Err(PlanError::SendWithoutConfirm { .. })
         ));
         assert_eq!(check(&Plan::default(), &shapes), Err(PlanError::Empty));
+    }
+
+    #[test]
+    fn a_step_with_its_own_sentence_fills_its_slots_when_it_runs() {
+        // files.find needs a `query`; a template step carries the whole sentence instead.
+        let p = Plan {
+            steps: vec![PlanStep::request("files.find", "find the budget sheet")],
+        };
+        assert_eq!(check(&p, &shapes), Ok(()));
+        let p = Plan {
+            steps: vec![PlanStep::request("files.find", "  ")],
+        };
+        assert!(matches!(
+            check(&p, &shapes),
+            Err(PlanError::MissingSlot { .. })
+        ));
+    }
+
+    #[test]
+    fn the_work_chains_become_plans() {
+        let p = template("Archive the newsletters and show what's urgent.").unwrap();
+        assert_eq!(
+            sentences(&p).unwrap(),
+            ["archive today's newsletters", "any urgent emails"]
+        );
+        let p = template("Take a screenshot and email it to Rahul.").unwrap();
+        assert_eq!(p.steps[0].skill, "system.screenshot");
+        assert_eq!(p.steps[1].skill, "files.email");
+        let p = template("Turn Rahul's email into a meeting and invite Priya.").unwrap();
+        assert_eq!(p.steps[0].skill, "work.event_from_email");
+        assert_eq!(p.steps[1].skill, "calendar.invite");
     }
 
     #[test]

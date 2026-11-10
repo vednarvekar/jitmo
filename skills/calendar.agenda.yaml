@@ -1,0 +1,27 @@
+id: calendar.agenda
+title: "Calendar agenda"  # task C1
+task: C1
+version: 1
+category: calendar
+capabilities:
+  - calendar.read
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: read_only
+examples:
+  - "what's on my calendar today"
+  - "am i free thursday afternoon"
+  - "what meetings do i have tomorrow"
+  - "show my schedule"
+slots: {}
+steps:
+  - connector: outlook_calendar
+    action: agenda
+    args: { text: "{request}" }
+check:
+  connector: outlook_calendar
+  action: agenda
+  args: { text: "{request}" }
+undo: none

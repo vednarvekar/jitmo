@@ -1119,6 +1119,16 @@ pub fn build_world(
         ),
     ]
     .into_iter()
+    // Microsoft 365: the seeded fake mailbox, calendar, drive and chat (Phase 3).
+    .chain(
+        jitmo_connectors::ms365_work::fake_suite()
+            .connectors
+            .into_iter()
+            .map(|c| {
+                let id = c.id().to_string();
+                rec(&id, Some(c))
+            }),
+    )
     .collect();
 
     let store = Store::open(&db, None).expect("store");

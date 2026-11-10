@@ -186,6 +186,50 @@ pub fn clarify(said: &str) -> Option<Clarify> {
         ));
     }
 
+    // Work commands that name no target: ask for the missing part, then run the full sentence.
+    match w.join(" ").trim_end_matches(['.', '?', '!']) {
+        "move my meeting"
+        | "move the meeting"
+        | "move a meeting"
+        | "reschedule my meeting"
+        | "reschedule the meeting"
+        | "move meeting" => {
+            return Some(text(
+                "Which meeting, and to when?",
+                "For example: 3pm to tomorrow",
+                "move my {0}",
+            ));
+        }
+        "email the report" | "send the report" | "email report" | "send report"
+        | "email a report" | "send a report" => {
+            return Some(text(
+                "Which report, and to whom?",
+                "For example: the weekly report to Rahul",
+                "email {0}",
+            ));
+        }
+        "decline it"
+        | "decline this"
+        | "decline"
+        | "decline the invite"
+        | "decline invite"
+        | "decline the meeting" => {
+            return Some(text(
+                "Which invite?",
+                "For example: the Friday review",
+                "decline {0}",
+            ));
+        }
+        "share the folder" | "share a folder" | "share folder" | "share my folder" => {
+            return Some(text(
+                "Which folder, and with whom?",
+                "For example: the Project folder with Priya",
+                "share {0}",
+            ));
+        }
+        _ => {}
+    }
+
     // Music: what to do, or what to play.
     if has(&["play"]) && is_bare(&w, &["play", "music", "song", "songs"]) {
         return Some(text(

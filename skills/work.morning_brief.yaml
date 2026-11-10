@@ -1,0 +1,28 @@
+id: work.morning_brief
+title: "Morning brief"  # task W1
+task: W1
+version: 1
+category: work
+capabilities:
+  - mail.read
+  - calendar.read
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: read_only
+examples:
+  - "give me my morning brief"
+  - "morning brief"
+  - "what's my day look like"
+  - "brief me"
+slots: {}
+steps:
+  - connector: ms365_workflows
+    action: morning_brief
+    args: {}
+check:
+  connector: ms365_workflows
+  action: morning_brief
+  args: {}
+undo: none

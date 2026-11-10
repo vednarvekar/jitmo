@@ -1,0 +1,26 @@
+id: calendar.context
+title: "What I need for a meeting"  # task C3
+task: C3
+version: 1
+category: calendar
+capabilities:
+  - calendar.read
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: read_only
+examples:
+  - "show me what i need for my 3pm"
+  - "what do i need for my next meeting"
+  - "prepare me for my 3pm"
+slots: {}
+steps:
+  - connector: outlook_calendar
+    action: context
+    args: { text: "{request}" }
+check:
+  connector: outlook_calendar
+  action: context
+  args: { text: "{request}" }
+undo: none

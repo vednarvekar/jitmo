@@ -1,0 +1,32 @@
+id: mail.send
+title: "Send an email"  # task E7
+task: E7
+version: 1
+category: email
+capabilities:
+  - mail.send
+network: ms365
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: sends_or_shares
+examples:
+  - "email rahul that the report is ready"
+  - "send rahul an email saying the report is ready"
+  - "email priya saying thanks"
+slots:
+  contact:
+    type: contact
+    required: true
+    resolve: [named_contact]
+confirm:
+  text: "Email {contact} “{request}”?"
+steps:
+  - connector: outlook
+    action: send
+    args: { to: "{contact}", text: "{request}" }
+check:
+  connector: outlook
+  action: send
+  args: { to: "{contact}", text: "{request}" }
+undo: none
