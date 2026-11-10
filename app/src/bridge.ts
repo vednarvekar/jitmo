@@ -21,6 +21,10 @@ if (!inTauri && typeof window !== "undefined") {
 
 const invoke = <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
   if (inTauri) return tauriInvoke<T>(cmd, args);
+  // The end-to-end tests (e2e/) plug the engine in here: every command goes to this function.
+  const hook = (window as unknown as { __jitmoInvoke?: (c: string, a?: unknown) => Promise<T> })
+    .__jitmoInvoke;
+  if (typeof hook === "function") return hook(cmd, args);
   console.debug("[preview] invoke", cmd, args ?? "");
   return Promise.resolve(undefined as T);
 };
@@ -44,6 +48,9 @@ export const hideBar = () => invoke<void>("hide_bar");
 export const barSound = (kind: "open" | "close") => invoke<void>("bar_sound", { kind });
 export const resizeBar = (height: number, width: number) =>
   invoke<void>("resize_bar", { height, width });
+/** Open an answer's source page (Rust allows only known https source hosts). */
+export const openSource = (url: string) =>
+  invoke<void>("open_source", { url }).catch(() => undefined);
 
 export const onCoreEvent = (cb: (e: CoreEvent) => void): Promise<UnlistenFn> =>
   listen<CoreEvent>("core-event", (e) => cb(e.payload));

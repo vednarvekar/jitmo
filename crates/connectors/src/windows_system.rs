@@ -41,7 +41,11 @@ impl Connector for WindowsSystem {
                 match apps::lookup_app(wanted).map_err(ConnError::Failed)? {
                     Lookup::Found(app) => {
                         apps::launch(&app).map_err(ConnError::Failed)?;
-                        Ok(Output(BTreeMap::from([("app".to_string(), app.name)])))
+                        let message = format!("Opened {}.", app.name);
+                        Ok(Output(BTreeMap::from([
+                            ("app".to_string(), app.name),
+                            ("message".to_string(), message),
+                        ])))
                     }
                     Lookup::NotFound => Err(ConnError::NotInstalled(wanted.into())),
                     Lookup::Ambiguous(names) => Err(ConnError::Failed(format!(

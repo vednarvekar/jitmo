@@ -94,6 +94,11 @@
   border-radius: 26px;
   padding-bottom: 12px;
 }
+/* A long answer is a block of text, not a one-line pill: the capsule ends would squeeze it. */
+.bar:has(.message.multi) {
+  border-radius: 26px;
+  padding-bottom: 6px;
+}
 .bar > *:not(.circle-overlay) {
   position: relative;
   z-index: 600;

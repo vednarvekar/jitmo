@@ -114,7 +114,7 @@ fn split_glued(word: &str) -> Option<(&'static str, String)> {
 /// Only digits, operators, brackets, commas and points; at least one number and one
 /// operator. A minus counts only with spaces around it ("2 - 1"), so "555-1234" and a
 /// date such as "10/11/2026" are not sums.
-fn is_bare_expression(s: &str) -> bool {
+pub fn is_bare_expression(s: &str) -> bool {
     let allowed = |c: char| c.is_ascii_digit() || " .,+*/x^()%-".contains(c);
     if s.is_empty() || !s.chars().all(allowed) || !s.chars().any(|c| c.is_ascii_digit()) {
         return false;
@@ -125,6 +125,64 @@ fn is_bare_expression(s: &str) -> bool {
     let has_op = s.chars().any(|c| "+*/x^".contains(c)) || s.contains(" - ");
     // A lone "x" or percent sign is not an expression: "x" needs digits around it.
     has_op && !s.trim_start().starts_with(['x', '*', '/', '^'])
+}
+
+/// "set my city to <script>", "i live in ../../x": a place sentence whose place has code or
+/// path characters in it. The extractor would quietly drop them and save "Script"; refuse.
+pub fn place_with_symbols(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    ["set my city", "set my location", "set my place", "i live in", "my city is"]
+        .iter()
+        .any(|p| lower.starts_with(p))
+        && text.chars().any(|c| "<>/\\{}$;|&*\"`=".contains(c))
+}
+
+/// "2 power 10", "3 to the power of 4", "2 raised to 8".
+fn is_power(s: &str) -> bool {
+    let w: Vec<String> = s
+        .to_lowercase()
+        .split_whitespace()
+        .map(String::from)
+        .collect();
+    let num = |x: &str| !x.is_empty() && x.chars().all(|c| c.is_ascii_digit() || c == '.');
+    w.len() >= 3
+        && num(&w[0])
+        && num(&w[w.len() - 1])
+        && w[1..w.len() - 1]
+            .iter()
+            .all(|x| ["power", "to", "the", "of", "raised", "pow"].contains(&x.as_str()))
+        && w.iter().any(|x| x == "power" || x == "raised" || x == "pow")
+}
+
+/// "18% of 2450", "what is 15 percent of 1,200", "15 percent tip on 80": a percentage of a
+/// number. Unmistakably a calculation, so the calculator takes it without a router guess.
+pub fn is_percent_of(s: &str) -> bool {
+    let lower = s.to_lowercase();
+    let w: Vec<&str> = lower
+        .split(|c: char| c.is_whitespace() || c == '?')
+        .filter(|x| !x.is_empty())
+        .collect();
+    let is_number = |x: &str| {
+        let x = x.trim_matches(|c: char| c == '$' || c == ',');
+        !x.is_empty()
+            && x.chars()
+                .all(|c| c.is_ascii_digit() || c == '.' || c == ',')
+    };
+    (0..w.len()).any(|i| {
+        let (num_ok, mut j) = if let Some(n) = w[i].strip_suffix('%') {
+            (is_number(n), i + 1)
+        } else if is_number(w[i]) && matches!(w.get(i + 1), Some(&"percent") | Some(&"pct")) {
+            (true, i + 2)
+        } else {
+            (false, i)
+        };
+        if num_ok && matches!(w.get(j), Some(&"tip")) {
+            j += 1;
+        }
+        num_ok
+            && matches!(w.get(j), Some(&"of") | Some(&"on"))
+            && w.get(j + 1).is_some_and(|n| is_number(n))
+    })
 }
 
 /// The request as it should be routed.
@@ -180,12 +238,285 @@ pub fn normalize(text: &str) -> String {
             out[0] = verb.to_string();
         }
     }
-    out.join(" ")
+    // Texting spellings the router was not trained on.
+    for (i, w) in out.iter_mut().enumerate() {
+        if let Some(full) = slang(w) {
+            // Never the first word (that is the verb), except a mistyped "timer" ("tiemr 5 min").
+            if i > 0 || ["timer", "next", "skip", "previous"].contains(&full) {
+                *w = full.to_string();
+            }
+        }
+    }
+    let joined = out.join(" ");
+    let joined = stop_music(&joined).unwrap_or(joined);
+    // "tell me about who wrote X" (a typed answer to "What would you like to know?").
+    let joined = match joined.to_lowercase().strip_prefix("tell me about ") {
+        Some(rest)
+            if ["who ", "what ", "when ", "where ", "which ", "how ", "why "]
+                .iter()
+                .any(|q| rest.starts_with(q)) =>
+        {
+            joined
+                .get("tell me about ".len()..)
+                .map_or_else(|| joined.clone(), str::to_string)
+        }
+        _ => joined,
+    };
+    youtube_search(&joined).unwrap_or(joined)
+}
+
+/// Several apps in one sentence: "open zoom and spotify" -> (["zoom", "spotify"], false),
+/// "open edge or chrome" -> (["edge", "chrome"], true: the user must pick one).
+pub fn several_apps(text: &str) -> Option<(Vec<String>, bool)> {
+    let lower = text.trim().trim_end_matches(['.', '!', '?']).to_lowercase();
+    let rest = ["open ", "launch ", "start "]
+        .iter()
+        .find_map(|v| lower.strip_prefix(v))?;
+    // Websites, files and searches have their own skills.
+    // "open spotify and then pause the music" is a sequence of different requests.
+    if ["website", "site", "file", "folder", ".com", "http", "search", "timer", "then"]
+        .iter()
+        .any(|w| rest.contains(w))
+    {
+        return None;
+    }
+    let either = rest.contains(" or ");
+    let parts: Vec<String> = rest
+        .split(',')
+        .flat_map(|p| p.split(" and "))
+        .flat_map(|p| p.split(" or "))
+        .map(|p| {
+            p.trim()
+                .trim_start_matches("the ")
+                .trim_start_matches("my ")
+                .trim()
+                .to_string()
+        })
+        .filter(|p| !p.is_empty())
+        .collect();
+    // "open spotify and play kesariya": the second part is a request, not an app.
+    const VERBS: &[&str] = &[
+        "play", "pause", "turn", "set", "remind", "search", "mute", "skip", "close", "lock",
+        "take", "send", "go",
+    ];
+    let short = parts.iter().all(|p| {
+        p.split_whitespace().count() <= 3
+            && !p.split_whitespace().next().is_some_and(|w| VERBS.contains(&w))
+    });
+    (parts.len() >= 2 && parts.len() <= 4 && short).then_some((parts, either))
+}
+
+/// "pause the music and then open notepad": two requests run one after the other.
+pub fn sequence(text: &str) -> Option<Vec<String>> {
+    let lower = text.to_lowercase();
+    // A reminder's subject may itself say "and then" ("remind me to eat and then sleep").
+    if lower.contains("remind") || lower.contains("search") {
+        return None;
+    }
+    let parts: Vec<String> = lower
+        .split(" and then ")
+        .flat_map(|p| p.split(", then "))
+        .flat_map(|p| p.split(" then "))
+        .map(|p| p.trim().trim_end_matches(',').to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+    // "open spotify and play kesariya": "and" before a new verb also starts a new request.
+    const VERBS: &[&str] = &[
+        "open", "launch", "play", "pause", "resume", "skip", "turn", "set", "mute", "unmute",
+        "lock", "take", "close", "start",
+    ];
+    let mut out: Vec<String> = Vec::new();
+    for part in parts {
+        let mut current = String::new();
+        for (i, chunk) in part.split(" and ").enumerate() {
+            let starts_verb = chunk
+                .split_whitespace()
+                .next()
+                .is_some_and(|w| VERBS.contains(&w));
+            if i > 0 && starts_verb {
+                out.push(std::mem::take(&mut current));
+            } else if i > 0 {
+                current.push_str(" and ");
+            }
+            current.push_str(chunk);
+        }
+        out.push(current);
+    }
+    (out.len() >= 2 && out.len() <= 4).then_some(out)
+}
+
+/// "kill the music", "shut up the music", "shut the song off": pausing, said bluntly.
+fn stop_music(s: &str) -> Option<String> {
+    let lower = s.to_lowercase();
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    let blunt = matches!(words.first(), Some(&"kill") | Some(&"shut") | Some(&"silence"));
+    let music = words
+        .iter()
+        .any(|w| ["music", "song", "spotify", "songs"].contains(w));
+    (blunt && music).then(|| "pause the music".to_string())
+}
+
+/// "play jazz on youtube", "watch fireship on youtube": a YouTube search.
+fn youtube_search(s: &str) -> Option<String> {
+    let lower = s.to_lowercase();
+    let rest = lower.strip_suffix(" on youtube")?;
+    for verb in ["play", "watch", "search", "find", "show", "open"] {
+        if let Some(what) = rest.strip_prefix(&format!("{verb} ")) {
+            let what = what.trim();
+            if !what.is_empty() {
+                return Some(format!("search youtube for {what}"));
+            }
+        }
+    }
+    None
+}
+
+/// A sentence whose wording leaves no doubt which skill it is, so the router is not asked:
+/// a sum, a percentage, "remind me ...", a timer. (The router is trained on the usual
+/// phrasings; "every Monday at 10 remind me to ..." and "set a timr for ..." fall outside them.)
+pub fn direct_skill(said: &str, normalized: &str) -> Option<&'static str> {
+    if is_bare_expression(said.trim()) || is_percent_of(said) || is_power(said) {
+        return Some("calc.math");
+    }
+    let words: Vec<String> = normalized
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(String::from)
+        .collect();
+    let has = |names: &[&str]| words.iter().any(|w| names.contains(&w.as_str()));
+    // Playing or stopping music is not a timer or a reminder, whatever else the sentence says.
+    if has(&["pause", "resume", "play", "skip", "song", "music"]) {
+        return None;
+    }
+    if has(&["timer", "countdown"]) {
+        return Some("reminders.timer");
+    }
+    if has(&["remind", "reminder", "reminders"]) {
+        return Some("reminders.remind");
+    }
+    let lower = normalized.to_lowercase();
+    let starts = |p: &[&str]| p.iter().any(|x| lower.starts_with(x));
+    // "open the weather app", "turn on dnd at sunset": a command, not a question.
+    if starts(&["open ", "launch ", "start ", "turn ", "set ", "close ", "move ", "send "]) {
+        return None;
+    }
+    if starts(&["what is the time", "what's the time", "whats the time"]) {
+        return Some("calc.time_in");
+    }
+    // A web search said outright ("google X", "search the web for X", "find X online").
+    if starts(&["google ", "bing ", "search the web", "search online", "search the internet"])
+        || (starts(&["find ", "search ", "look up "]) && lower.ends_with(" online"))
+    {
+        return Some("browser.search");
+    }
+    if has(&[
+        "weather", "weathr", "wether", "temperature", "forecast", "rain", "raining", "rainy",
+        "umbrella", "humid", "humidity",
+    ]) {
+        return Some("web.weather");
+    }
+    if starts(&["time in ", "what time is it in ", "whats the time in ", "what's the time in "])
+        || (has(&["time"]) && has(&["tokyo", "london", "york", "dubai", "ist", "pst", "est"]))
+    {
+        return Some("calc.time_in");
+    }
+    if has(&[
+        "sunrise", "sunset", "sunrize", "sunst", "sunet", "moonrise", "moonset", "moon",
+        "eclipse", "dusk", "dawn",
+    ]) {
+        return Some("calc.moon");
+    }
+    // A question about the world: who wrote, what is the population of, how tall is ...
+    let question = starts(&[
+        "who ", "whos ", "who's ", "what is the ", "what was the ", "what's the ", "when was ",
+        "when did ", "when is ", "where is ", "where was ", "which ", "how tall ", "how old ",
+        "how far ", "how big ", "how many ", "how much does ", "how long is ", "how deep ",
+        "what is a ", "what is an ", "tell me about ", "define ",
+    ]);
+    let personal = has(&["my", "me", "i", "timer", "timers", "file", "files", "volume"]);
+    if question && !personal {
+        return Some("web.fact");
+    }
+    None
+}
+
+/// "tmrw" -> "tomorrow" and the like (whole words only).
+fn slang(word: &str) -> Option<&'static str> {
+    Some(match word.to_lowercase().as_str() {
+        "tmrw" | "tmr" | "tomorow" | "tommorow" | "tomorrw" | "2morrow" | "2moro" => "tomorrow",
+        "tonite" | "2nite" => "tonight",
+        "abt" => "about",
+        "timr" | "tiemr" | "timmer" | "timar" | "tymer" | "timeer" => "timer",
+        "mintue" | "mintues" | "minuets" | "minuts" | "minutess" => "minutes",
+        "nxt" | "nekst" => "next",
+        "skp" => "skip",
+        "prv" | "previus" | "prevous" => "previous",
+        "sng" | "sonng" => "song",
+        "muzic" | "musik" | "musc" => "music",
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn questions_weather_time_and_search_route_directly() {
+        let d = |s: &str| direct_skill(s, &normalize(s));
+        assert_eq!(d("who wrote Pride and Prejudice"), Some("web.fact"));
+        assert_eq!(d("what is the population of india"), Some("web.fact"));
+        assert_eq!(d("temperature in delhi"), Some("web.weather"));
+        assert_eq!(d("weathr in pune"), Some("web.weather"));
+        assert_eq!(d("time in tokio"), Some("calc.time_in"));
+        assert_eq!(d("sunrize in mumbai"), Some("calc.moon"));
+        assert_eq!(d("google pune weather"), Some("browser.search"));
+        assert_eq!(d("find me a recipe for dosa online"), Some("browser.search"));
+        assert_eq!(d("2 power 10"), Some("calc.math"));
+        assert_eq!(d("open the weather app"), None);
+        assert_eq!(d("who is my favourite"), None);
+        assert_eq!(d("play rain sounds"), None);
+        assert_eq!(d("remind me to check the weather"), Some("reminders.remind"));
+    }
+
+    #[test]
+    fn music_typos_apps_and_sequences() {
+        assert_eq!(normalize("nxt song"), "next song");
+        assert_eq!(normalize("skp"), "skip");
+        assert_eq!(normalize("kill the music"), "pause the music");
+        assert_eq!(normalize("shut up the music"), "pause the music");
+        assert_eq!(
+            several_apps("open zoom and spotify"),
+            Some((vec!["zoom".into(), "spotify".into()], false))
+        );
+        assert_eq!(
+            several_apps("open edge or chrome"),
+            Some((vec!["edge".into(), "chrome".into()], true))
+        );
+        assert_eq!(
+            several_apps("open notepad, calculator and paint"),
+            Some((
+                vec!["notepad".into(), "calculator".into(), "paint".into()],
+                false
+            ))
+        );
+        assert_eq!(several_apps("open spotify"), None);
+        assert_eq!(several_apps("open the website amazon and flipkart"), None);
+        assert_eq!(
+            sequence("pause the music and then open notepad"),
+            Some(vec!["pause the music".into(), "open notepad".into()])
+        );
+        assert_eq!(sequence("remind me to eat and then sleep"), None);
+        assert_eq!(
+            sequence("open spotify and play kesariya"),
+            Some(vec!["open spotify".into(), "play kesariya".into()])
+        );
+        assert_eq!(sequence("play rock and roll"), None);
+        assert_eq!(sequence("turn wifi and bluetooth off"), None);
+        assert_eq!(several_apps("open spotify and then pause the music"), None);
+        assert_eq!(sequence("play kesariya"), None);
+    }
 
     #[test]
     fn greetings_and_politeness_are_dropped() {
@@ -248,6 +579,77 @@ mod tests {
         for same in ["555-1234", "10/11/2026", "2026", "50%", "x", "+"] {
             assert_eq!(normalize(same), same, "{same}");
         }
+    }
+
+    #[test]
+    fn timer_typos_youtube_and_direct_routes() {
+        assert_eq!(
+            normalize("set a timr for 10 minutes"),
+            "set a timer for 10 minutes"
+        );
+        assert_eq!(normalize("tiemr 5 min"), "timer 5 min");
+        assert_eq!(normalize("set a 10 mintue timer"), "set a 10 minutes timer");
+        assert_eq!(normalize("play jazz on youtube"), "search youtube for jazz");
+        assert_eq!(
+            normalize("watch fireship on YouTube"),
+            "search youtube for fireship"
+        );
+        assert_eq!(normalize("play despacito"), "play despacito");
+        let d = |s: &str| direct_skill(s, &normalize(s));
+        assert_eq!(d("2+2"), Some("calc.math"));
+        assert_eq!(d("18% of 2450"), Some("calc.math"));
+        assert_eq!(
+            d("every Monday at 10 remind me to send the report"),
+            Some("reminders.remind")
+        );
+        assert_eq!(
+            d("remind me tmrw at 9 to pay rent"),
+            Some("reminders.remind")
+        );
+        assert_eq!(d("set a timr for 10 minutes"), Some("reminders.timer"));
+        assert_eq!(d("timer 5"), Some("reminders.timer"));
+        // Music words win: these are not timers or reminders.
+        assert_eq!(d("pause the timer and play music"), None);
+        assert_eq!(d("play a song to remind me of home"), None);
+        assert_eq!(d("open spotify"), None);
+    }
+
+    #[test]
+    fn a_percentage_of_a_number_is_recognised() {
+        for yes in [
+            "18% of 2450",
+            "what is 15 percent of 1,200?",
+            "15 percent tip on 80",
+            "what's 20% of $500",
+            "7.5 pct of 200",
+        ] {
+            assert!(is_percent_of(yes), "{yes}");
+        }
+        for no in [
+            "of 2450",
+            "18% off",
+            "50 percent",
+            "percent of what",
+            "open spotify",
+            "18 of 2450",
+        ] {
+            assert!(!is_percent_of(no), "{no}");
+        }
+    }
+
+    #[test]
+    fn texting_spellings_of_common_words_are_written_out() {
+        assert_eq!(
+            normalize("remind me tmrw at 9 to pay rent"),
+            "remind me tomorrow at 9 to pay rent"
+        );
+        assert_eq!(
+            normalize("remind me abt the bill tonite"),
+            "remind me about the bill tonight"
+        );
+        // Only whole words, and never the first word (that is the verb).
+        assert_eq!(normalize("tmrw at 9"), "tmrw at 9");
+        assert_eq!(normalize("set a timer"), "set a timer");
     }
 
     #[test]

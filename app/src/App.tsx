@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as bridge from "./bridge";
 import { AskCard, ChoiceCard, ConfirmCard } from "./components/Cards";
+import GlassSurfaceUntyped from "./components/glass/GlassSurface";
 import { Chevron, Cross } from "./components/Icons";
+import { SourceCard, SourceChip } from "./components/SourceChip";
+import { currentDesign } from "./design";
+import { splitSource } from "./source";
 import Suggestions from "./components/Suggestions";
 import VoiceButtons from "./components/VoiceButtons";
 import { GreyOrb, type GreyMood } from "./orbs";
@@ -26,6 +30,21 @@ const HOVER_GRACE_MS = 2_500;
 const HISTORY_SIZE = 30;
 /** How long the pop-down animation runs before the window is hidden (see styles.css). */
 const POP_DOWN_MS = 260;
+/** A message that will take more than one line gets "multi": the row aligns to the top then. */
+const messageClass = (m: string) => (m.length > 44 ? "message multi" : "message");
+
+/** The pasted component is untyped JS; it takes CSS sizes as well as numbers. */
+const GlassSurface = GlassSurfaceUntyped as unknown as React.FC<
+  Record<string, unknown> & { children?: React.ReactNode }
+>;
+
+/** Which look the bar uses: "glass2" (GlassSurface, Geist) or "classic". See design.ts. */
+const DESIGN = currentDesign();
+const TEXT_FONT =
+  DESIGN === "glass2"
+    ? '450 14px "Geist Variable", "Segoe UI", sans-serif'
+    : '500 14px "Manrope Variable", "Segoe UI", sans-serif';
+
 /** Window width: compact by default, growing with the typed text up to a limit. */
 const BAR_MIN_WIDTH = 440;
 const BAR_MAX_WIDTH = 720;
@@ -35,7 +54,7 @@ let measureCtx: CanvasRenderingContext2D | null | undefined;
 function wantedWidth(text: string): number {
   if (measureCtx === undefined) {
     measureCtx = document.createElement("canvas").getContext("2d");
-    if (measureCtx) measureCtx.font = '500 14px "Manrope Variable", "Segoe UI", sans-serif';
+    if (measureCtx) measureCtx.font = TEXT_FONT;
   }
   const textPx = measureCtx ? measureCtx.measureText(text).width : text.length * 8;
   return Math.round(Math.min(BAR_MAX_WIDTH, Math.max(BAR_MIN_WIDTH, textPx + ROW_CHROME)));
@@ -45,6 +64,55 @@ function wantedWidth(text: string): number {
 const SHOW_CLOSE_BUTTON = false;
 /** One-tap ideas shown under an empty bar. */
 const SUGGESTIONS = ["Open Spotify", "10-minute timer", "Pause music", "18% of 2,450"];
+
+/**
+ * The glass the bar's content sits on. "classic" is the liquid-glass pill as before;
+ * "glass2" is GlassSurface. `block` is true when the content is more than one line (a long
+ * answer, an open source card): the pill then becomes a rounded panel.
+ */
+function Surface({
+  phase,
+  block,
+  children,
+}: {
+  phase: string;
+  block: boolean;
+  children: React.ReactNode;
+}) {
+  if (DESIGN === "glass2") {
+    const panel = block || ["confirm", "choice", "asking"].includes(phase);
+    return (
+      <div className="bar-g2" data-phase={phase} data-tauri-drag-region>
+        <GlassSurface
+          className="g2-surface"
+          width="100%"
+          height="auto"
+          borderRadius={panel ? 22 : 9999}
+          borderWidth={0.07}
+          brightness={52}
+          opacity={0.93}
+          blur={11}
+          displace={0.4}
+          backgroundOpacity={0.8}
+          saturation={1.4}
+          distortionScale={-150}
+          redOffset={0}
+          greenOffset={8}
+          blueOffset={16}
+          mixBlendMode="screen"
+        >
+          {children}
+        </GlassSurface>
+      </div>
+    );
+  }
+  return (
+    <div className="bar box" data-phase={phase} data-tauri-drag-region>
+      <div className="circle-overlay" aria-hidden="true" />
+      {children}
+    </div>
+  );
+}
 
 export default function App() {
   const [state, dispatch] = useReducer(reduce, initialState);
@@ -284,6 +352,11 @@ export default function App() {
   // makes it taller.
   const showStatus = state.phase === "working" || state.phase === "done" || state.phase === "failed";
 
+  // A looked-up answer carries its credit at the end; it is shown as a round button instead.
+  const answer = state.phase === "done" ? splitSource(state.message) : null;
+  const [sourceOpen, setSourceOpen] = useState(false);
+  useEffect(() => setSourceOpen(false), [state]);
+
   // The "+" opens a row of one-tap suggestions. Off by default, to keep the bar clean.
   const [showChips, setShowChips] = useState(false);
   const mood: GreyMood =
@@ -313,8 +386,14 @@ export default function App() {
         }}
       >
         <div className="fx-layer">
-          <div className="bar box" data-phase={state.phase} data-tauri-drag-region>
-            <div className="circle-overlay" aria-hidden="true" />
+          <Surface
+            phase={state.phase}
+            block={
+              sourceOpen ||
+              ((state.phase === "done" || state.phase === "failed") &&
+                messageClass(answer ? answer.body : state.message) !== "message")
+            }
+          >
             {/* Any empty part of the pill drags it; the input and buttons do not. */}
             <div className="row" data-tauri-drag-region>
               {/* The orb opens the suggestions. */}
@@ -337,9 +416,18 @@ export default function App() {
                   onClick={() => state.phase !== "working" && resetBar()}
                 >
                   {state.phase === "working" && <span className="message muted">Working…</span>}
-                  {state.phase === "done" && (
+                  {state.phase === "done" && answer && (
                     <>
-                      <span className="message">{state.message}</span>
+                      <span className={messageClass(answer.body)} title={answer.body}>
+                        {answer.body}
+                        {answer.source && (
+                          <SourceChip
+                            source={answer.source}
+                            open={sourceOpen}
+                            onToggle={() => setSourceOpen((v) => !v)}
+                          />
+                        )}
+                      </span>
                       {showUndo && (
                         <button
                           className="undo"
@@ -353,7 +441,9 @@ export default function App() {
                       )}
                     </>
                   )}
-                  {state.phase === "failed" && <span className="message">{state.message}</span>}
+                  {state.phase === "failed" && <span className={messageClass(state.message)} title={state.message}>
+                        {state.message}
+                      </span>}
                 </div>
               ) : (
                 <input
@@ -401,7 +491,9 @@ export default function App() {
                 {state.phase === "asking" && <AskCard id={state.id} question={state.question} answer={text} />}
               </div>
             )}
-          </div>
+
+            {sourceOpen && answer?.source && <SourceCard source={answer.source} />}
+          </Surface>
 
           {SHOW_CLOSE_BUTTON && (
             <button className="closer box" aria-label="Close" title="Close (Esc)" onClick={closeBar}>

@@ -35,3 +35,7 @@ docs/_archive/
 .vscode/
 .claude/
 *Zone.Identifier
+
+# end-to-end test output (screenshots, traces)
+app/e2e-results/
+app/test-results/

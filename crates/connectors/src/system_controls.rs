@@ -561,7 +561,16 @@ impl Connector for SystemControls {
                 self.run(SCREENSHOT_SCRIPT, &[("JITMO_PATH", &p)])?;
                 Ok(Output(
                     [
-                        ("message".to_string(), format!("Screenshot saved to {p}")),
+                        (
+                            "message".to_string(),
+                            // The full path is long and not what you need to read.
+                            format!(
+                                "Screenshot saved to Pictures\\Screenshots\\{}",
+                                path.file_name()
+                                    .map(|n| n.to_string_lossy())
+                                    .unwrap_or_default()
+                            ),
+                        ),
                         ("path".to_string(), p),
                     ]
                     .into(),

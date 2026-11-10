@@ -208,7 +208,7 @@ pub struct CallRec {
     pub script: bool,
 }
 
-type Log = Arc<Mutex<Vec<CallRec>>>;
+pub type Log = Arc<Mutex<Vec<CallRec>>>;
 
 /// Wraps a connector (or stands in for one): records every execute and check.
 struct Rec {
@@ -991,6 +991,157 @@ fn known_note() -> jitmo_ipc::ContextNote {
     .note()
 }
 
+/// The simulated PC an engine runs against: real connectors over recording stand-ins, a
+/// throw-away database and a fixed clock. Nothing here touches the real machine.
+pub struct World {
+    pub flow: Flow,
+    /// Every connector call and script the engine made.
+    pub log: Log,
+    pub checks: Arc<AtomicUsize>,
+    pub ms: Arc<AtomicUsize>,
+}
+
+/// Build the world in `dir` (a fresh folder). `flags` are the corpus world switches
+/// (for example `city_pune`).
+pub fn build_world(
+    skills: &[Skill],
+    worker: &Option<WorkerLauncher>,
+    flags: &HashSet<String>,
+    dir: &Path,
+) -> World {
+    let db = dir.join("jitmo.db");
+    let log: Log = Arc::new(Mutex::new(Vec::new()));
+    let checks = Arc::new(AtomicUsize::new(0));
+    let ms = Arc::new(AtomicUsize::new(0));
+    // The world.
+    let sim = Arc::new(Sim {
+        log: log.clone(),
+        flags: flags.clone(),
+        state: Mutex::new(SimState {
+            vol: 40,
+            muted: false,
+            bright: 60,
+            wifi: true,
+            bt: false,
+            dnd: false,
+            media: "Paused",
+        }),
+        pictures: dir.join("Pictures"),
+    });
+    let now = fixed_now;
+    let rec = |id: &str, inner: Option<Arc<dyn Connector>>| -> (String, Arc<dyn Connector>) {
+        (
+            id.to_string(),
+            Arc::new(Rec {
+                id: id.to_string(),
+                inner,
+                stand_in: if id == "stub_messenger" {
+                    FakeConnector::new(id).with_answer(
+                            "This was a test: nothing was really sent. Real messaging is not built yet.",
+                        )
+                } else {
+                    FakeConnector::new(id)
+                },
+                log: log.clone(),
+                checks: checks.clone(),
+                ms: ms.clone(),
+            }) as Arc<dyn Connector>,
+        )
+    };
+    let place_db = db.clone();
+    let web = jitmo_connectors::web_lookup::WebLookup::with_http(
+        Box::new(StubHttp { log: log.clone() }),
+        None,
+    )
+    .with_place_source(move || {
+        Store::open(&place_db, None)
+            .ok()
+            .and_then(|s| s.get_setting("default_place").ok().flatten())
+    })
+    .with_clock(move || now().with_timezone(&chrono::Utc));
+    let calc_db = db.clone();
+    let calc = jitmo_connectors::local_calc::LocalCalc::with_now(move || {
+        now().with_timezone(&chrono::Utc)
+    })
+    .with_place_source(move || {
+        Store::open(&calc_db, None)
+            .ok()
+            .and_then(|s| s.get_setting("default_place").ok().flatten())
+    });
+    let connectors: std::collections::HashMap<String, Arc<dyn Connector>> = [
+        rec("windows_system", Some(Arc::new(AppsSim))),
+        rec(
+            "files",
+            Some(Arc::new(FilesSim(
+                jitmo_connectors::files::Files::new(dir.join("Downloads")).with_now(now),
+            ))),
+        ),
+        rec("stub_messenger", None),
+        rec("whatsapp_desktop", None),
+        rec("web_lookup", Some(Arc::new(web))),
+        rec("local_calc", Some(Arc::new(calc))),
+        rec(
+            "browser",
+            Some(Arc::new(jitmo_connectors::browser::Browser::new(
+                sim.clone(),
+            ))),
+        ),
+        rec(
+            "spotify",
+            Some(Arc::new(jitmo_connectors::spotify::Spotify::new(
+                sim.clone(),
+            ))),
+        ),
+        rec(
+            "dnd",
+            Some(Arc::new(jitmo_connectors::dnd::Dnd::new(sim.clone()))),
+        ),
+        rec(
+            "system_controls",
+            Some(Arc::new(
+                jitmo_connectors::system_controls::SystemControls::new(
+                    sim.clone(),
+                    dir.join("Pictures"),
+                ),
+            )),
+        ),
+        rec(
+            "settings",
+            Some(Arc::new(jitmo_connectors::settings::Settings::new(
+                db.clone(),
+            ))),
+        ),
+        rec(
+            "reminders",
+            Some(Arc::new(
+                jitmo_connectors::reminders::Reminders::new(db.clone()).with_now(now),
+            )),
+        ),
+    ]
+    .into_iter()
+    .collect();
+
+    let store = Store::open(&db, None).expect("store");
+    if flags.contains("city_pune") {
+        let _ = store.set_setting("default_place", "Pune");
+    }
+    let router = new_router(skills, worker);
+    let clock = now()
+        .with_timezone(&chrono::Utc)
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    let flow = Flow::new(router, store, connectors)
+        .with_context(Fixture::new(dir))
+        .with_app_names(|| APPS.iter().map(|s| s.to_string()).collect())
+        .with_clock(move || clock.clone());
+    World {
+        flow,
+        log,
+        checks,
+        ms,
+    }
+}
+
 /// Everything one worker thread keeps between cases.
 pub struct Lane {
     skills: Vec<Skill>,
@@ -1014,10 +1165,12 @@ impl Lane {
         let dir = std::env::temp_dir().join(format!("jitmo-audit-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
-        let db = dir.join("jitmo.db");
-        let log: Log = Arc::new(Mutex::new(Vec::new()));
-        let checks = Arc::new(AtomicUsize::new(0));
-        let ms = Arc::new(AtomicUsize::new(0));
+        let World {
+            mut flow,
+            log,
+            checks,
+            ms,
+        } = build_world(&self.skills, &self.worker, &ex.flags, &dir);
 
         // Diagnostics: what the router thinks (same call the flow makes).
         let u = self
@@ -1041,121 +1194,6 @@ impl Lane {
             .map(|s| (s.kind.clone(), s.text.clone()))
             .collect();
 
-        // The world.
-        let sim = Arc::new(Sim {
-            log: log.clone(),
-            flags: ex.flags.clone(),
-            state: Mutex::new(SimState {
-                vol: 40,
-                muted: false,
-                bright: 60,
-                wifi: true,
-                bt: false,
-                dnd: false,
-                media: "Paused",
-            }),
-            pictures: dir.join("Pictures"),
-        });
-        let now = fixed_now;
-        let rec = |id: &str, inner: Option<Arc<dyn Connector>>| -> (String, Arc<dyn Connector>) {
-            (
-                id.to_string(),
-                Arc::new(Rec {
-                    id: id.to_string(),
-                    inner,
-                    stand_in: if id == "stub_messenger" {
-                        FakeConnector::new(id).with_answer(
-                            "This was a test: nothing was really sent. Real messaging is not built yet.",
-                        )
-                    } else {
-                        FakeConnector::new(id)
-                    },
-                    log: log.clone(),
-                    checks: checks.clone(),
-                    ms: ms.clone(),
-                }) as Arc<dyn Connector>,
-            )
-        };
-        let place_db = db.clone();
-        let web = jitmo_connectors::web_lookup::WebLookup::with_http(
-            Box::new(StubHttp { log: log.clone() }),
-            None,
-        )
-        .with_place_source(move || {
-            Store::open(&place_db, None)
-                .ok()
-                .and_then(|s| s.get_setting("default_place").ok().flatten())
-        })
-        .with_clock(move || now().with_timezone(&chrono::Utc));
-        let calc = jitmo_connectors::local_calc::LocalCalc::with_now(move || {
-            now().with_timezone(&chrono::Utc)
-        });
-        let connectors: std::collections::HashMap<String, Arc<dyn Connector>> = [
-            rec("windows_system", Some(Arc::new(AppsSim))),
-            rec(
-                "files",
-                Some(Arc::new(FilesSim(
-                    jitmo_connectors::files::Files::new(dir.join("Downloads")).with_now(now),
-                ))),
-            ),
-            rec("stub_messenger", None),
-            rec("whatsapp_desktop", None),
-            rec("web_lookup", Some(Arc::new(web))),
-            rec("local_calc", Some(Arc::new(calc))),
-            rec(
-                "browser",
-                Some(Arc::new(jitmo_connectors::browser::Browser::new(
-                    sim.clone(),
-                ))),
-            ),
-            rec(
-                "spotify",
-                Some(Arc::new(jitmo_connectors::spotify::Spotify::new(
-                    sim.clone(),
-                ))),
-            ),
-            rec(
-                "dnd",
-                Some(Arc::new(jitmo_connectors::dnd::Dnd::new(sim.clone()))),
-            ),
-            rec(
-                "system_controls",
-                Some(Arc::new(
-                    jitmo_connectors::system_controls::SystemControls::new(
-                        sim.clone(),
-                        dir.join("Pictures"),
-                    ),
-                )),
-            ),
-            rec(
-                "settings",
-                Some(Arc::new(jitmo_connectors::settings::Settings::new(
-                    db.clone(),
-                ))),
-            ),
-            rec(
-                "reminders",
-                Some(Arc::new(
-                    jitmo_connectors::reminders::Reminders::new(db.clone()).with_now(now),
-                )),
-            ),
-        ]
-        .into_iter()
-        .collect();
-
-        let store = Store::open(&db, None).expect("store");
-        if ex.flags.contains("city_pune") {
-            let _ = store.set_setting("default_place", "Pune");
-        }
-        let router = new_router(&self.skills, &self.worker);
-        let clock = now()
-            .with_timezone(&chrono::Utc)
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
-        let mut flow = Flow::new(router, store, connectors)
-            .with_context(Fixture::new(&dir))
-            .with_app_names(|| APPS.iter().map(|s| s.to_string()).collect())
-            .with_clock(move || clock.clone());
         let mut user = User {
             prompts: Vec::new(),
             pick: ex.pick.clone(),
@@ -1460,7 +1498,13 @@ impl Connector for AppsSim {
         }
         let norm = |s: &str| s.to_lowercase().replace([' ', '-'], "");
         match APPS.iter().find(|a| norm(a) == norm(wanted)) {
-            Some(a) => Ok(Output([("app".to_string(), a.to_string())].into())),
+            Some(a) => Ok(Output(
+                [
+                    ("app".to_string(), a.to_string()),
+                    ("message".to_string(), format!("Opened {a}.")),
+                ]
+                .into(),
+            )),
             None => Err(ConnError::NotInstalled(wanted.clone())),
         }
     }

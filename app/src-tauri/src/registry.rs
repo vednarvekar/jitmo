@@ -219,7 +219,11 @@ pub(crate) fn connectors(
     );
     map.insert(
         "local_calc".into(),
-        Arc::new(jitmo_connectors::local_calc::LocalCalc::new()),
+        // The saved place answers "when does the sun set" with no city named.
+        Arc::new(
+            jitmo_connectors::local_calc::LocalCalc::new()
+                .with_place_source(setting_reader(db, key, "default_place")),
+        ),
     );
     #[cfg(windows)]
     map.insert(

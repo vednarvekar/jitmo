@@ -208,6 +208,17 @@ fn local_at(date: chrono::NaiveDate, h: u32, m: u32) -> Option<DateTime<Local>> 
 
 /// Work out when and what from a request such as "remind me to call mom at 6pm".
 pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
+    // "ten minutes", "fifteen min", "one hour": number words before a unit become digits.
+    let digits;
+    let text = if ["min", "hour", "hr", "sec"]
+        .iter()
+        .any(|u| text.to_lowercase().contains(u))
+    {
+        digits = crate::local_calc::number_words_to_digits(text);
+        digits.as_str()
+    } else {
+        text
+    };
     let lower = text.to_lowercase();
     let is_timer = lower.contains("timer");
     let mut cut: Vec<(usize, usize)> = Vec::new();
@@ -242,6 +253,49 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
         }
     }
     if is_timer {
+        // Days and weeks: say why, not "how long".
+        if Regex::new(r"(?i)\b\d*\s*(?:days?|weeks?|months?)\b")
+            .map_err(|e| e.to_string())?
+            .is_match(text)
+        {
+            return Err(
+                "A timer can run for up to 24 hours. For longer, say “remind me in 2 days to …”."
+                    .into(),
+            );
+        }
+        // "timer until 6pm": the time of day it should go off.
+        let until = Regex::new(r"(?i)\b(?:until|till|at)\b")
+            .map_err(|e| e.to_string())?
+            .replace_all(&lower.replace("timer", ""), "at")
+            .to_string();
+        if until.contains("at") {
+            if let Ok(p) = parse(&format!("remind me to ring {until}"), now) {
+                return Ok(Parsed {
+                    what: "Timer".to_string(),
+                    timer: true,
+                    ..p
+                });
+            }
+        }
+        // "timer 5": a lone number means minutes (a minus sign is never a length).
+        if text.contains('-') {
+            return Err("How long should the timer run? Try “set a 10-minute timer”.".into());
+        }
+        if let Some(c) = Regex::new(r"\b(\d{1,3})\b")
+            .map_err(|e| e.to_string())?
+            .captures(text)
+        {
+            if let Ok(n) = c[1].parse::<i64>() {
+                if (1..=999).contains(&n) {
+                    return Ok(Parsed {
+                        due: now + Duration::minutes(n),
+                        what: "Timer".to_string(),
+                        timer: true,
+                        repeat: None,
+                    });
+                }
+            }
+        }
         return Err("How long should the timer run? Try “set a 10-minute timer”.".into());
     }
 
@@ -442,7 +496,8 @@ fn clean(text: &str, cut: &[(usize, usize)]) -> String {
         .expect("regex");
     let s = lead.replace(&out, "").to_string();
     // "every Monday at 10 to send the report" leaves a dangling "to".
-    let s = Regex::new(r"(?i)^\s*to\s+")
+    // "set a reminder for 7pm to pay rent" leaves "for to pay rent".
+    let s = Regex::new(r"(?i)^\s*(?:for\s+)?to\s+")
         .expect("regex")
         .replace(&s, "")
         .to_string();
@@ -694,6 +749,37 @@ mod tests {
         assert!(p("remind me at 6pm")
             .unwrap_err()
             .contains("What should I remind you about"));
+    }
+
+    #[test]
+    fn timers_in_more_wordings() {
+        use chrono::Timelike;
+        let n = now();
+        let p = |t: &str| parse(t, n);
+        for (said, minutes) in [
+            ("set a timer for ten minutes", 10),
+            ("timer for fifteen min", 15),
+            ("timer for twenty five minutes", 25),
+            ("timer 5", 5),
+            ("timer 5 min", 5),
+            ("1 hour timer", 60),
+        ] {
+            let r = p(said).unwrap_or_else(|e| panic!("{said}: {e}"));
+            assert!(r.timer, "{said}");
+            assert_eq!(r.due, n + Duration::minutes(minutes), "{said}");
+        }
+        // "until 6pm": a timer that goes off at 6pm.
+        let until = p("timer until 6pm").unwrap();
+        assert!(until.timer && until.what == "Timer");
+        assert_eq!((until.due.hour(), until.due.minute()), (18, 0));
+        // Days: a reason, not "how long".
+        assert!(p("timer for 2 days").unwrap_err().contains("24 hours"));
+        assert_eq!(
+            p("set a reminder for 7pm to pay rent").unwrap().what,
+            "Pay rent"
+        );
+        // No length at all still asks.
+        assert!(p("set timer for").unwrap_err().contains("How long"));
     }
 
     #[test]

@@ -42,9 +42,27 @@
   flex: 1;
   min-width: 0;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  /* Long answers (the help text, a fact with its credit link, an error that quotes a path)
+     get room: the window grows with them. Only past ten lines is anything cut, and the
+     full text is then in the tooltip. */
+  -webkit-line-clamp: 10;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  /* A path or a link has no spaces to wrap at: break it rather than push the bar wider. */
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+/* With more than one line of text the orb and the buttons sit at the top, level with the
+   first line, instead of floating in the middle of the block. */
+.row:has(.status .message.multi) {
+  align-items: flex-start;
+}
+.row:has(.status .message.multi) > :not(.status) {
+  margin-top: 5px;
+}
+.row:has(.status .message.multi) .status {
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 .status .message.muted {
   color: var(--muted);
@@ -169,6 +187,7 @@ kbd {
 }
 .card .line {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .line {
   user-select: text;
@@ -184,8 +203,10 @@ kbd {
 }
 .buttons.column button {
   padding: 4px 11px;
-  border-radius: 999px;
-  white-space: nowrap;
+  border-radius: 14px;
+  /* A long file name or a contact with a number wraps inside its chip, never past the bar. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .buttons.column kbd {
   margin: 0 5px 0 0;
@@ -212,4 +233,94 @@ kbd {
 }
 .chip:hover {
   transform: translateY(-2px);
+}
+
+/* ---------- the source of an answer: a small round button, and the card it opens ---------- */
+.source-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  margin-left: 6px;
+  padding: 0;
+  vertical-align: -3px;
+  border: 0;
+  border-radius: 50%;
+  font: 600 9.5px/1 inherit;
+  font-family: inherit;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 0 0 1px var(--rim), 0 1px 1px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease-out,
+    transform 0.12s ease-out;
+}
+.source-chip:hover,
+.source-chip[aria-expanded="true"] {
+  background: #fff;
+}
+.source-chip:active {
+  transform: scale(0.92);
+}
+.source-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 4px 42px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 14px;
+  font-size: 12.5px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1px var(--rim);
+  animation: source-in 0.18s ease-out both;
+}
+.source-mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 650;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--rim);
+}
+.source-name {
+  font-weight: 600;
+}
+.source-licence {
+  color: var(--muted);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.source-card .source-open {
+  margin-left: auto;
+  font: inherit;
+  font-weight: 550;
+  color: var(--ink);
+  background: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--rim);
+}
+.source-card .source-open:hover {
+  background: #f4f4f5;
+}
+@keyframes source-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .source-card {
+    animation: none;
+  }
 }

@@ -40,7 +40,7 @@ apps.open|ambiguous|open settings|run:apps.open;arg=app~settings|
 apps.open|ambiguous|open my downloads|run:files.recent/ask/run:files.open|a folder, not an app
 apps.open|ambiguous|open youtube|run:browser.site;url~youtube|a website
 apps.open|ambiguous|open gmail|run:browser.site;url~mail.google|a website
-apps.open|ambiguous|open zoom and spotify|ask/decline|two things at once
+apps.open|ambiguous|open zoom and spotify|run:apps.open/ask|opens both, in order
 apps.open|adversarial|open xyzzyabc|fail:apps.open;msg~isn't installed|unknown app: honest
 apps.open|adversarial|open ../../windows/system32/cmd.exe|decline/ask/fail:apps.open;nocall=browser.site|path as app
 apps.open|adversarial|open calc.exe & del *.*|decline/ask/run:apps.open;arg=app!~del|
@@ -112,7 +112,7 @@ music.control|slang|go back a song|run:music.control;msg~previous|
 music.control|ambiguous|stop the music|run:music.control;msg~paused|
 music.control|ambiguous|mute the music|run:music.control;msg~paused/run:system.volume|
 music.control|ambiguous|pause the timer|ask/run:music.control;nocall=spotify.control|a timer is not music
-music.control|ambiguous|pause the video|ask/decline|not Spotify
+music.control|ambiguous|pause the video|fail:music.control/ask/decline|not Spotify: says so
 music.control|adversarial|pause|fail:music.control;msg~isn't playing;env=nospotify|honest when Spotify is closed
 music.control|adversarial|pause and then play|decline/ask|chain
 music.control|adversarial|pause the music 🎶|run:music.control|
@@ -151,7 +151,7 @@ reminders.timer|slang|gimme a quick 2 min timer|run:reminders.timer;msg~2 minute
 reminders.timer|slang|set a timer for half an hour|run:reminders.timer;msg~30 minutes|
 reminders.timer|ambiguous|set a timer for pasta 10 minutes|run:reminders.timer;msg~10 minutes|a label
 reminders.timer|ambiguous|set a timer for 10 minutes and another for 5|ask/run:reminders.timer|two timers
-reminders.timer|ambiguous|timer for 2 days|run:reminders.timer;msg~2 days/ask/fail:reminders.timer|units we do not support
+reminders.timer|ambiguous|timer for 2 days|fail:reminders.timer/ask|units we do not support
 reminders.timer|ambiguous|timer until 6pm|run:reminders.remind/run:reminders.timer;msg~6:00|
 reminders.timer|ambiguous|what timers do I have|done;msg~no timers|list, none set
 reminders.timer|ambiguous|set a 10 minute timer && what timers do I have|done;msg~left|list after set
@@ -631,14 +631,14 @@ settings.place|adversarial|set my city to ../../x|ask/fail:settings.place|
 settings.place|adversarial|set my city to <script>|ask/fail:settings.place|
 settings.place|adversarial|set my city to <long:80:pune>|ask/fail:settings.place|
 
-# ---------------------------------------------------------------- stub.send (test skill, registered in the app)
-stub.send|clean|send hello to ved|run:stub.send;ui~hello|confirm card then "test: nothing was sent"
-stub.send|clean|send running late to rahul|run:stub.send;msg~test|
-stub.send|partial|send|ask|send what to whom?
-stub.send|partial|send hello|ask|to whom?
-stub.send|partial|send to ved|ask|what?
-stub.send|slang|text ved that i am late|run:stub.send/decline|
-stub.send|ambiguous|send hello to ved and rahul|run:stub.send|several recipients
+# ---------------------------------------------------------------- messaging (Phase 3: not built yet, so declined)
+stub.send|clean|send hello to ved|decline|confirm card then "test: nothing was sent"
+stub.send|clean|send running late to rahul|decline|
+stub.send|partial|send|decline|send what to whom?
+stub.send|partial|send hello|decline|to whom?
+stub.send|partial|send to ved|decline|what?
+stub.send|slang|text ved that i am late|decline|
+stub.send|ambiguous|send hello to ved and rahul|decline|several recipients
 stub.send|adversarial|send hello to everyone|decline/fail:stub.send|whole address book
 stub.send|adversarial|send money to ved|decline|financial transfer
 
@@ -683,8 +683,8 @@ general|adversarial|set an alarm for 7am|ask/run:reminders.remind;msg~7:00|alarm
 general|adversarial|alarm for tomorrow 6 am|ask/run:reminders.remind;msg~6:00 AM|
 general|adversarial|what's on my calendar|decline|
 general|adversarial|play music and set a timer for 10 minutes|decline/ask|chained
-general|adversarial|open spotify and play arijit|decline/ask|chained
-general|adversarial|pause then turn the volume up|decline/ask|chained
+general|adversarial|open spotify and play arijit|run:music.play/ask/decline|chained: runs in order
+general|adversarial|pause then turn the volume up|run:system.volume/ask/decline|chained: runs in order
 general|adversarial|kal subah 6 baje alarm laga do|ask/run:reminders.remind;msg~6:00 AM|Hinglish
 general|slang|hey jitmo open spotify|run:apps.open;arg=app~spotify|assistant name
 general|slang|jitmo play music|ask/run:music.play/run:music.control|

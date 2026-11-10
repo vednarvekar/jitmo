@@ -96,7 +96,9 @@ fn lower(ws: &[String]) -> Vec<String> {
 }
 
 const LATEST_MARKERS: &[&str] = &["latest", "newest", "new", "recent"];
-const VIDEO_WORDS: &[&str] = &["vid", "vids", "video", "videos", "upload", "uploads"];
+const VIDEO_WORDS: &[&str] = &[
+    "vid", "vids", "video", "videos", "vidoe", "vedio", "viedo", "upload", "uploads",
+];
 const CREATOR_FILLER: &[&str] = &[
     "open", "play", "watch", "show", "me", "the", "that", "this", "a", "an", "please", "go", "to",
     "up", "pull", "can", "you", "could", "on", "youtube", "channel", "from", "by", "of", "my", "i",
@@ -171,7 +173,14 @@ pub fn parse_search(text: &str) -> Option<(Engine, String)> {
     }
     let mut engine = Engine::Web;
     match lw.get(i).map(String::as_str)? {
-        "google" | "search" | "searching" | "lookup" => i += 1,
+        "google" | "bing" | "search" | "searching" | "lookup" => i += 1,
+        // "find me a recipe for dosa online": only with "online", else it is a file search.
+        "find" if lw.last().map(String::as_str) == Some("online") => {
+            i += 1;
+            if lw.get(i).map(String::as_str) == Some("me") {
+                i += 1;
+            }
+        }
         "look" if lw.get(i + 1).map(String::as_str) == Some("up") => i += 2,
         "youtube" => {
             engine = Engine::YouTube;

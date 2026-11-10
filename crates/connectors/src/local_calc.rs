@@ -151,7 +151,7 @@ pub fn format_number(x: f64) -> String {
 }
 
 /// "five plus twenty five" -> "5 plus 25": spelled-out numbers up to 999,999 become digits.
-fn number_words_to_digits(text: &str) -> String {
+pub(crate) fn number_words_to_digits(text: &str) -> String {
     fn unit(w: &str) -> Option<u64> {
         Some(match w {
             "zero" => 0,

@@ -145,7 +145,8 @@ pub fn clarify(said: &str) -> Option<Clarify> {
             "turn off bluetooth",
         ));
     }
-    if is_bare(&w, &["dnd", "disturb", "notifications", "not", "don't"]) && has(&["dnd", "disturb"])
+    if is_bare(&w, &["dnd", "disturb", "notifications", "not", "don't"])
+        && (has(&["dnd", "disturb"]) || w == ["notifications"])
     {
         return Some(on_off(
             "Do Not Disturb: on or off?",
@@ -175,7 +176,9 @@ pub fn clarify(said: &str) -> Option<Clarify> {
     }
 
     // Reminders: what, then when.
-    if is_bare(&w, &["remind", "reminder"]) {
+    if has(&["remind", "reminder"])
+        && is_bare(&w, &["remind", "reminder", "later", "something", "sometime", "soon"])
+    {
         return Some(Clarify {
             steps: vec![
                 Step::Text {
@@ -263,7 +266,11 @@ pub fn clarify(said: &str) -> Option<Clarify> {
             "open the website {0}",
         ));
     }
-    let bare_open = matches!(w.as_slice(), [a] if a == "open" || a == "launch");
+    // "open", "open the", "launch my": the verb with only an article after it.
+    let bare_open = matches!(w.first().map(String::as_str), Some("open" | "launch"))
+        && w[1..]
+            .iter()
+            .all(|x| ["the", "a", "an", "my", "some", "up"].contains(&x.as_str()));
     if bare_open
         || (has(&["app", "application", "program"])
             && is_bare(
@@ -272,6 +279,74 @@ pub fn clarify(said: &str) -> Option<Clarify> {
             ))
     {
         return Some(text("Which app?", "For example: Spotify", "open {0}"));
+    }
+
+    // A question with no subject: "what is", "tell me about", "who is".
+    let joined = w.join(" ");
+    if [
+        "what is", "whats", "what's", "tell me about", "tell me", "who is", "fact", "facts",
+        "define", "what",
+    ]
+    .contains(&joined.as_str())
+    {
+        return Some(text(
+            "What would you like to know?",
+            "For example: who wrote Pride and Prejudice",
+            "tell me about {0}",
+        ));
+    }
+    // The time somewhere, with no place.
+    if ["time in", "what time is it in", "whats the time in", "what's the time in"]
+        .contains(&joined.as_str())
+    {
+        return Some(text("Which city?", "For example: Tokyo", "time in {0}"));
+    }
+    if ["sun", "the sun"].contains(&joined.as_str()) {
+        return Some(pick(
+            "Sunrise or sunset?",
+            vec![
+                ("Sunrise", Some("when is sunrise today")),
+                ("Sunset", Some("when is sunset today")),
+            ],
+        ));
+    }
+    // The saved place, with no place.
+    if [
+        "set my city", "set my city to", "set my location", "set my location to", "i live in",
+        "my location", "my city", "set city", "set location", "change my city",
+    ]
+    .contains(&joined.as_str())
+    {
+        return Some(text(
+            "Which city do you live in?",
+            "For example: Pune",
+            "set my city to {0}",
+        ));
+    }
+    // Files with nothing named.
+    if is_bare(&w, &["find", "file", "files", "search"]) && has(&["find"]) {
+        return Some(text(
+            "Which file should I look for?",
+            "A name or part of it, e.g. invoice",
+            "find {0}",
+        ));
+    }
+    if is_bare(&w, &["move", "file", "files"]) && has(&["move"]) {
+        return Some(Clarify {
+            steps: vec![
+                Step::Text {
+                    question: "Which file should I move?",
+                    hint: "For example: report.pdf",
+                },
+                Step::Text {
+                    question: "To which folder?",
+                    hint: "For example: Documents",
+                },
+            ],
+            template: "move {0} to {1}",
+            number_template: None,
+            known: Vec::new(),
+        });
     }
     None
 }
@@ -526,7 +601,20 @@ mod tests {
             ("open website", "Which website?", false),
             ("open app", "Which app?", false),
             ("open", "Which app?", false),
-            ("remind me", "What should I remind you about?", false),
+            ("open the", "Which app?", false),
+            ("launch my", "Which app?", false),
+            ("remind me later", "What should I remind you about?", false),
+            ("what is", "What would you like to know?", false),
+            ("tell me about", "What would you like to know?", false),
+            ("time in", "Which city?", false),
+            ("sun", "Sunrise or sunset?", true),
+            ("set my city", "Which city do you live in?", false),
+            ("i live in", "Which city do you live in?", false),
+            ("find", "Which file should I look for?", false),
+            ("find file", "Which file should I look for?", false),
+            ("move", "Which file should I move?", false),
+            ("notifications", "Do Not Disturb: on or off?", true),
+            ("remind me","What should I remind you about?", false),
             ("set a reminder", "What should I remind you about?", false),
         ] {
             assert_eq!(first_question(said), (question, is_choice), "{said}");

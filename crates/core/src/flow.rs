@@ -129,7 +129,18 @@ impl Flow {
 
     /// Handle one request and return its final event.
     pub fn handle(&mut self, id: RequestId, text: &str, prompter: &mut dyn Prompter) -> CoreEvent {
-        self.run(id, text, prompter)
+        let event = self.run(id, text, prompter);
+        // Sunrise, sunset and the moon with no place known answer "Which city? Try ...":
+        // ask it instead, then answer for that city.
+        if let CoreEvent::Done { message, .. } = &event {
+            if message.starts_with("Which city?") {
+                return match ask_text_twice(prompter, "Which city?", "For example: Pune") {
+                    Some(city) => self.run(id, &format!("{text} in {city}"), prompter),
+                    None => self.cancelled(id, text, None),
+                };
+            }
+        }
+        event
     }
 
     /// Undo the last undoable action, if any. Returns the one-line result.
@@ -341,7 +352,14 @@ impl Flow {
             .collect();
         let noun = cmd.kind.noun();
         if wanted.is_empty() {
-            return done(self, format!("You have no {noun} set."));
+            return done(
+                self,
+                if cmd.cancel {
+                    format!("You have no {noun} to stop.")
+                } else {
+                    format!("You have no {noun} set.")
+                },
+            );
         }
         let describe = |r: &jitmo_store::Reminder| -> String {
             let due = chrono::DateTime::parse_from_rfc3339(&r.due_at)
@@ -408,9 +426,39 @@ impl Flow {
         }
     }
 
+    /// Run several requests in order and report them as one. A step that fails or is
+    /// cancelled stops the rest, so "then" never runs on top of something that did not happen.
+    fn run_each(&mut self, id: RequestId, steps: &[String], p: &mut dyn Prompter) -> CoreEvent {
+        let mut said: Vec<String> = Vec::new();
+        for (i, step) in steps.iter().enumerate() {
+            match self.run(id, step, p) {
+                CoreEvent::Done { message, .. } => said.push(message),
+                CoreEvent::Failed { message, .. } => {
+                    said.push(message);
+                    if i + 1 < steps.len() {
+                        said.push("I stopped there.".into());
+                    }
+                    return CoreEvent::Failed {
+                        id,
+                        message: said.join(" "),
+                    };
+                }
+                other => return other,
+            }
+        }
+        CoreEvent::Done {
+            id,
+            message: said.join(" "),
+            // Undo covers only the last step, which would mislead here.
+            undoable: false,
+        }
+    }
+
     fn run(&mut self, id: RequestId, said: &str, p: &mut dyn Prompter) -> CoreEvent {
         // Greetings and fillers are dropped and a mistyped first verb is repaired
         // ("plya arijit singh" -> "play arijit singh") before anything looks at it.
+        let english = crate::hinglish::to_english(said);
+        let said = english.as_deref().unwrap_or(said);
         let normalized = crate::normalize::normalize(said);
         let text = normalized.as_str();
         // 0. "What can you do?" is answered here, without the router.
@@ -421,6 +469,41 @@ impl Flow {
                 message: HELP_MESSAGE.into(),
                 undoable: false,
             };
+        }
+        if crate::normalize::place_with_symbols(text) {
+            return self.fail(
+                id,
+                text,
+                Some("settings.place"),
+                "That doesn't look like a place name. Try “set my city to Pune”.",
+            );
+        }
+        // 0a. Several requests in one sentence: "pause the music and then open notepad",
+        // "open zoom and spotify" (each runs), "open edge or chrome" (asks which).
+        if let Some((apps, either)) = crate::normalize::several_apps(text) {
+            if either {
+                let choices: Vec<Choice> = apps
+                    .iter()
+                    .enumerate()
+                    .map(|(i, a)| Choice {
+                        id: i.to_string(),
+                        label: capitalize(a),
+                    })
+                    .collect();
+                return match p
+                    .choose("Which one should I open?", &choices)
+                    .and_then(|c| c.parse::<usize>().ok())
+                    .and_then(|i| apps.get(i))
+                {
+                    Some(app) => self.run(id, &format!("open {app}"), p),
+                    None => self.cancelled(id, text, None),
+                };
+            }
+            let steps: Vec<String> = apps.iter().map(|a| format!("open {a}")).collect();
+            return self.run_each(id, &steps, p);
+        }
+        if let Some(steps) = crate::normalize::sequence(text) {
+            return self.run_each(id, &steps, p);
         }
         // 0b. "What timers do I have?" / "stop the timer": answered from the saved
         // reminders, since the router has no label for them.
@@ -446,7 +529,17 @@ impl Flow {
         // 1. Route.
         let known = self.known();
         let understanding = self.router.route_with(text, &known.note());
-        let skill_id = match decide(&understanding) {
+        // A sum typed with no words ("2+2") or a percentage of a number ("18% of 2450") is
+        // the calculator, not a guess between skills.
+        let direct =
+            crate::normalize::direct_skill(said, text).filter(|id| self.router.skill(id).is_some());
+        let decision = match direct {
+            Some(id) => RouteDecision::Run {
+                skill_id: id.to_string(),
+            },
+            None => decide(&understanding),
+        };
+        let skill_id = match decision {
             RouteDecision::Decline => return self.fail(id, text, None, "I can't do that yet."),
             RouteDecision::Chained => {
                 return self.fail(
@@ -631,6 +724,68 @@ impl Flow {
                                 .and_then(|i| options.get(i))
                             {
                                 Some((_, sentence)) => self.run(id, sentence, p),
+                                None => self.cancelled(id, text, Some(&skill.id)),
+                            };
+                        }
+                        // Reminders and timers that are missing one part: ask for it.
+                        if message.starts_with("How long should the timer run") {
+                            return match self.ask_timer_length(p) {
+                                Some(length) => self.run(id, &format!("set a timer for {length}"), p),
+                                None => self.cancelled(id, text, Some(&skill.id)),
+                            };
+                        }
+                        if message.starts_with("What should I remind you about") {
+                            return match ask_text_twice(
+                                p,
+                                "What should I remind you about?",
+                                "For example: call mom",
+                            ) {
+                                Some(what) => self.run(id, &format!("{text} to {what}"), p),
+                                None => self.cancelled(id, text, Some(&skill.id)),
+                            };
+                        }
+                        if message.starts_with("Whose latest video") {
+                            return match ask_text_twice(
+                                p,
+                                "Whose latest video?",
+                                "A channel, e.g. MKBHD",
+                            ) {
+                                Some(who) => {
+                                    self.run(id, &format!("open {who}'s latest video"), p)
+                                }
+                                None => self.cancelled(id, text, Some(&skill.id)),
+                            };
+                        }
+                        if message.starts_with("What should I search for") {
+                            return match ask_text_twice(
+                                p,
+                                "What should I search for?",
+                                "Anything you would type into a search box",
+                            ) {
+                                Some(q) => self.run(id, &format!("search the web for {q}"), p),
+                                None => self.cancelled(id, text, Some(&skill.id)),
+                            };
+                        }
+                        if message.starts_with("When should I remind you") {
+                            let presets = [
+                                ("In 1 hour", "in 1 hour"),
+                                ("This evening (6 pm)", "at 6pm"),
+                                ("Tomorrow, 9 am", "tomorrow at 9am"),
+                            ];
+                            let choices: Vec<Choice> = presets
+                                .iter()
+                                .enumerate()
+                                .map(|(i, (label, _))| Choice {
+                                    id: i.to_string(),
+                                    label: (*label).into(),
+                                })
+                                .collect();
+                            return match p
+                                .choose("When should I remind you?", &choices)
+                                .and_then(|c| c.parse::<usize>().ok())
+                                .and_then(|i| presets.get(i))
+                            {
+                                Some((_, when)) => self.run(id, &format!("{text} {when}"), p),
                                 None => self.cancelled(id, text, Some(&skill.id)),
                             };
                         }
@@ -907,6 +1062,14 @@ lock the PC, check the weather and answer quick facts. Say 'what timers do I hav
 timer' to see or stop them. Try: 'open Spotify', '10-minute timer', '18% of 2,450'.";
 
 /// A typed answer; a blank one is asked for once more, then given up on.
+/// "chrome" -> "Chrome", for a button label.
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    c.next()
+        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+        .unwrap_or_default()
+}
+
 fn ask_text_twice(p: &mut dyn Prompter, question: &str, hint: &str) -> Option<String> {
     for _ in 0..2 {
         let a = p.ask_text(question, hint)?;
@@ -1761,11 +1924,11 @@ mod tests {
             failed(&flow.handle(9, "what is the capital of france", &mut user(&[]))),
             "I can't do that yet."
         );
-        assert!(
-            failed(&flow.handle(10, "open spotify and then pause the music", &mut user(&[])))
-                .contains("simpler request")
-        );
         assert!(sys.calls().is_empty());
+        // "A and then B" runs A, then B, in order.
+        flow.handle(10, "open spotify and then pause the music", &mut user(&[]));
+        // Spotify is opened (execute + check); "pause the music" is not taken for an app.
+        assert_eq!(sys.calls().len(), 2, "{:?}", sys.calls());
     }
 
     // --- confirm the task / ask ------------------------------------------------

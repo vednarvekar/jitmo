@@ -25,7 +25,12 @@ pub fn clean_place(raw: &str) -> Result<String, String> {
         && name
             .chars()
             .all(|c| c.is_alphabetic() || c == ' ' || c == '-');
-    if !ok {
+    // "i live in a house", "my city is my home": not a place name.
+    let vague = matches!(
+        words.first().map(|w| w.to_lowercase()).as_deref(),
+        Some("a" | "an" | "my" | "this" | "that" | "here" | "there")
+    );
+    if !ok || vague {
         return Err(BAD_PLACE.to_string());
     }
     if name.chars().any(char::is_uppercase) {

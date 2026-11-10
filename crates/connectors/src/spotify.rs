@@ -95,6 +95,18 @@ pub enum Control {
     Previous,
 }
 
+/// "pause the video", "stop netflix": a player Jitmo does not control.
+pub fn is_other_player(text: &str) -> bool {
+    let t = text.to_lowercase();
+    let words: Vec<&str> = t
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let has = |w: &[&str]| words.iter().any(|x| w.contains(x));
+    has(&["video", "videos", "movie", "film", "netflix", "youtube", "prime", "hotstar"])
+        && !has(&["music", "song", "spotify"])
+}
+
 /// "pause the music", "music off", "skip this song", "play the previous one", "resume".
 pub fn parse_control(text: &str) -> Option<Control> {
     let t = text.to_lowercase();
@@ -103,11 +115,12 @@ pub fn parse_control(text: &str) -> Option<Control> {
         .filter(|w| !w.is_empty())
         .collect();
     let has = |w: &[&str]| words.iter().any(|x| w.contains(x));
-    if has(&["previous", "prev", "back", "last"]) && !has(&["pause", "stop"]) {
+    if has(&["previous", "prev", "prv", "previus", "back", "last"]) && !has(&["pause", "stop"]) {
         Some(Control::Previous)
-    } else if has(&["skip", "next"]) {
+    } else if has(&["skip", "skp", "next", "nxt", "nekst"]) {
         Some(Control::Next)
-    } else if has(&["pause", "stop", "mute"])
+    } else if has(&["pause", "paus", "pasue", "stop", "mute", "kill", "silence", "quiet"])
+        || (has(&["shut"]) && has(&["music", "song", "spotify", "up"]))
         || (has(&["off"]) && has(&["music", "song", "spotify"]))
     {
         Some(Control::Pause)
@@ -283,7 +296,13 @@ impl Connector for Spotify {
         let msg = |m: String| Output([("message".to_string(), m)].into());
         match action {
             "control" => {
-                let c = parse_control(text_arg(args)?)
+                let said = text_arg(args)?;
+                if is_other_player(said) {
+                    return Err(ConnError::Failed(
+                        "I can only control Spotify right now, not videos.".into(),
+                    ));
+                }
+                let c = parse_control(said)
                     .ok_or_else(|| ConnError::Failed("Should I pause, resume or skip?".into()))?;
                 self.media(op_name(c))?;
                 Ok(msg(match c {
@@ -389,10 +408,18 @@ mod tests {
             ("next song", Next),
             ("play the previous song", Previous),
             ("resume the music", Resume),
+            ("nxt song", Next),
+            ("skp", Next),
+            ("kill the music", Pause),
+            ("shut up the music", Pause),
+            ("prev song", Previous),
         ] {
             assert_eq!(parse_control(t), Some(want), "{t}");
         }
         assert_eq!(parse_control("how are you"), None);
+        assert!(is_other_player("pause the video"));
+        assert!(is_other_player("stop netflix"));
+        assert!(!is_other_player("pause the music"));
     }
 
     #[test]

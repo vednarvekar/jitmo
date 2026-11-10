@@ -67,6 +67,64 @@ pub(crate) fn resize_bar(app: AppHandle, height: f64, width: f64) {
     }
 }
 
+/// Hosts an answer's source link may point to. Anything else is refused, so a page
+/// (or a crafted answer) can never make the bar open an arbitrary URL or program.
+const SOURCE_HOSTS: &[&str] = &[
+    "en.wikipedia.org",
+    "www.wikidata.org",
+    "www.met.no",
+    "api.met.no",
+    "en.ilmatieteenlaitos.fi",
+    "www.ecmwf.int",
+    "www.weather.gov",
+];
+
+/// True for `https://<allowed host>/<plain path>`: no credentials, port, quotes or spaces.
+pub(crate) fn is_source_url(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    let host = rest.split('/').next().unwrap_or("");
+    SOURCE_HOSTS.contains(&host)
+        && url.len() < 500
+        && url
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/:._-~%()?=&#,".contains(c))
+}
+
+/// Open an answer's source in the default browser (the round source button).
+#[tauri::command]
+pub(crate) fn open_source(url: String) -> Result<(), String> {
+    if !is_source_url(&url) {
+        return Err("That link can't be opened.".into());
+    }
+    // explorer.exe hands an https URL to the default browser; no shell is involved and
+    // the URL has already been limited to plain characters on known hosts.
+    std::process::Command::new("explorer.exe")
+        .arg(&url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_source_url;
+
+    #[test]
+    fn only_known_https_sources_open() {
+        assert!(is_source_url("https://en.wikipedia.org/wiki/Canberra"));
+        assert!(is_source_url("https://www.met.no/en"));
+        assert!(!is_source_url("http://en.wikipedia.org/wiki/Canberra"));
+        assert!(!is_source_url("https://evil.example/wiki"));
+        assert!(!is_source_url("https://en.wikipedia.org.evil.example/x"));
+        assert!(!is_source_url("https://user@en.wikipedia.org/x"));
+        assert!(!is_source_url("https://en.wikipedia.org/wiki/a\"b"));
+        assert!(!is_source_url("https://en.wikipedia.org/wiki/a b"));
+        assert!(!is_source_url("file:///C:/Windows/System32/calc.exe"));
+    }
+}
+
 /// Play one of the bar's two small sounds (`open` or `close`). Muted by the
 /// `bar_sounds` = `off` setting.
 #[tauri::command]

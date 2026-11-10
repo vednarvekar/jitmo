@@ -28,3 +28,9 @@ jitmo-adapter-windows = { path = "../adapter-windows" }
 [[bin]]
 name = "jitmo-audit"
 path = "src/bin/audit.rs"
+
+# The engine for the end-to-end UI tests (app/e2e): the real engine on a simulated PC,
+# reached over local TCP. Nothing on the machine is touched.
+[[bin]]
+name = "jitmo-e2e"
+path = "src/bin/e2e.rs"
