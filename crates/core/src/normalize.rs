@@ -131,9 +131,15 @@ pub fn is_bare_expression(s: &str) -> bool {
 /// path characters in it. The extractor would quietly drop them and save "Script"; refuse.
 pub fn place_with_symbols(text: &str) -> bool {
     let lower = text.to_lowercase();
-    ["set my city", "set my location", "set my place", "i live in", "my city is"]
-        .iter()
-        .any(|p| lower.starts_with(p))
+    [
+        "set my city",
+        "set my location",
+        "set my place",
+        "i live in",
+        "my city is",
+    ]
+    .iter()
+    .any(|p| lower.starts_with(p))
         && text.chars().any(|c| "<>/\\{}$;|&*\"`=".contains(c))
 }
 
@@ -151,7 +157,8 @@ fn is_power(s: &str) -> bool {
         && w[1..w.len() - 1]
             .iter()
             .all(|x| ["power", "to", "the", "of", "raised", "pow"].contains(&x.as_str()))
-        && w.iter().any(|x| x == "power" || x == "raised" || x == "pow")
+        && w.iter()
+            .any(|x| x == "power" || x == "raised" || x == "pow")
 }
 
 /// "18% of 2450", "what is 15 percent of 1,200", "15 percent tip on 80": a percentage of a
@@ -274,9 +281,11 @@ pub fn several_apps(text: &str) -> Option<(Vec<String>, bool)> {
         .find_map(|v| lower.strip_prefix(v))?;
     // Websites, files and searches have their own skills.
     // "open spotify and then pause the music" is a sequence of different requests.
-    if ["website", "site", "file", "folder", ".com", "http", "search", "timer", "then"]
-        .iter()
-        .any(|w| rest.contains(w))
+    if [
+        "website", "site", "file", "folder", ".com", "http", "search", "timer", "then",
+    ]
+    .iter()
+    .any(|w| rest.contains(w))
     {
         return None;
     }
@@ -301,7 +310,10 @@ pub fn several_apps(text: &str) -> Option<(Vec<String>, bool)> {
     ];
     let short = parts.iter().all(|p| {
         p.split_whitespace().count() <= 3
-            && !p.split_whitespace().next().is_some_and(|w| VERBS.contains(&w))
+            && !p
+                .split_whitespace()
+                .next()
+                .is_some_and(|w| VERBS.contains(&w))
     });
     (parts.len() >= 2 && parts.len() <= 4 && short).then_some((parts, either))
 }
@@ -349,7 +361,10 @@ pub fn sequence(text: &str) -> Option<Vec<String>> {
 fn stop_music(s: &str) -> Option<String> {
     let lower = s.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
-    let blunt = matches!(words.first(), Some(&"kill") | Some(&"shut") | Some(&"silence"));
+    let blunt = matches!(
+        words.first(),
+        Some(&"kill") | Some(&"shut") | Some(&"silence")
+    );
     let music = words
         .iter()
         .any(|w| ["music", "song", "spotify", "songs"].contains(w));
@@ -398,43 +413,85 @@ pub fn direct_skill(said: &str, normalized: &str) -> Option<&'static str> {
     let lower = normalized.to_lowercase();
     let starts = |p: &[&str]| p.iter().any(|x| lower.starts_with(x));
     // "open the weather app", "turn on dnd at sunset": a command, not a question.
-    if starts(&["open ", "launch ", "start ", "turn ", "set ", "close ", "move ", "send "]) {
+    if starts(&[
+        "open ", "launch ", "start ", "turn ", "set ", "close ", "move ", "send ",
+    ]) {
         return None;
     }
     if starts(&["what is the time", "what's the time", "whats the time"]) {
         return Some("calc.time_in");
     }
     // A web search said outright ("google X", "search the web for X", "find X online").
-    if starts(&["google ", "bing ", "search the web", "search online", "search the internet"])
-        || (starts(&["find ", "search ", "look up "]) && lower.ends_with(" online"))
+    if starts(&[
+        "google ",
+        "bing ",
+        "search the web",
+        "search online",
+        "search the internet",
+    ]) || (starts(&["find ", "search ", "look up "]) && lower.ends_with(" online"))
     {
         return Some("browser.search");
     }
     if has(&[
-        "weather", "weathr", "wether", "temperature", "forecast", "rain", "raining", "rainy",
-        "umbrella", "humid", "humidity",
+        "weather",
+        "weathr",
+        "wether",
+        "temperature",
+        "forecast",
+        "rain",
+        "raining",
+        "rainy",
+        "umbrella",
+        "humid",
+        "humidity",
     ]) {
         return Some("web.weather");
     }
-    if starts(&["time in ", "what time is it in ", "whats the time in ", "what's the time in "])
-        || (has(&["time"]) && has(&["tokyo", "london", "york", "dubai", "ist", "pst", "est"]))
+    if starts(&[
+        "time in ",
+        "what time is it in ",
+        "whats the time in ",
+        "what's the time in ",
+    ]) || (has(&["time"]) && has(&["tokyo", "london", "york", "dubai", "ist", "pst", "est"]))
     {
         return Some("calc.time_in");
     }
     if has(&[
-        "sunrise", "sunset", "sunrize", "sunst", "sunet", "moonrise", "moonset", "moon",
-        "eclipse", "dusk", "dawn",
+        "sunrise", "sunset", "sunrize", "sunst", "sunet", "moonrise", "moonset", "moon", "eclipse",
+        "dusk", "dawn",
     ]) {
         return Some("calc.moon");
     }
     // A question about the world: who wrote, what is the population of, how tall is ...
     let question = starts(&[
-        "who ", "whos ", "who's ", "what is the ", "what was the ", "what's the ", "when was ",
-        "when did ", "when is ", "where is ", "where was ", "which ", "how tall ", "how old ",
-        "how far ", "how big ", "how many ", "how much does ", "how long is ", "how deep ",
-        "what is a ", "what is an ", "tell me about ", "define ",
+        "who ",
+        "whos ",
+        "who's ",
+        "what is the ",
+        "what was the ",
+        "what's the ",
+        "when was ",
+        "when did ",
+        "when is ",
+        "where is ",
+        "where was ",
+        "which ",
+        "how tall ",
+        "how old ",
+        "how far ",
+        "how big ",
+        "how many ",
+        "how much does ",
+        "how long is ",
+        "how deep ",
+        "what is a ",
+        "what is an ",
+        "tell me about ",
+        "define ",
     ]);
-    let personal = has(&["my", "me", "i", "timer", "timers", "file", "files", "volume"]);
+    let personal = has(&[
+        "my", "me", "i", "timer", "timers", "file", "files", "volume",
+    ]);
     if question && !personal {
         return Some("web.fact");
     }
@@ -472,12 +529,18 @@ mod tests {
         assert_eq!(d("time in tokio"), Some("calc.time_in"));
         assert_eq!(d("sunrize in mumbai"), Some("calc.moon"));
         assert_eq!(d("google pune weather"), Some("browser.search"));
-        assert_eq!(d("find me a recipe for dosa online"), Some("browser.search"));
+        assert_eq!(
+            d("find me a recipe for dosa online"),
+            Some("browser.search")
+        );
         assert_eq!(d("2 power 10"), Some("calc.math"));
         assert_eq!(d("open the weather app"), None);
         assert_eq!(d("who is my favourite"), None);
         assert_eq!(d("play rain sounds"), None);
-        assert_eq!(d("remind me to check the weather"), Some("reminders.remind"));
+        assert_eq!(
+            d("remind me to check the weather"),
+            Some("reminders.remind")
+        );
     }
 
     #[test]

@@ -730,7 +730,9 @@ impl Flow {
                         // Reminders and timers that are missing one part: ask for it.
                         if message.starts_with("How long should the timer run") {
                             return match self.ask_timer_length(p) {
-                                Some(length) => self.run(id, &format!("set a timer for {length}"), p),
+                                Some(length) => {
+                                    self.run(id, &format!("set a timer for {length}"), p)
+                                }
                                 None => self.cancelled(id, text, Some(&skill.id)),
                             };
                         }
@@ -750,9 +752,7 @@ impl Flow {
                                 "Whose latest video?",
                                 "A channel, e.g. MKBHD",
                             ) {
-                                Some(who) => {
-                                    self.run(id, &format!("open {who}'s latest video"), p)
-                                }
+                                Some(who) => self.run(id, &format!("open {who}'s latest video"), p),
                                 None => self.cancelled(id, text, Some(&skill.id)),
                             };
                         }

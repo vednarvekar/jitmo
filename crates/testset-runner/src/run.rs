@@ -184,6 +184,11 @@ pub fn run_case_with(
             .upsert_contact(&c.name, c.phone.as_deref(), "manual")
             .expect("save a test contact");
     }
+    // The test user has a home city (doc 04: T19 is "forecast for the user's location"), so
+    // a weather question without a place runs instead of asking which city.
+    store
+        .set_setting("default_place", "Pune")
+        .expect("save the test user's city");
     let mut router = Router::new(skills.to_vec());
     if let Some(launcher) = worker {
         router = router.with_worker(WorkerClient::new(launcher.clone(), Duration::from_secs(10)));

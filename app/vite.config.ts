@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -7,4 +8,7 @@ export default defineConfig({
   clearScreen: false,
   server: { port: 1420, strictPort: true },
   build: { outDir: "dist", target: "es2022" },
+  // Unit tests only: e2e/ holds the Playwright specs (run with `pnpm e2e`), which Vitest
+  // must not pick up.
+  test: { include: ["src/**/*.test.{ts,tsx}"] },
 });

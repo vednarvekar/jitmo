@@ -103,8 +103,9 @@ pub fn is_other_player(text: &str) -> bool {
         .filter(|w| !w.is_empty())
         .collect();
     let has = |w: &[&str]| words.iter().any(|x| w.contains(x));
-    has(&["video", "videos", "movie", "film", "netflix", "youtube", "prime", "hotstar"])
-        && !has(&["music", "song", "spotify"])
+    has(&[
+        "video", "videos", "movie", "film", "netflix", "youtube", "prime", "hotstar",
+    ]) && !has(&["music", "song", "spotify"])
 }
 
 /// "pause the music", "music off", "skip this song", "play the previous one", "resume".
@@ -119,8 +120,9 @@ pub fn parse_control(text: &str) -> Option<Control> {
         Some(Control::Previous)
     } else if has(&["skip", "skp", "next", "nxt", "nekst"]) {
         Some(Control::Next)
-    } else if has(&["pause", "paus", "pasue", "stop", "mute", "kill", "silence", "quiet"])
-        || (has(&["shut"]) && has(&["music", "song", "spotify", "up"]))
+    } else if has(&[
+        "pause", "paus", "pasue", "stop", "mute", "kill", "silence", "quiet",
+    ]) || (has(&["shut"]) && has(&["music", "song", "spotify", "up"]))
         || (has(&["off"]) && has(&["music", "song", "spotify"]))
     {
         Some(Control::Pause)

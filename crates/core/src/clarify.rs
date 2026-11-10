@@ -177,7 +177,17 @@ pub fn clarify(said: &str) -> Option<Clarify> {
 
     // Reminders: what, then when.
     if has(&["remind", "reminder"])
-        && is_bare(&w, &["remind", "reminder", "later", "something", "sometime", "soon"])
+        && is_bare(
+            &w,
+            &[
+                "remind",
+                "reminder",
+                "later",
+                "something",
+                "sometime",
+                "soon",
+            ],
+        )
     {
         return Some(Clarify {
             steps: vec![
@@ -284,8 +294,16 @@ pub fn clarify(said: &str) -> Option<Clarify> {
     // A question with no subject: "what is", "tell me about", "who is".
     let joined = w.join(" ");
     if [
-        "what is", "whats", "what's", "tell me about", "tell me", "who is", "fact", "facts",
-        "define", "what",
+        "what is",
+        "whats",
+        "what's",
+        "tell me about",
+        "tell me",
+        "who is",
+        "fact",
+        "facts",
+        "define",
+        "what",
     ]
     .contains(&joined.as_str())
     {
@@ -296,8 +314,13 @@ pub fn clarify(said: &str) -> Option<Clarify> {
         ));
     }
     // The time somewhere, with no place.
-    if ["time in", "what time is it in", "whats the time in", "what's the time in"]
-        .contains(&joined.as_str())
+    if [
+        "time in",
+        "what time is it in",
+        "whats the time in",
+        "what's the time in",
+    ]
+    .contains(&joined.as_str())
     {
         return Some(text("Which city?", "For example: Tokyo", "time in {0}"));
     }
@@ -312,8 +335,16 @@ pub fn clarify(said: &str) -> Option<Clarify> {
     }
     // The saved place, with no place.
     if [
-        "set my city", "set my city to", "set my location", "set my location to", "i live in",
-        "my location", "my city", "set city", "set location", "change my city",
+        "set my city",
+        "set my city to",
+        "set my location",
+        "set my location to",
+        "i live in",
+        "my location",
+        "my city",
+        "set city",
+        "set location",
+        "change my city",
     ]
     .contains(&joined.as_str())
     {
@@ -614,7 +645,7 @@ mod tests {
             ("find file", "Which file should I look for?", false),
             ("move", "Which file should I move?", false),
             ("notifications", "Do Not Disturb: on or off?", true),
-            ("remind me","What should I remind you about?", false),
+            ("remind me", "What should I remind you about?", false),
             ("set a reminder", "What should I remind you about?", false),
         ] {
             assert_eq!(first_question(said), (question, is_choice), "{said}");

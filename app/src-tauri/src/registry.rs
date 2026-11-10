@@ -221,8 +221,11 @@ pub(crate) fn connectors(
         "local_calc".into(),
         // The saved place answers "when does the sun set" with no city named.
         Arc::new(
-            jitmo_connectors::local_calc::LocalCalc::new()
-                .with_place_source(setting_reader(db, key, "default_place")),
+            jitmo_connectors::local_calc::LocalCalc::new().with_place_source(setting_reader(
+                db,
+                key,
+                "default_place",
+            )),
         ),
     );
     #[cfg(windows)]

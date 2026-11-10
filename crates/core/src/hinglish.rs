@@ -12,8 +12,8 @@ const STRONG: &[&str] = &[
     "gana", "ghante", "ghanta", "baje", "subah", "shaam", "raat", "yaad", "dilana", "dilao",
     "dila", "awaaz", "aawaz", "roko", "agla", "pichla", "karna", "batao", "dikhao", "dikha",
     "lagao", "laga", "kal", "parso", "aaj", "shuru", "mausam", "barish", "baarish", "kahan",
-    "kaha", "naya", "nayi", "daalo", "dalo", "rakho", "rajdhani", "chand", "kab", "kaisa",
-    "hogi", "mein",
+    "kaha", "naya", "nayi", "daalo", "dalo", "rakho", "rajdhani", "chand", "kab", "kaisa", "hogi",
+    "mein",
 ];
 
 /// Whole-sentence shapes that word-by-word translation gets wrong.
@@ -55,11 +55,17 @@ fn shape(tokens: &[String]) -> Option<String> {
         }
     }
     // "report.pdf ko invoices mein daalo" -> "move report.pdf to invoices"
-    if let (Some(ko), Some(mein), Some(_)) =
-        (pos(&["ko"]), pos(&["mein", "me"]), pos(&["daalo", "dalo", "rakho", "daal", "rakh"]))
-    {
+    if let (Some(ko), Some(mein), Some(_)) = (
+        pos(&["ko"]),
+        pos(&["mein", "me"]),
+        pos(&["daalo", "dalo", "rakho", "daal", "rakh"]),
+    ) {
         if ko > 0 && mein > ko + 1 {
-            return Some(format!("move {} to {}", join(&t[..ko]), join(&t[ko + 1..mein])));
+            return Some(format!(
+                "move {} to {}",
+                join(&t[..ko]),
+                join(&t[ko + 1..mein])
+            ));
         }
     }
     // "bharat ki rajdhani kya hai" -> "what is the capital of bharat"
