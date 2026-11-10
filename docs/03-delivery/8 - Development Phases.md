@@ -110,6 +110,8 @@ WebView2 can use more than the ~40MB that 06 budgets for the command bar, and SP
 
 **Done when:** T01 passes through UI, Core, connector, verifier and report. A stub send skill shows its confirm and does nothing on Cancel. Unit tests cover all six policy rules in order. The runner reports pass or fail, time and peak memory. CI is green on Windows. Idle memory of UI plus Core is recorded as the baseline.
 
+**Status (10 Nov 2026):** done. CI runs on every push to main (Vitest, UI build, fmt, clippy, workspace tests, SQLCipher store, test-set run); it went red for five pushes (Vitest picked up the Playwright specs, formatting, a test-set fixture) and was fixed in dc328af. Core now runs behind the named pipe (Phase 2).
+
 **Status (8 Nov 2026):** built; every item above is met except that the first CI run still has to be read on GitHub. Idle baseline: 14.4 MB working set with the bar closed, about 350 MB with it open. Core runs inside the app process for now (named-pipe transport still to do), the database is not encrypted by default, and only the open-app connector is real. Details, findings and open items are in [8.1 Decision Log](8.1%20-%20Decision%20Log.md) and the LLD section "As built after Phase 1".
 
 ## Phase 2 — Offline tasks
@@ -138,6 +140,8 @@ WebView2 can use more than the ~40MB that 06 budgets for the command bar, and SP
 - **Defaults and log.** Learned defaults and the action log are written from here on (FR10). Viewing and editing come in Phase 5.
 
 **Done when:** these 48 tests pass: T01–T06, T18–T26, T37–T38, T45–T51, T55–T59, T61–T64, T69, T73–T74, T83–T90 and T97–T100. T02, T48 and T63 follow the SP6 and SP7 results. Idle memory is under 300MB and idle CPU under 1% with Tier 0 loaded (PR1, PR3).
+
+**Status (10 Nov 2026):** built and tested; sign-off waits on checks only the owner's PC can do. With the real model worker, 46 of the 48 named tests pass in the runner and T73 and T100 pass in their connector tests (the runner cannot host them). Extractor: NER tagger, about 86% on held-out requests (D33). Beyond the gate: a 643-line messy-wording audit at 79% and a 632-line sandboxed UI corpus at 92% (D34). Still open: (1) live checks on the real app: hotkey path, pipe reconnect, encrypted database, Spotify "play X", Bluetooth, multi-select; (2) idle memory with the router and the NER extractor both loaded (router alone 61 MB); (3) the FMI/ECMWF licence confirmation for the weather fallback.
 
 **Status (8 Nov 2026):** mostly built, not done. 48 of the 48 tests pass in the automated runner (most connectors are faked there; each has its own tests). Open: the model extractor, wiring checks in the real app (hotkey path, pipe reconnect, encrypted database), live runs of Do Not Disturb, Spotify play and multi-select, and T57, T73, T100. The router-only worker idles at 61 MB and 0% CPU. Full list in [8.1 Decision Log](8.1%20-%20Decision%20Log.md), "Phase 2 status".
 
