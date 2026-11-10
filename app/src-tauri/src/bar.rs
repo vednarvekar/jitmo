@@ -39,6 +39,8 @@ fn announce_shown(app: &AppHandle) {
         std::thread::sleep(Duration::from_millis(70));
         let _ = app.emit("bar-shown", ());
         crate::sound::play_open_unless_early();
+        // The language model loads while the user types (and only if memory allows).
+        crate::llm_host::warm();
     });
 }
 

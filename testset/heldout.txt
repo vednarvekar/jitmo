@@ -4,21 +4,21 @@
 # `decline` (no tool fits; a model may answer or say it cannot). kinds: student worker hinglish
 # typo partial natural.
 # ------------------------------------------------------------------ apps.open
-apps.open|natural|can you pull up spotify for me|run:apps.open|
-apps.open|student|i need the calculator real quick|run:apps.open|
-apps.open|worker|bring up excel|run:apps.open|
-apps.open|hinglish|bhai notepad kholo|run:apps.open|
-apps.open|typo|opn chrom|run:apps.open|
-apps.open|natural|get me into vs code|run:apps.open|
-apps.open|worker|fire up zoom please|run:apps.open|
-apps.open|natural|switch on the snipping tool|run:apps.open|
+apps.open|natural|can you pull up spotify for me|run:apps.open;a.app~spotify|
+apps.open|student|i need the calculator real quick|run:apps.open;a.app~calculator|
+apps.open|worker|bring up excel|run:apps.open;a.app~excel|
+apps.open|hinglish|bhai notepad kholo|run:apps.open;a.app~notepad|
+apps.open|typo|opn chrom|run:apps.open;a.app~chrom|
+apps.open|natural|get me into vs code|run:apps.open;a.app~code|
+apps.open|worker|fire up zoom please|run:apps.open;a.app~zoom|
+apps.open|natural|switch on the snipping tool|run:apps.open;a.app~snipping|
 # ------------------------------------------------------------------ browser.search
-browser.search|natural|google best budget laptops under 50000|run:browser.search|
-browser.search|student|look up cheap flights to goa on the web|run:browser.search|
-browser.search|hinglish|search karo ved narvekar|run:browser.search|
-browser.search|natural|can you search for python tutorials|run:browser.search|
-browser.search|typo|serch for lofi beats|run:browser.search|
-browser.search|worker|web search for gst filing deadline|run:browser.search|
+browser.search|natural|google best budget laptops under 50000|run:browser.search;a.query~laptops|
+browser.search|student|look up cheap flights to goa on the web|run:browser.search;a.query~flights|
+browser.search|hinglish|search karo ved narvekar|run:browser.search;a.query~ved|
+browser.search|natural|can you search for python tutorials|run:browser.search;a.query~python|
+browser.search|typo|serch for lofi beats|run:browser.search;a.query~lofi|
+browser.search|worker|web search for gst filing deadline|run:browser.search;a.query~gst|
 # ------------------------------------------------------------------ browser.site
 browser.site|natural|take me to github|run:browser.site|
 browser.site|student|open wikipedia|run:browser.site|
@@ -60,12 +60,12 @@ calendar.accept|natural|say yes to the thursday meeting invite|run:calendar.acce
 calendar.accept|worker|confirm i'm coming to the all hands|run:calendar.accept|
 calendar.accept|typo|acept the planing invite|run:calendar.accept|
 # ------------------------------------------------------------------ calendar.add
-calendar.add|worker|put a dentist appointment on friday at 4pm|run:calendar.add|
-calendar.add|worker|schedule lunch with priya tomorrow at 1|run:calendar.add|
-calendar.add|student|add my physics exam to the calendar on the 20th at 9am|run:calendar.add|
-calendar.add|natural|new event team offsite next monday 10am|run:calendar.add|
-calendar.add|hinglish|kal 6 baje gym ka event daal do|run:calendar.add|
-calendar.add|worker|create a calendar entry for the client call at 2:30 on wednesday|run:calendar.add|
+calendar.add|worker|put a dentist appointment on friday at 4pm|run:calendar.add;a.what~dentist;a.when~friday|
+calendar.add|worker|schedule lunch with priya tomorrow at 1|run:calendar.add;a.what~lunch;a.when~tomorrow|
+calendar.add|student|add my physics exam to the calendar on the 20th at 9am|run:calendar.add;a.what~physics|
+calendar.add|natural|new event team offsite next monday 10am|run:calendar.add;a.what~offsite|
+calendar.add|hinglish|kal 6 baje gym ka event daal do|run:calendar.add;a.what~gym|
+calendar.add|worker|create a calendar entry for the client call at 2:30 on wednesday|run:calendar.add;a.what~client call|
 # ------------------------------------------------------------------ calendar.agenda
 calendar.agenda|worker|what have i got on today|run:calendar.agenda|
 calendar.agenda|worker|show me my schedule for tomorrow|run:calendar.agenda|
@@ -95,32 +95,32 @@ calendar.free|worker|find a slot where priya and i are both free|run:calendar.fr
 calendar.free|worker|when can i fit a 45 minute meeting tomorrow|run:calendar.free|
 calendar.free|natural|which times am i free on thursday|run:calendar.free|
 # ------------------------------------------------------------------ calendar.invite
-calendar.invite|worker|invite neha to the planning meeting|run:calendar.invite|
-calendar.invite|worker|add vikram to my 2pm call|run:calendar.invite|
-calendar.invite|worker|also include finance in the budget review|run:calendar.invite|
-calendar.invite|natural|bring priya into thursday's sync|run:calendar.invite|
+calendar.invite|worker|invite neha to the planning meeting|run:calendar.invite;a.who~neha;a.event~planning|
+calendar.invite|worker|add vikram to my 2pm call|run:calendar.invite;a.who~vikram|
+calendar.invite|worker|also include finance in the budget review|run:calendar.invite;a.who~finance;a.event~budget|
+calendar.invite|natural|bring priya into thursday's sync|run:calendar.invite;a.who~priya|
 # ------------------------------------------------------------------ calendar.move
 calendar.move|worker|push my 3pm to 4|run:calendar.move|
 calendar.move|worker|reschedule the review to friday morning|run:calendar.move|
 calendar.move|worker|shift tomorrow's standup an hour later|run:calendar.move|
 calendar.move|natural|move my dentist appointment to next week|run:calendar.move|
 # ------------------------------------------------------------------ chat.post
-chat.post|worker|post in the project channel that the build is green|run:chat.post|
-chat.post|worker|tell the team channel i'll be five minutes late|run:chat.post|
-chat.post|worker|let everyone in the design channel know the file is updated|run:chat.post|
+chat.post|worker|post in the project channel that the build is green|run:chat.post;a.channel~project;a.body~green|
+chat.post|worker|tell the team channel i'll be five minutes late|run:chat.post;a.channel~team;a.body~late|
+chat.post|worker|let everyone in the design channel know the file is updated|run:chat.post;a.channel~design;a.body~updated|
 chat.post|natural|drop a note in the general channel that lunch is here|run:chat.post|
 # ------------------------------------------------------------------ files.email
-files.email|worker|email the quarterly report pdf to rahul|run:files.email|
-files.email|worker|send budget.xlsx to priya by email|run:files.email|
-files.email|student|mail my assignment docx to the professor|run:files.email|
-files.email|natural|attach the latest screenshot and email it to neha|run:files.email|
+files.email|worker|email the quarterly report pdf to rahul|run:files.email;a.to~rahul;a.file~report|
+files.email|worker|send budget.xlsx to priya by email|run:files.email;a.to~priya;a.file~budget|
+files.email|student|mail my assignment docx to the professor|run:files.email;a.to~professor;a.file~assignment|
+files.email|natural|attach the latest screenshot and email it to neha|run:files.email;a.to~neha;a.file~screenshot|
 # ------------------------------------------------------------------ files.find
-files.find|student|where did i save my lecture notes|run:files.find|
-files.find|worker|find the contract pdf|run:files.find|
-files.find|natural|look for a file called resume|run:files.find|
-files.find|hinglish|mera tax return wala pdf dhundo|run:files.find|
-files.find|typo|fnd my invoise|run:files.find|
-files.find|worker|locate the slide deck from last week's pitch|run:files.find|
+files.find|student|where did i save my lecture notes|run:files.find;a.file~lecture|
+files.find|worker|find the contract pdf|run:files.find;a.file~contract|
+files.find|natural|look for a file called resume|run:files.find;a.file~resume|
+files.find|hinglish|mera tax return wala pdf dhundo|run:files.find;a.file~tax|
+files.find|typo|fnd my invoise|run:files.find;a.file~invo|
+files.find|worker|locate the slide deck from last week's pitch|run:files.find;a.file~slide|
 # ------------------------------------------------------------------ files.move
 files.move|natural|put the invoice in the finance folder|run:files.move|
 files.move|worker|move budget.xlsx into documents|run:files.move|
@@ -147,10 +147,10 @@ mail.archive_newsletters|natural|archive all the newsletter emails|run:mail.arch
 mail.archive_newsletters|worker|tidy up my newsletters|run:mail.archive_newsletters|
 mail.archive_newsletters|natural|get the newsletters out of my inbox|run:mail.archive_newsletters|
 # ------------------------------------------------------------------ mail.draft
-mail.draft|worker|draft a reply to rahul saying i'll send it tomorrow|run:mail.draft|
-mail.draft|worker|write a draft email to priya about the delay|run:mail.draft|
-mail.draft|natural|save a draft to neha that the files are ready|run:mail.draft|
-mail.draft|worker|prepare a response to vikram thanking him|run:mail.draft|
+mail.draft|worker|draft a reply to rahul saying i'll send it tomorrow|run:mail.draft;a.to~rahul;a.body~tomorrow|
+mail.draft|worker|write a draft email to priya about the delay|run:mail.draft;a.to~priya;a.body~delay|
+mail.draft|natural|save a draft to neha that the files are ready|run:mail.draft;a.to~neha;a.body~ready|
+mail.draft|worker|prepare a response to vikram thanking him|run:mail.draft;a.to~vikram|
 # ------------------------------------------------------------------ mail.find
 mail.find|worker|find the email from finance about the invoice|run:mail.find|
 mail.find|worker|search my mail for the offer letter|run:mail.find|
@@ -164,11 +164,11 @@ mail.inbox|worker|any new mail|run:mail.inbox|
 mail.inbox|hinglish|mere mails dikhao|run:mail.inbox|
 mail.inbox|natural|check my email please|run:mail.inbox|
 # ------------------------------------------------------------------ mail.send
-mail.send|worker|send an email to rahul saying the meeting is moved|run:mail.send|
-mail.send|worker|email priya that i got her message|run:mail.send|
-mail.send|natural|tell neha by email that the report is done|run:mail.send|
-mail.send|student|mail my teammate that i'll submit tonight|run:mail.send|
-mail.send|typo|emial vikram that im running late|run:mail.send|
+mail.send|worker|send an email to rahul saying the meeting is moved|run:mail.send;a.to~rahul;a.body~moved|
+mail.send|worker|email priya that i got her message|run:mail.send;a.to~priya;a.body~message|
+mail.send|natural|tell neha by email that the report is done|run:mail.send;a.to~neha;a.body~done|
+mail.send|student|mail my teammate that i'll submit tonight|run:mail.send;a.body~submit|
+mail.send|typo|emial vikram that im running late|run:mail.send;a.to~vikram;a.body~late|
 # ------------------------------------------------------------------ mail.summarize
 mail.summarize|worker|summarise the latest email from rahul|run:mail.summarize|
 mail.summarize|worker|give me the gist of the email about the budget|run:mail.summarize|
@@ -192,26 +192,26 @@ music.control|natural|go back to the previous song|run:music.control|
 music.control|hinglish|gaana band karo|run:music.control|
 music.control|natural|resume playing|run:music.control|
 # ------------------------------------------------------------------ music.play
-music.play|natural|put on some lofi beats|run:music.play|
-music.play|natural|play shape of you|run:music.play|
-music.play|hinglish|arijit singh ke gaane lagao|run:music.play|
-music.play|student|play something to focus while i study|run:music.play|
-music.play|natural|i want to hear coldplay|run:music.play|
-music.play|typo|paly some jazz|run:music.play|
+music.play|natural|put on some lofi beats|run:music.play;a.what~lofi|
+music.play|natural|play shape of you|run:music.play;a.what~shape of you|
+music.play|hinglish|arijit singh ke gaane lagao|run:music.play;a.what~arijit|
+music.play|student|play something to focus while i study|run:music.play;a.what~focus|
+music.play|natural|i want to hear coldplay|run:music.play;a.what~coldplay|
+music.play|typo|paly some jazz|run:music.play;a.what~jazz|
 # ------------------------------------------------------------------ reminders.remind
-reminders.remind|natural|remind me to call mom at 6pm|run:reminders.remind|
-reminders.remind|student|remind me to submit the assignment tomorrow morning|run:reminders.remind|
-reminders.remind|worker|ping me at 4pm about the standup notes|run:reminders.remind|
-reminders.remind|hinglish|mujhe kal subah dawai yaad dilana|run:reminders.remind|
-reminders.remind|natural|don't let me forget the dentist on friday|run:reminders.remind|
-reminders.remind|worker|set a reminder for 9am to send the invoice|run:reminders.remind|
+reminders.remind|natural|remind me to call mom at 6pm|run:reminders.remind;a.what~call mom;a.when~6|
+reminders.remind|student|remind me to submit the assignment tomorrow morning|run:reminders.remind;a.what~assignment;a.when~tomorrow|
+reminders.remind|worker|ping me at 4pm about the standup notes|run:reminders.remind;a.when~4|
+reminders.remind|hinglish|mujhe kal subah dawai yaad dilana|run:reminders.remind;a.when~kal|
+reminders.remind|natural|don't let me forget the dentist on friday|run:reminders.remind;a.what~dentist;a.when~friday|
+reminders.remind|worker|set a reminder for 9am to send the invoice|run:reminders.remind;a.what~invoice;a.when~9|
 # ------------------------------------------------------------------ reminders.timer
-reminders.timer|natural|timer for 25 minutes|run:reminders.timer|
-reminders.timer|student|start a 45 minute study timer|run:reminders.timer|
-reminders.timer|natural|count down 10 minutes|run:reminders.timer|
-reminders.timer|natural|wake me in half an hour|run:reminders.timer|
-reminders.timer|natural|set a 90 second timer|run:reminders.timer|
-reminders.timer|hinglish|20 minute ka timer laga do|run:reminders.timer|
+reminders.timer|natural|timer for 25 minutes|run:reminders.timer;a.length~25|
+reminders.timer|student|start a 45 minute study timer|run:reminders.timer;a.length~45|
+reminders.timer|natural|count down 10 minutes|run:reminders.timer;a.length~10|
+reminders.timer|natural|wake me in half an hour|run:reminders.timer;a.length~half|
+reminders.timer|natural|set a 90 second timer|run:reminders.timer;a.length~90|
+reminders.timer|hinglish|20 minute ka timer laga do|run:reminders.timer;a.length~20|
 # ------------------------------------------------------------------ settings.place
 settings.place|natural|set my city to pune|run:settings.place|
 settings.place|natural|i live in bangalore, remember that|run:settings.place|
@@ -249,19 +249,19 @@ web.fact|natural|who is the ceo of microsoft|run:web.fact|
 web.fact|student|what is the population of japan|run:web.fact|
 web.fact|student|when was the eiffel tower built|run:web.fact|
 # ------------------------------------------------------------------ web.weather
-web.weather|natural|is it going to rain tomorrow|run:web.weather|
-web.weather|natural|what's the weather in mumbai|run:web.weather|
-web.weather|natural|do i need an umbrella today|run:web.weather|
-web.weather|hinglish|aaj mausam kaisa hai|run:web.weather|
-web.weather|natural|how hot will it be this weekend in delhi|run:web.weather|
+web.weather|natural|is it going to rain tomorrow|run:web.weather;a.when~tomorrow|
+web.weather|natural|what's the weather in mumbai|run:web.weather;a.place~mumbai|
+web.weather|natural|do i need an umbrella today|run:web.weather;a.when~today|
+web.weather|hinglish|aaj mausam kaisa hai|run:web.weather;a.when~aaj|
+web.weather|natural|how hot will it be this weekend in delhi|run:web.weather;a.place~delhi;a.when~weekend|
 # ------------------------------------------------------------------ whatsapp
 whatsapp.send_file|worker|send the pdf i just downloaded to ved on whatsapp|run:whatsapp.send_file|
 whatsapp.send_file|natural|whatsapp the invoice file to priya|run:whatsapp.send_file|
 whatsapp.send_file|student|share my notes pdf with rahul on whatsapp|run:whatsapp.send_file|
-whatsapp.send_message|natural|text mom on whatsapp that i'll be late|run:whatsapp.send_message|
-whatsapp.send_message|natural|whatsapp ved saying call me when free|run:whatsapp.send_message|
-whatsapp.send_message|hinglish|rahul ko whatsapp pe bolo main aa raha hu|run:whatsapp.send_message|
-whatsapp.send_message|natural|message priya on whatsapp happy birthday|run:whatsapp.send_message|
+whatsapp.send_message|natural|text mom on whatsapp that i'll be late|run:whatsapp.send_message;a.to~mom;a.body~late|
+whatsapp.send_message|natural|whatsapp ved saying call me when free|run:whatsapp.send_message;a.to~ved;a.body~call me|
+whatsapp.send_message|hinglish|rahul ko whatsapp pe bolo main aa raha hu|run:whatsapp.send_message;a.to~rahul|
+whatsapp.send_message|natural|message priya on whatsapp happy birthday|run:whatsapp.send_message;a.to~priya;a.body~birthday|
 # ------------------------------------------------------------------ work flows
 work.morning_brief|worker|give me my morning brief|run:work.morning_brief|
 work.morning_brief|worker|what do i need to know to start the day|run:work.morning_brief|

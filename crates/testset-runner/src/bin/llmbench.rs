@@ -32,6 +32,8 @@ struct Case {
     expected: String,
     kind: String,
     text: String,
+    /// Expected typed values: (argument, text the value must contain).
+    args: Vec<(String, String)>,
 }
 
 fn load_cases(path: &str, ids: &[String], kinds: &[String]) -> Vec<Case> {
@@ -64,10 +66,17 @@ fn load_cases(path: &str, ids: &[String], kinds: &[String]) -> Vec<Case> {
         } else {
             continue;
         };
+        let args: Vec<(String, String)> = expect
+            .split(';')
+            .filter_map(|t| t.strip_prefix("a."))
+            .filter_map(|t| t.split_once('~'))
+            .map(|(k, v)| (k.to_string(), v.to_lowercase()))
+            .collect();
         out.push(Case {
             expected,
             kind: kind.to_string(),
             text: input.to_string(),
+            args,
         });
     }
     out
@@ -98,7 +107,7 @@ impl Retriever {
                 }
                 // The id itself is a strong hint ("mail.find" -> mail, find).
                 text.push(' ');
-                text.push_str(&s.id.replace('.', " ").replace('_', " "));
+                text.push_str(&s.id.replace(['.', '_'], " "));
                 (s.id.clone(), words(&text).into_iter().collect())
             })
             .collect();
@@ -180,6 +189,10 @@ fn main() {
     let ctx = flag(&args, "--ctx").unwrap_or_else(|| "2048".into());
     let batch = flag(&args, "--batch").unwrap_or_else(|| "512".into());
     let compact = args.iter().any(|a| a == "--compact");
+    // Extra server flags to test, e.g. --extra "--no-repack -ctk q8_0 -ctv q8_0".
+    let extra: Vec<String> = flag(&args, "--extra")
+        .map(|s| s.split_whitespace().map(str::to_string).collect())
+        .unwrap_or_default();
     let corpus = flag(&args, "--corpus").unwrap_or_else(|| "testset/heldout.txt".into());
     let skills_dir = flag(&args, "--skills").unwrap_or_else(|| "skills".into());
     let limit: usize = flag(&args, "--limit")
@@ -237,17 +250,49 @@ fn main() {
         Router::new(skills.clone())
             .with_worker(WorkerClient::new(launcher, Duration::from_secs(20)))
     });
+    // `--mix 21` = the router's best 2 plus the word-overlap best 1 not already there;
+    // `--mix 32` = the router's best 3 plus 2 more from word overlap (five candidates).
+    let mix = flag(&args, "--mix");
     let cands = |text: &str| -> Vec<String> {
-        match &router {
-            Some(r) => r
-                .route(text)
-                .tasks
-                .iter()
-                .filter(|t| ids.contains(&t.id))
-                .map(|t| t.id.clone())
-                .take(k)
-                .collect(),
-            None => retriever.top(text, k),
+        let from_router = |n: usize| -> Vec<String> {
+            match &router {
+                Some(r) => r
+                    .route(text)
+                    .tasks
+                    .iter()
+                    .filter(|t| ids.contains(&t.id))
+                    .map(|t| t.id.clone())
+                    .take(n)
+                    .collect(),
+                None => retriever.top(text, n),
+            }
+        };
+        match mix.as_deref() {
+            Some("21") => {
+                let mut v = from_router(2);
+                for id in retriever.top(text, 12) {
+                    if v.len() >= 3 {
+                        break;
+                    }
+                    if !v.contains(&id) {
+                        v.push(id);
+                    }
+                }
+                v
+            }
+            Some("32") => {
+                let mut v = from_router(3);
+                for id in retriever.top(text, 12) {
+                    if v.len() >= 5 {
+                        break;
+                    }
+                    if !v.contains(&id) {
+                        v.push(id);
+                    }
+                }
+                v
+            }
+            _ => from_router(k),
         }
     };
 
@@ -261,6 +306,7 @@ fn main() {
                     expected: c.expected.clone(),
                     kind: c.kind.clone(),
                     text: c.text.clone(),
+                    args: c.args.clone(),
                 }
             })
             .collect();
@@ -280,6 +326,9 @@ fn main() {
         tool_cases,
         100.0 * recall as f64 / tool_cases.max(1) as f64
     );
+    if args.iter().any(|a| a == "--recall-only") {
+        return;
+    }
 
     // Start the server (below normal priority, no window) and time the cold load.
     let mut cmd = Command::new(&exe);
@@ -302,6 +351,7 @@ fn main() {
         "-ub",
         &batch,
     ])
+    .args(&extra)
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::null());
@@ -494,6 +544,83 @@ fn main() {
             println!("  {}/{} done, {} right", n + 1, cases.len(), right);
         }
     }
+    // Argument accuracy: for the cases that expect typed values, the model gets the RIGHT tool
+    // and fills its arguments (JSON schema); every expected value must appear in the answer.
+    let (mut arg_cases, mut arg_right, mut arg_values, mut arg_values_right) = (0, 0, 0, 0);
+    let mut arg_ms: Vec<f64> = Vec::new();
+    let mut arg_misses: Vec<String> = Vec::new();
+    for c in cases.iter().filter(|c| !c.args.is_empty()) {
+        let Some(skill) = by_id.get(c.expected.as_str()) else {
+            continue;
+        };
+        let Some(tool) = &skill.tool else { continue };
+        let brief = jitmo_core::llm::ToolBrief {
+            id: skill.id.clone(),
+            title: skill.title.clone().unwrap_or_default(),
+            examples: Vec::new(),
+            args: tool
+                .args
+                .iter()
+                .map(|(n, a)| jitmo_core::llm::ArgBrief {
+                    name: n.clone(),
+                    description: a.description.clone(),
+                    required: a.required,
+                })
+                .collect(),
+        };
+        let body = json!({
+            "messages": [
+                { "role": "system", "content": jitmo_llm::args_system(&brief) },
+                { "role": "user", "content": c.text }
+            ],
+            "temperature": 0,
+            "max_tokens": 120,
+            "cache_prompt": true,
+            "chat_template_kwargs": { "enable_thinking": false },
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": { "name": "args", "strict": true, "schema": jitmo_llm::args_schema(&brief) }
+            }
+        });
+        let t = Instant::now();
+        let got = ag
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .send(body.to_string())
+            .ok()
+            .and_then(|mut r| r.body_mut().read_to_string().ok())
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .and_then(|v| {
+                v["choices"][0]["message"]["content"]
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .and_then(|s| jitmo_llm::parse_args(&s, &brief))
+            .unwrap_or_default();
+        arg_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+        arg_cases += 1;
+        let mut all = true;
+        for (k, want) in &c.args {
+            arg_values += 1;
+            let ok = got
+                .get(k)
+                .is_some_and(|v| v.to_lowercase().contains(want.as_str()));
+            if ok {
+                arg_values_right += 1;
+            } else {
+                all = false;
+            }
+        }
+        if all {
+            arg_right += 1;
+        } else {
+            arg_misses.push(format!(
+                "  [args] “{}”: wanted {:?}, got {:?}",
+                c.text, c.args, got
+            ));
+        }
+    }
+    arg_ms.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     // Without the prompt cache, on a sample.
     let mut nocache = Vec::new();
     for c in cases.iter().take(25) {
@@ -509,6 +636,16 @@ fn main() {
     }
     let n = cases.len().max(1) as f64;
     println!("\nmodel {model}");
+    println!(
+        "arguments (right tool given): {} of {} requests fully right = {:.1}%; {} of {} values right = {:.1}%; p50 {:.0} ms",
+        arg_right,
+        arg_cases,
+        100.0 * arg_right as f64 / (arg_cases.max(1)) as f64,
+        arg_values_right,
+        arg_values,
+        100.0 * arg_values_right as f64 / (arg_values.max(1)) as f64,
+        pct(&arg_ms, 0.5)
+    );
     println!(
         "tool pick: {} right of {} = {:.1}%   wrong action {} ({:.1}%)   said none when a tool was right or on a decline case {}",
         right,
@@ -536,6 +673,9 @@ fn main() {
         "memory of the model process: working set {ws:.0} MB, peak working set {peak_ws:.0} MB, private bytes {private:.0} MB (threads {threads})"
     );
     for m in misses.iter().take(show) {
+        println!("{m}");
+    }
+    for m in arg_misses.iter().take(show) {
         println!("{m}");
     }
 }

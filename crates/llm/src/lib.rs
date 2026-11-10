@@ -181,7 +181,8 @@ fn agent(secs: u64) -> ureq::Agent {
         .into()
 }
 
-/// The local model, started on demand.
+/// The local model, started on demand. Clones share one server process.
+#[derive(Clone)]
 pub struct LocalLlm {
     host: Arc<Mutex<Host>>,
 }
@@ -210,6 +211,24 @@ impl LocalLlm {
             }
         });
         LocalLlm { host }
+    }
+
+    /// Start loading the model in the background (when the bar opens: the load hides behind
+    /// the typing). Nothing happens when it is already running or memory is short.
+    pub fn warm(&self) {
+        let host = self.host.clone();
+        std::thread::spawn(move || {
+            if let Ok(mut h) = host.lock() {
+                let _ = h.ensure();
+            }
+        });
+    }
+
+    /// Stop the model process now (memory pressure, or the user turned it off).
+    pub fn unload(&self) {
+        if let Ok(mut h) = self.host.lock() {
+            h.stop();
+        }
     }
 
     /// One chat completion; `schema` makes the answer valid JSON of that shape.

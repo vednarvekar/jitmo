@@ -646,5 +646,7 @@ pub(crate) fn local_llm(
         cfg.threads = t;
     }
     eprintln!("local language model: {}", cfg.model.display());
-    Some(Box::new(LocalLlm::new(cfg)))
+    let llm = LocalLlm::new(cfg);
+    crate::llm_host::install(llm.clone());
+    Some(Box::new(llm))
 }

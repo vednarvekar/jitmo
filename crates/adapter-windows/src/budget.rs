@@ -225,3 +225,78 @@ mod tests {
         assert!(ended, "the child must end with its job");
     }
 }
+
+/// Windows' own "memory is low" signal (the kernel's low-memory resource notification). Cheap to
+/// poll; used to drop the model at once when the PC is short of memory.
+pub struct LowMemory {
+    #[cfg(windows)]
+    handle: isize,
+}
+
+impl LowMemory {
+    pub fn new() -> Option<LowMemory> {
+        #[cfg(windows)]
+        {
+            os_low::create().map(|handle| LowMemory { handle })
+        }
+        #[cfg(not(windows))]
+        {
+            None
+        }
+    }
+
+    /// True while Windows says physical memory is low.
+    pub fn is_low(&self) -> bool {
+        #[cfg(windows)]
+        {
+            os_low::query(self.handle)
+        }
+        #[cfg(not(windows))]
+        {
+            false
+        }
+    }
+}
+
+impl Drop for LowMemory {
+    fn drop(&mut self) {
+        #[cfg(windows)]
+        os::close(self.handle);
+    }
+}
+
+#[cfg(windows)]
+mod os_low {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateMemoryResourceNotification(kind: i32) -> isize;
+        fn QueryMemoryResourceNotification(handle: isize, state: *mut i32) -> i32;
+    }
+
+    const LOW_MEMORY_RESOURCE_NOTIFICATION: i32 = 0;
+
+    pub fn create() -> Option<isize> {
+        // SAFETY: plain Win32 call; 0 means failure.
+        let h = unsafe { CreateMemoryResourceNotification(LOW_MEMORY_RESOURCE_NOTIFICATION) };
+        (h != 0).then_some(h)
+    }
+
+    pub fn query(handle: isize) -> bool {
+        let mut state: i32 = 0;
+        // SAFETY: `state` is a valid out-pointer for the call.
+        let ok = unsafe { QueryMemoryResourceNotification(handle, &mut state) };
+        ok != 0 && state != 0
+    }
+}
+
+#[cfg(all(test, windows))]
+mod low_memory_tests {
+    use super::*;
+
+    #[test]
+    fn the_low_memory_signal_can_be_read() {
+        let watch = LowMemory::new().expect("the notification can be created");
+        // On a machine running these tests memory is not low; either way it must not panic.
+        let _ = watch.is_low();
+    }
+}

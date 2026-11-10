@@ -71,6 +71,14 @@ pub struct Flow {
     last_ok: Option<(String, Instant)>,
     /// A local language model, consulted only when the router is unsure or declined.
     llm: Option<Box<dyn crate::llm::Llm>>,
+    /// Requests a model worked out that then worked (see [`crate::learned`]).
+    learned: Option<crate::learned::Learned>,
+    /// Word-overlap retrieval for the model's candidates (built on first use).
+    retriever: Option<crate::retrieval::Retriever>,
+    /// What to remember if the request now running succeeds: (key, skill, typed sentence).
+    pending_learn: Option<(String, String, Option<String>)>,
+    /// The key of a remembered request now running (forgotten if it fails).
+    cache_hit: Option<String>,
 }
 
 impl Flow {
@@ -92,6 +100,10 @@ impl Flow {
             drafter: None,
             last_ok: None,
             llm: None,
+            learned: None,
+            retriever: None,
+            pending_learn: None,
+            cache_hit: None,
         }
     }
 
@@ -164,10 +176,13 @@ impl Flow {
             .filter(|(_, at)| at.elapsed() < Duration::from_secs(600))
             .and_then(|(last, _)| crate::followup::rewrite(last, text));
         let text = rewritten.as_deref().unwrap_or(text);
+        self.pending_learn = None;
+        self.cache_hit = None;
         let event = self.run(id, text, prompter);
         if matches!(event, CoreEvent::Done { .. }) {
             self.last_ok = Some((text.to_string(), Instant::now()));
         }
+        self.learn_from(&event);
         // Sunrise, sunset and the moon with no place known answer "Which city? Try ...":
         // ask it instead, then answer for that city.
         if let CoreEvent::Done { message, .. } = &event {
@@ -179,6 +194,48 @@ impl Flow {
             }
         }
         event
+    }
+
+    fn learned_mut(&mut self) -> &mut crate::learned::Learned {
+        if self.learned.is_none() {
+            let saved = self
+                .store
+                .get_setting("learned_requests")
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            self.learned = Some(crate::learned::Learned::load(&saved));
+        }
+        self.learned.get_or_insert_with(Default::default)
+    }
+
+    fn save_learned(&mut self) {
+        let dump = self.learned_mut().dump();
+        if let Err(e) = self.store.set_setting("learned_requests", &dump) {
+            eprintln!("could not save the learned requests: {e}");
+        }
+    }
+
+    /// After a request: remember what a model worked out if it succeeded, and forget a
+    /// remembered request that failed.
+    fn learn_from(&mut self, event: &CoreEvent) {
+        let pending = self.pending_learn.take();
+        let hit = self.cache_hit.take();
+        match event {
+            CoreEvent::Done { .. } => {
+                if let Some((key, skill, sentence)) = pending {
+                    self.learned_mut().put(&key, &skill, sentence.as_deref());
+                    self.save_learned();
+                }
+            }
+            CoreEvent::Failed { .. } => {
+                if let Some(key) = hit {
+                    self.learned_mut().remove(&key);
+                    self.save_learned();
+                }
+            }
+            _ => {}
+        }
     }
 
     /// The skill's own sentence for typed values from a model. A required value that is missing
@@ -679,6 +736,20 @@ impl Flow {
                 None => self.cancelled(id, text, None),
             };
         }
+        // 0z. A request a model worked out before, and that worked: no router, no model.
+        // (It still goes through the guards, slots, policy, confirm and checks.)
+        if self.forced_skill.is_none() {
+            let lkey = crate::learned::key(text);
+            if let Some((skill, sentence)) = self.learned_mut().get(&lkey) {
+                if self.router.skill(&skill).is_some() {
+                    self.cache_hit = Some(lkey);
+                    self.forced_skill = Some(skill);
+                    if let Some(s) = sentence {
+                        return self.run(id, &s, p);
+                    }
+                }
+            }
+        }
         // 1. Route.
         let known = self.known();
         let understanding = self.router.route_with(text, &known.note());
@@ -706,11 +777,24 @@ impl Flow {
                     | RouteDecision::ConfirmTask { .. }
             )
         {
-            let tools: Vec<crate::llm::ToolBrief> = understanding
+            // The router's best two plus the best word-overlap match: the right tool is among
+            // them far more often than among the router's best three.
+            let ranked: Vec<String> = understanding
                 .tasks
                 .iter()
-                .filter_map(|t| self.router.skill(&t.id))
-                .take(3)
+                .filter(|t| self.router.skill(&t.id).is_some())
+                .map(|t| t.id.clone())
+                .collect();
+            if self.retriever.is_none() {
+                self.retriever = Some(crate::retrieval::Retriever::new(self.router.skills()));
+            }
+            let picks = match &self.retriever {
+                Some(r) => crate::retrieval::candidates(&ranked, r, text, 3),
+                None => ranked.iter().take(3).cloned().collect(),
+            };
+            let tools: Vec<crate::llm::ToolBrief> = picks
+                .iter()
+                .filter_map(|id| self.router.skill(id))
                 .map(|s| crate::llm::ToolBrief {
                     id: s.id.clone(),
                     title: s.title.clone().unwrap_or_else(|| s.id.clone()),
@@ -739,6 +823,7 @@ impl Flow {
                 .unwrap_or(crate::llm::Pick::Nothing);
             match pick {
                 crate::llm::Pick::Tool(skill_id) if self.router.skill(&skill_id).is_some() => {
+                    self.pending_learn = Some((crate::learned::key(text), skill_id.clone(), None));
                     decision = RouteDecision::Run { skill_id };
                 }
                 // Typed values: the engine builds the skill's own sentence from them (asking for
@@ -746,6 +831,11 @@ impl Flow {
                 // string) and runs it through the normal pipeline.
                 crate::llm::Pick::Call { tool, args } if self.router.skill(&tool).is_some() => {
                     if let Some(sentence) = self.sentence_from_call(&tool, args, p) {
+                        self.pending_learn = Some((
+                            crate::learned::key(text),
+                            tool.clone(),
+                            Some(sentence.clone()),
+                        ));
                         self.forced_skill = Some(tool);
                         return self.run(id, &sentence, p);
                     }
@@ -3386,6 +3476,63 @@ mod tests {
         };
         let _ = flow.handle(2, "blorp zibble wonk", &mut u);
         assert_eq!(u.questions, ["For how long?"]);
+    }
+
+    #[test]
+    fn a_request_the_model_worked_out_is_remembered_and_runs_without_it() {
+        const TIMER: &str = include_str!("../../../skills/reminders.timer.yaml");
+        let c = Arc::new(FakeConnector::new("reminders"));
+        let mut args = BTreeMap::new();
+        args.insert("length".to_string(), "10 minutes".to_string());
+        // The script holds ONE pick: the second time the model has nothing to say.
+        let mut flow =
+            flow_with(&[TIMER], vec![("reminders", c.clone())]).with_llm(Box::new(Scripted(vec![
+                crate::llm::Pick::Call {
+                    tool: "reminders.timer".into(),
+                    args,
+                },
+            ])));
+        let runs = |c: &Arc<FakeConnector>| {
+            c.calls()
+                .iter()
+                .filter(|x| matches!(x, Call::Execute { .. }))
+                .count()
+        };
+        let mut u = TestUser::default();
+        let first = flow.handle(1, "blorp zibble wonk", &mut u);
+        assert!(matches!(first, CoreEvent::Done { .. }), "{first:?}");
+        assert_eq!(runs(&c), 1);
+        let again = flow.handle(2, "Blorp  zibble wonk!", &mut u);
+        assert!(matches!(again, CoreEvent::Done { .. }), "{again:?}");
+        assert_eq!(runs(&c), 2, "the remembered request must run on its own");
+    }
+
+    #[test]
+    fn a_remembered_request_that_fails_is_forgotten() {
+        const TIMER: &str = include_str!("../../../skills/reminders.timer.yaml");
+        let c = Arc::new(FakeConnector::new("reminders"));
+        let mut args = BTreeMap::new();
+        args.insert("length".to_string(), "10 minutes".to_string());
+        let mut flow =
+            flow_with(&[TIMER], vec![("reminders", c.clone())]).with_llm(Box::new(Scripted(vec![
+                crate::llm::Pick::Call {
+                    tool: "reminders.timer".into(),
+                    args,
+                },
+            ])));
+        let mut u = TestUser::default();
+        let _ = flow.handle(1, "blorp zibble wonk", &mut u);
+        assert!(flow.learned_mut().get("blorp zibble wonk").is_some());
+        // The connector now fails: the remembered request is dropped.
+        flow.connectors.insert(
+            "reminders".into(),
+            Arc::new(
+                FakeConnector::new("reminders").fail_execute_with(ConnError::Failed("nope".into())),
+            ),
+        );
+        let ev = flow.handle(2, "blorp zibble wonk", &mut u);
+        assert!(matches!(ev, CoreEvent::Failed { .. }), "{ev:?}");
+        assert!(flow.learned_mut().get("blorp zibble wonk").is_none());
     }
 
     #[test]

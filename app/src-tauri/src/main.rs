@@ -26,6 +26,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 mod bar;
 mod commands;
 mod core_client;
+mod llm_host;
 mod registry;
 mod scheduler;
 mod sound;
