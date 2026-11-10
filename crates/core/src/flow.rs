@@ -67,6 +67,8 @@ pub struct Flow {
     forced_skill: Option<String>,
     /// The third way to plan a chain (after saved templates and part-wise routing): a model.
     drafter: Option<Box<dyn crate::plan::PlanDrafter>>,
+    /// The last request that worked, for follow-ups ("what about tomorrow").
+    last_ok: Option<(String, Instant)>,
 }
 
 impl Flow {
@@ -86,6 +88,7 @@ impl Flow {
             app_names: Box::new(Vec::new),
             forced_skill: None,
             drafter: None,
+            last_ok: None,
         }
     }
 
@@ -142,7 +145,18 @@ impl Flow {
 
     /// Handle one request and return its final event.
     pub fn handle(&mut self, id: RequestId, text: &str, prompter: &mut dyn Prompter) -> CoreEvent {
+        // A short follow-up becomes a full sentence from the last request that worked
+        // (for ten minutes); everything after that sees only the full sentence.
+        let rewritten = self
+            .last_ok
+            .as_ref()
+            .filter(|(_, at)| at.elapsed() < Duration::from_secs(600))
+            .and_then(|(last, _)| crate::followup::rewrite(last, text));
+        let text = rewritten.as_deref().unwrap_or(text);
         let event = self.run(id, text, prompter);
+        if matches!(event, CoreEvent::Done { .. }) {
+            self.last_ok = Some((text.to_string(), Instant::now()));
+        }
         // Sunrise, sunset and the moon with no place known answer "Which city? Try ...":
         // ask it instead, then answer for that city.
         if let CoreEvent::Done { message, .. } = &event {
