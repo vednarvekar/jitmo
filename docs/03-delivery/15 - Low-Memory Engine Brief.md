@@ -23,7 +23,12 @@ Precision comes from specialisation, constrained output, code checks and groundi
    4-core laptop takes the whole CPU.
 3. Change the idle unload from 5 minutes to 90 seconds.
 4. Stop sending the whole skill catalog in every prompt. Send only the top 3 tools that the encoder retrieves.
-   Measured on the owner's laptop (doc 13, section 10.8): reading the full catalog is the main cost.
+   Measured on the owner's laptop (doc 13, section 10.8): reading the full catalog takes about 10× longer than
+   reading the top 3, and the 0.8B model's private memory drops from 937 MB at context 4096 to 580 MB at 768.
+   Keep the context at 512–1,024 for tool calls, and put the fixed instructions first so the prefix cache
+   reuses them.
+4a. `Qwen3.5-2B-Q4_K_M.gguf` in the sandbox is incomplete (828 MB of about 1.28 GB). Download it again before
+   using any 2B number.
 5. Do not add more keyword lists. `wants_an_answer` is one; it gets replaced in step 4. New rules are allowed
    only for exact parsing (dates, numbers, units, maths, URLs).
 6. The model's free-text answers must not reach the user ungrounded. Until step 6 is done, an answer from the

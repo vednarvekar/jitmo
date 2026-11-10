@@ -382,4 +382,37 @@ open, to simulate an 8 GB laptop.
 
 ### 10.8 Measured on the owner's laptop
 
-MEASUREMENTS_PENDING
+Intel i5-1135G7 (4 cores), 16 GB, llama-server from `V:\jitmo-sandbox`, Q4_K_M files, **1 thread**. The coding
+agent's own benchmark was running on 3 threads at the same time, so the times are slower than on an idle PC;
+compare them with each other, not with the budget. Memory use and token counts do not depend on the shared CPU.
+
+| | Qwen3.5-0.8B (508 MB file) | Gemma 3 270M (241 MB file) |
+|---|---|---|
+| Private memory, context 4096 | **937 MB** | **197 MB** |
+| Working set, context 4096 | 1,020 MB | 400 MB |
+| Private memory, context 768, batch 128 (the agent's own run, 3 threads) | 580 MB | — |
+| Load to ready, then reload right after stopping | 2.7 s, 2.7 s | 1.8 s, 1.4 s |
+| First request, whole catalog (~1,800 tokens) | 24.8 s reading the prompt | 11.6 s reading the prompt |
+| First request, top 3 tools (~145 tokens) | 2.5 s reading the prompt | 1.0 s reading the prompt |
+| Next request, same instructions | 14–20 new tokens read (cache reused) | cache reused for the whole catalog; **not** reused for the top-3 prompt (148 tokens re-read) |
+| Output with no schema and no fine-tuning | chats ("I cannot open Notepad for you…") | empty or chatty |
+
+What this shows:
+
+1. **The prompt is the cost.** The whole catalog takes about 10× longer to read than the top 3 tools. Keep
+   prompts short and put the fixed instructions first, so the prefix cache can reuse them.
+2. **Context size is a memory lever.** The same 0.8B model uses 937 MB private at context 4096 and 580 MB at
+   768. Keep the context at 512–1,024 for tool calls.
+3. **The prefix cache works on Qwen3.5** (the hybrid-model worry did not hold here), but it does not behave the
+   same on every model and chat template. Check it per model in the benchmark.
+4. **Private memory is well above the file size** (937 MB for a 508 MB file). Part of it is compute buffers and
+   context; part may be weights copied out of the memory-mapped file (CPU weight repacking). Test whether
+   keeping the weights mapped (no repacking) lowers private memory without slowing reading too much: mapped
+   pages are cheaper for the PC because Windows can drop and reload them.
+5. **Loading takes 1.4–2.7 s** even straight after a stop. Hide it: pre-warm when the bar opens.
+6. **Untuned tiny models are useless for tool calls without constrained output.** Grammar or JSON-schema
+   decoding and fine-tuning are required, not optional.
+7. The `Qwen3.5-2B-Q4_K_M.gguf` in the sandbox is **incomplete** (828 MB of about 1.28 GB, last written
+   22:50) and must be downloaded again before any 2B result means anything.
+
+Measured with `llmprobe.ps1` (Claude's scratchpad, 10 Nov 2026 ~23:20).

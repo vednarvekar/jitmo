@@ -13,6 +13,7 @@ jitmo-connectors = { path = "../connectors" }
 jitmo-core = { path = "../core" }
 jitmo-ipc = { path = "../ipc" }
 jitmo-skills = { path = "../skills" }
+jitmo-llm = { path = "../llm" }
 jitmo-store = { path = "../store" }
 jitmo-model-worker = { path = "../model-worker", default-features = false }
 serde.workspace = true

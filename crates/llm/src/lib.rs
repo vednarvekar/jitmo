@@ -220,11 +220,6 @@ impl LocalLlm {
         schema: Option<&Value>,
         max_tokens: u32,
     ) -> Result<String, String> {
-        let base = {
-            let mut h = self.host.lock().map_err(|_| "model lock".to_string())?;
-            h.ensure()?;
-            h.base()
-        };
         let mut body = json!({
             "messages": [
                 { "role": "system", "content": system },
@@ -242,6 +237,37 @@ impl LocalLlm {
                 "json_schema": { "name": "reply", "strict": true, "schema": s }
             });
         }
+        self.post(body)
+    }
+
+    /// The number of the tool (0 = none) as ONE token: a grammar allows only the digits that
+    /// exist, and one token is all that is written (the model's big vocabulary makes every
+    /// extra token expensive).
+    pub fn pick_number(&self, system: &str, user: &str, tools: usize) -> Result<usize, String> {
+        let last = tools.min(9);
+        let body = json!({
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": user }
+            ],
+            "temperature": 0,
+            "max_tokens": 1,
+            "cache_prompt": true,
+            "chat_template_kwargs": { "enable_thinking": false },
+            "grammar": format!("root ::= [0-{last}]"),
+        });
+        self.post(body)?
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| "the model did not answer with a number".to_string())
+    }
+
+    fn post(&self, body: Value) -> Result<String, String> {
+        let base = {
+            let mut h = self.host.lock().map_err(|_| "model lock".to_string())?;
+            h.ensure()?;
+            h.base()
+        };
         let mut resp = agent(180)
             .post(&format!("{base}/v1/chat/completions"))
             .header("Content-Type", "application/json")
@@ -260,6 +286,24 @@ impl LocalLlm {
             .map(|s| s.trim().to_string())
             .ok_or_else(|| "the model sent no answer".to_string())
     }
+}
+
+/// The short prompt a fine-tuned tool-picker reads: a one-line instruction and the numbered
+/// candidate titles. Short on purpose: reading the prompt is most of the cost on a laptop CPU.
+pub fn pick_compact_system(tools: &[ToolBrief]) -> String {
+    let list: Vec<String> = tools
+        .iter()
+        .enumerate()
+        .map(|(n, t)| format!("{}: {}", n + 1, t.title))
+        .collect();
+    format!(
+        "Pick the tool number for the request, or 0 if no tool fits.
+{}",
+        list.join(
+            "
+"
+        )
+    )
 }
 
 /// The system prompt that makes the model pick one tool, with the catalog in it.
@@ -309,7 +353,7 @@ pub fn args_system(tool: &ToolBrief) -> String {
 ",
         );
     format!(
-        "Fill in the values for the tool \"{}\" from the user's request. Copy the words the user \n         said; do not invent anything. Use an empty string for anything the user did not say.
+        "Fill in the values for the tool \"{}\" from the user's request. Copy the words the user said; do not invent anything. Use an empty string for anything the user did not say.
 
 Values:
 {list}",

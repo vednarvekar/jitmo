@@ -380,7 +380,23 @@ fn main() {
             "required": ["tool"],
             "additionalProperties": false
         });
-        let body = json!({
+        let system = if compact {
+            // The short prompt and the one-token answer a fine-tuned picker uses.
+            let briefs: Vec<jitmo_core::llm::ToolBrief> = cand
+                .iter()
+                .filter_map(|id| by_id.get(id.as_str()))
+                .map(|s| jitmo_core::llm::ToolBrief {
+                    id: s.id.clone(),
+                    title: s.title.clone().unwrap_or_default(),
+                    examples: Vec::new(),
+                    args: Vec::new(),
+                })
+                .collect();
+            jitmo_llm::pick_compact_system(&briefs)
+        } else {
+            system
+        };
+        let mut body = json!({
             "messages": [
                 { "role": "system", "content": system },
                 { "role": "user", "content": case.text }
@@ -394,6 +410,11 @@ fn main() {
                 "json_schema": { "name": "pick", "strict": true, "schema": schema }
             }
         });
+        if compact {
+            body.as_object_mut().map(|o| o.remove("response_format"));
+            body["max_tokens"] = json!(1);
+            body["grammar"] = json!(format!("root ::= [0-{}]", cand.len().min(9)));
+        }
         let t = Instant::now();
         let resp = ag
             .post(&url)
@@ -404,11 +425,15 @@ fn main() {
             Ok(mut r) => {
                 let text = r.body_mut().read_to_string().unwrap_or_default();
                 let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
-                let picked = v["choices"][0]["message"]["content"]
-                    .as_str()
-                    .and_then(|c| serde_json::from_str::<Value>(c).ok())
-                    .and_then(|v| v["tool"].as_str().map(str::to_string))
-                    .unwrap_or_else(|| "?".into());
+                let content = v["choices"][0]["message"]["content"].as_str();
+                let picked = if compact {
+                    content.map(|c| c.trim().to_string())
+                } else {
+                    content
+                        .and_then(|c| serde_json::from_str::<Value>(c).ok())
+                        .and_then(|v| v["tool"].as_str().map(str::to_string))
+                }
+                .unwrap_or_else(|| "?".into());
                 let picked = if compact {
                     match picked.parse::<usize>() {
                         Ok(0) => "none".to_string(),

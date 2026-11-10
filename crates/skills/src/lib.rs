@@ -712,8 +712,8 @@ mod tool_tests {
 
     #[test]
     fn a_phrase_naming_an_unknown_arg_is_invalid() {
-        let yaml = include_str!("../../../skills/apps.open.yaml").to_string()
-            + "tool:\n  args:\n    app: { description: the app, required: true }\n  phrase: \"open {nope}\"\n";
+        let yaml = include_str!("../../../skills/apps.open.yaml")
+            .replace("phrase: \"open {app}\"", "phrase: \"open {nope}\"");
         let err = Skill::parse(&yaml).unwrap_err().to_string();
         assert!(err.contains("not a tool arg"), "{err}");
     }

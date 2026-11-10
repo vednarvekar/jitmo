@@ -1947,6 +1947,7 @@ dependencies = [
  "jitmo-connectors",
  "jitmo-core",
  "jitmo-ipc",
+ "jitmo-llm",
  "jitmo-model-worker",
  "jitmo-skills",
  "jitmo-store",

@@ -657,6 +657,128 @@ const NONE_REQUESTS: &[&str] = &[
     "play",
 ];
 
+/// Templates for the skills that have typed arguments: `{name=kind}` gives both the words and the
+/// value of the argument `name`, so the second-stage examples (request -> values) are exact.
+fn typed_templates(skill: &str) -> Vec<&'static str> {
+    match skill {
+        "apps.open" => vec![
+            "launch {app=app}",
+            "i want to use {app=app}",
+            "{app=app} kholo",
+            "run {app=app}",
+            "could you open {app=app}",
+            "need {app=app} now",
+            "start up {app=app}",
+        ],
+        "mail.send" => vec![
+            "email {to=person} that {body=msg}",
+            "send {to=person} a mail saying {body=msg}",
+            "write to {to=person}: {body=msg}",
+            "mail {to=person} {body=msg}",
+            "shoot {to=person} an email, {body=msg}",
+            "{to=person} ko mail karo ki {body=msg}",
+        ],
+        "mail.draft" => vec![
+            "draft an email to {to=person} saying {body=msg}",
+            "write a draft for {to=person}: {body=msg}",
+            "prepare a mail to {to=person} but don't send: {body=msg}",
+        ],
+        "whatsapp.send_message" => vec![
+            "whatsapp {to=person} {body=msg}",
+            "text {to=person} on whatsapp: {body=msg}",
+            "message {to=person} on whatsapp that {body=msg}",
+            "{to=person} ko whatsapp karo {body=msg}",
+        ],
+        "chat.post" => vec![
+            "post in the {channel=site} channel that {body=msg}",
+            "tell the {channel=site} channel on teams that {body=msg}",
+            "message the {channel=site} channel: {body=msg}",
+        ],
+        "reminders.remind" => vec![
+            "remind me to {what=msg} {when=time}",
+            "set a reminder: {what=msg} {when=time}",
+            "ping me {when=time} to {what=msg}",
+            "{when=time} pe yaad dilana {what=msg}",
+        ],
+        "reminders.timer" => vec![
+            "set a timer for {length=dur}",
+            "start a {length=dur} countdown",
+            "timer {length=dur}",
+            "alarm in {length=dur}",
+            "{length=dur} ka timer",
+            "count {length=dur} for me",
+        ],
+        "calendar.add" => vec![
+            "add {what=topic} to my calendar {when=time}",
+            "schedule {what=topic} {when=time}",
+            "create an event {what=topic} {when=time}",
+            "book {what=topic} for {when=time}",
+        ],
+        "music.play" => vec![
+            "play {what=artist}",
+            "put on {what=artist}",
+            "i feel like hearing {what=artist}",
+            "{what=artist} lagao",
+            "queue up {what=artist}",
+        ],
+        "web.weather" => vec![
+            "weather {when=time} in {place=place}",
+            "will it rain in {place=place} {when=time}",
+            "temperature in {place=place}",
+            "forecast for {place=place}",
+            "{place=place} ka mausam",
+        ],
+        "files.find" => vec![
+            "find {file=file}",
+            "where is {file=file}",
+            "search my pc for {file=file}",
+            "locate {file=file}",
+            "{file=file} kahan hai",
+        ],
+        "browser.search" => vec![
+            "search the web for {query=query}",
+            "google {query=query}",
+            "look up {query=query} online",
+            "{query=query} search karo",
+        ],
+        "calendar.invite" => vec![
+            "invite {who=person} to {event=topic}",
+            "add {who=person} as an attendee on {event=topic}",
+            "include {who=person} in {event=topic}",
+        ],
+        "files.email" => vec![
+            "email {file=file} to {to=person}",
+            "send {file=file} to {to=person} over mail",
+            "attach {file=file} and mail it to {to=person}",
+        ],
+        _ => Vec::new(),
+    }
+}
+
+/// Fill a typed template: the text, and the value of every named argument.
+fn fill_typed(
+    template: &str,
+    rng: &mut Rng,
+) -> (String, std::collections::BTreeMap<String, String>) {
+    let mut out = String::new();
+    let mut values = std::collections::BTreeMap::new();
+    let mut rest = template;
+    while let Some(i) = rest.find('{') {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 1..];
+        let Some(j) = after.find('}') else { break };
+        let (name, kind) = after[..j]
+            .split_once('=')
+            .unwrap_or((&after[..j], &after[..j]));
+        let v = rng.pick(fillers(kind)).to_string();
+        out.push_str(&v);
+        values.insert(name.to_string(), v);
+        rest = &after[j + 1..];
+    }
+    out.push_str(rest);
+    (out, values)
+}
+
 fn fill(template: &str, rng: &mut Rng) -> String {
     let mut out = String::new();
     let mut rest = template;
@@ -835,19 +957,17 @@ fn main() {
     };
 
     let system = |cand: &[String]| -> String {
-        let catalog: String = cand
+        let briefs: Vec<jitmo_core::llm::ToolBrief> = cand
             .iter()
-            .enumerate()
-            .filter_map(|(n, id)| by_id.get(id.as_str()).map(|s| (n, *s)))
-            .map(|(n, s)| format!("{}: {}", n + 1, s.title.clone().unwrap_or_default()))
-            .collect::<Vec<_>>()
-            .join("\n");
-        format!(
-            "You route requests for a Windows assistant. Pick the single tool that does what the \
-             user asks, or \"none\" when no tool fits, when it is general chat or a question the \
-             tools cannot answer, or when it is unsafe or unsupported. Answer with the tool \
-             number, or 0 for none.\n\nTools:\n{catalog}"
-        )
+            .filter_map(|id| by_id.get(id.as_str()))
+            .map(|s| jitmo_core::llm::ToolBrief {
+                id: s.id.clone(),
+                title: s.title.clone().unwrap_or_default(),
+                examples: Vec::new(),
+                args: Vec::new(),
+            })
+            .collect();
+        jitmo_llm::pick_compact_system(&briefs)
     };
 
     let mut lines: Vec<String> = Vec::new();
@@ -874,7 +994,7 @@ fn main() {
         let line = json!({ "messages": [
             { "role": "system", "content": system(&cand) },
             { "role": "user", "content": text },
-            { "role": "assistant", "content": json!({ "tool": answer }).to_string() }
+            { "role": "assistant", "content": answer }
         ]});
         lines.push(line.to_string());
     };
@@ -900,6 +1020,65 @@ fn main() {
         let text = roughen(base, &mut rng);
         emit(&text, None, &mut rng);
     }
+    // Second stage: the typed values of the tools that have them, as exact JSON.
+    let mut arg_lines: Vec<String> = Vec::new();
+    for s in &skills {
+        let Some(tool) = &s.tool else { continue };
+        let brief = jitmo_core::llm::ToolBrief {
+            id: s.id.clone(),
+            title: s.title.clone().unwrap_or_default(),
+            examples: Vec::new(),
+            args: tool
+                .args
+                .iter()
+                .map(|(n, a)| jitmo_core::llm::ArgBrief {
+                    name: n.clone(),
+                    description: a.description.clone(),
+                    required: a.required,
+                })
+                .collect(),
+        };
+        let t = typed_templates(&s.id);
+        if t.is_empty() {
+            continue;
+        }
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut tries = 0;
+        while seen.len() < per && tries < per * 20 {
+            tries += 1;
+            let (text, values) = fill_typed(rng.pick(&t), &mut rng);
+            let text = roughen(&text, &mut rng);
+            if !seen.insert(text.clone()) {
+                continue;
+            }
+            // Every argument of the tool appears, empty when the sentence did not say it.
+            let answer: serde_json::Map<String, serde_json::Value> = tool
+                .args
+                .keys()
+                .map(|k| (k.clone(), json!(values.get(k).cloned().unwrap_or_default())))
+                .collect();
+            arg_lines.push(
+                json!({ "messages": [
+                    { "role": "system", "content": jitmo_llm::args_system(&brief) },
+                    { "role": "user", "content": text },
+                    { "role": "assistant", "content": serde_json::Value::Object(answer).to_string() }
+                ]})
+                .to_string(),
+            );
+        }
+    }
+    let args_path = out_path.replace(".jsonl", "_args.jsonl");
+    std::fs::write(
+        &args_path,
+        arg_lines.join(
+            "
+",
+        ) + "
+",
+    )
+    .expect("could not write the arguments file");
+    println!("wrote {} argument examples to {args_path}", arg_lines.len());
+
     // A stable shuffle.
     for i in (1..lines.len()).rev() {
         let j = rng.below(i + 1);
