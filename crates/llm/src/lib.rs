@@ -14,6 +14,12 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// The model process may not use more than this (1.2 GB: the owner's hard limit).
+const MEMORY_CAP: u64 = 1200 * 1024 * 1024;
+/// Free memory that must remain after a load.
+#[cfg(windows)]
+const MIN_FREE_AFTER_LOAD: u64 = 1500 * 1024 * 1024;
+
 /// Where the pieces are and how big to run them.
 #[derive(Debug, Clone)]
 pub struct LlmConfig {
@@ -52,6 +58,9 @@ struct Host {
     cfg: LlmConfig,
     child: Option<Child>,
     last_used: Instant,
+    /// The Job Object that caps the child's memory and ends it with the job.
+    #[cfg(windows)]
+    cap: Option<jitmo_adapter_windows::budget::MemoryCap>,
 }
 
 impl Host {
@@ -71,6 +80,18 @@ impl Host {
         self.last_used = Instant::now();
         if self.alive() {
             return Ok(());
+        }
+        // The budget: never load when it would leave the PC short of memory (the model file plus
+        // 1.5 GB must be free), so jitmo never pushes the machine into paging.
+        #[cfg(windows)]
+        {
+            let need =
+                std::fs::metadata(&self.cfg.model).map_or(0, |m| m.len()) + MIN_FREE_AFTER_LOAD;
+            if let Some(free) = jitmo_adapter_windows::budget::free_physical_bytes() {
+                if free < need {
+                    return Err("not enough free memory to load the language model".into());
+                }
+            }
         }
         let mut cmd = Command::new(&self.cfg.server_exe);
         cmd.args([
@@ -102,6 +123,19 @@ impl Host {
         let child = cmd
             .spawn()
             .map_err(|e| format!("could not start the language model: {e}"))?;
+        #[cfg(windows)]
+        {
+            // A hard cap on the model process; if it cannot be set the model does not run.
+            match jitmo_adapter_windows::budget::cap_memory(&child, MEMORY_CAP) {
+                Ok(cap) => self.cap = Some(cap),
+                Err(e) => {
+                    let mut child = child;
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(e);
+                }
+            }
+        }
         self.child = Some(child);
         let url = format!("{}/health", self.base());
         let started = Instant::now();
@@ -122,6 +156,10 @@ impl Host {
     }
 
     fn stop(&mut self) {
+        #[cfg(windows)]
+        {
+            self.cap = None;
+        }
         if let Some(mut c) = self.child.take() {
             let _ = c.kill();
             let _ = c.wait();
@@ -155,6 +193,8 @@ impl LocalLlm {
             cfg,
             child: None,
             last_used: Instant::now(),
+            #[cfg(windows)]
+            cap: None,
         }));
         // Stop the server after it has been idle for a while (and when this value goes away,
         // `Host::drop` stops it).
@@ -257,6 +297,55 @@ pub fn pick_schema(tools: &[ToolBrief]) -> Value {
     })
 }
 
+/// The prompt that makes the model fill one tool's arguments from the words of the request.
+pub fn args_system(tool: &ToolBrief) -> String {
+    let list: String = tool
+        .args
+        .iter()
+        .map(|a| format!("- {}: {}", a.name, a.description))
+        .collect::<Vec<_>>()
+        .join(
+            "
+",
+        );
+    format!(
+        "Fill in the values for the tool \"{}\" from the user's request. Copy the words the user \n         said; do not invent anything. Use an empty string for anything the user did not say.
+
+Values:
+{list}",
+        tool.title
+    )
+}
+
+/// The JSON shape of the values: exactly the tool's arguments, each a string.
+pub fn args_schema(tool: &ToolBrief) -> Value {
+    let props: serde_json::Map<String, Value> = tool
+        .args
+        .iter()
+        .map(|a| (a.name.clone(), json!({ "type": "string" })))
+        .collect();
+    let names: Vec<Value> = tool.args.iter().map(|a| json!(a.name)).collect();
+    json!({ "type": "object", "properties": props, "required": names, "additionalProperties": false })
+}
+
+/// The non-empty values of an answer, only for the tool's own arguments.
+pub fn parse_args(
+    text: &str,
+    tool: &ToolBrief,
+) -> Option<std::collections::BTreeMap<String, String>> {
+    let v: Value = serde_json::from_str(text).ok()?;
+    let obj = v.as_object()?;
+    Some(
+        tool.args
+            .iter()
+            .filter_map(|a| {
+                let s = obj.get(&a.name)?.as_str()?.trim();
+                (!s.is_empty()).then(|| (a.name.clone(), s.to_string()))
+            })
+            .collect(),
+    )
+}
+
 // The model only picks a tool here. It does not write free text for the user: an answer
 // from a model's memory is a guess, and the writer (step 6 of the low-memory brief) will
 // answer only from retrieved text. Until then "none" means "I can't do that yet".
@@ -273,9 +362,22 @@ impl Llm for LocalLlm {
             .ok()
             .and_then(|s| serde_json::from_str::<Value>(&s).ok())
             .and_then(|v| v["tool"].as_str().map(str::to_string));
-        match picked {
-            Some(id) if tools.iter().any(|t| t.id == id) => Pick::Tool(id),
-            _ => Pick::Nothing,
+        let Some(id) = picked else {
+            return Pick::Nothing;
+        };
+        let Some(tool) = tools.iter().find(|t| t.id == id) else {
+            return Pick::Nothing;
+        };
+        if tool.args.is_empty() {
+            return Pick::Tool(id);
+        }
+        // Second step: the typed values, as JSON that cannot have any other keys.
+        match self.chat(&args_system(tool), request, Some(&args_schema(tool)), 120) {
+            Ok(text) => match parse_args(&text, tool) {
+                Some(args) => Pick::Call { tool: id, args },
+                None => Pick::Tool(id),
+            },
+            Err(_) => Pick::Tool(id),
         }
     }
 }
@@ -290,11 +392,17 @@ mod tests {
                 id: "apps.open".into(),
                 title: "Open an app".into(),
                 examples: vec!["open spotify".into()],
+                args: vec![jitmo_core::llm::ArgBrief {
+                    name: "app".into(),
+                    description: "the app".into(),
+                    required: true,
+                }],
             },
             ToolBrief {
                 id: "web.weather".into(),
                 title: "Weather".into(),
                 examples: vec![],
+                args: vec![],
             },
         ]
     }
@@ -312,6 +420,19 @@ mod tests {
         let p = pick_system(&tools());
         assert!(p.contains("- apps.open: Open an app (e.g. \"open spotify\")"));
         assert!(p.contains("web.weather"));
+    }
+
+    #[test]
+    fn the_arguments_schema_has_exactly_the_tools_arguments() {
+        let t = tools();
+        let s = args_schema(&t[0]);
+        assert_eq!(s["required"], json!(["app"]));
+        assert_eq!(s["additionalProperties"], json!(false));
+        let got = parse_args(r#"{"app":" spotify "}"#, &t[0]).unwrap();
+        assert_eq!(got.get("app").map(String::as_str), Some("spotify"));
+        // An empty value and a key the tool does not have are both dropped.
+        let none = parse_args(r#"{"app":"","other":"x"}"#, &t[0]).unwrap();
+        assert!(none.is_empty());
     }
 
     #[test]

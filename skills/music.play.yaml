@@ -25,3 +25,7 @@ check:
   action: search
   args: { text: "{request}" }
 undo: none
+tool:
+  args:
+    what: { description: "the song, artist or kind of music", required: true, ask: "What should I play?" }
+  phrase: "play {what}"

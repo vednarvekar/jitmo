@@ -10,3 +10,6 @@ publish.workspace = true
 jitmo-core = { path = "../core" }
 serde_json.workspace = true
 ureq = { version = "3", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+jitmo-adapter-windows = { path = "../adapter-windows" }

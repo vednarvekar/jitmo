@@ -33,3 +33,8 @@ check:
   args: { contact: "{contact}", text: "{message}" }
 undo: none
 fallback: open_chat_and_wait
+tool:
+  args:
+    to: { type: person, description: "who to message on WhatsApp", required: true, ask: "Who should I message?" }
+    body: { description: "the words to send", required: true, ask: "What should it say?" }
+  phrase: "text {to} on whatsapp that {body}"

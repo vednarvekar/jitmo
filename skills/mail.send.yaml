@@ -30,3 +30,8 @@ check:
   action: send
   args: { to: "{contact}", text: "{request}" }
 undo: none
+tool:
+  args:
+    to: { type: person, description: "who to email, the exact name", required: true, ask: "Who should I email?" }
+    body: { description: "the words to send, written as the user meant them", required: true, ask: "What should it say?" }
+  phrase: "email {to} that {body}"

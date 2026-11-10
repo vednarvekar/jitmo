@@ -29,3 +29,7 @@ check:
   action: reveal
   args: { path: "{file.path}" }
 undo: none
+tool:
+  args:
+    file: { description: "the file name or what it is", required: true, ask: "Which file?" }
+  phrase: "find {file}"

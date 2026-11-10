@@ -28,3 +28,7 @@ check:
   action: app_is_running
   args: { app: "{app}" }
 undo: none
+tool:
+  args:
+    app: { description: "the app to open, as a person would name it", required: true, ask: "Which app?" }
+  phrase: "open {app}"

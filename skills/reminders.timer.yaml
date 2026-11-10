@@ -25,3 +25,7 @@ check:
 undo:
   - connector: reminders
     action: set
+tool:
+  args:
+    length: { type: duration, description: "how long: 10 minutes, half an hour", required: true, ask: "For how long?" }
+  phrase: "set a timer for {length}"

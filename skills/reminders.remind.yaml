@@ -27,3 +27,8 @@ check:
 undo:
   - connector: reminders
     action: set
+tool:
+  args:
+    what: { description: "what to be reminded of", required: true, ask: "What should I remind you about?" }
+    when: { type: time, description: "when, as said: at 5pm, tomorrow morning, on friday at 4", required: true, ask: "When should I remind you?" }
+  phrase: "remind me to {what} {when}"

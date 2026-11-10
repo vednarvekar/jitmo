@@ -26,3 +26,8 @@ check:
 undo:
   - connector: outlook_calendar
     action: add
+tool:
+  args:
+    what: { description: "the event title", required: true, ask: "What is the event?" }
+    when: { type: time, description: "day and time, as said: on friday at 4pm, tomorrow at 10", required: true, ask: "When is it?" }
+  phrase: "add {what} {when}"

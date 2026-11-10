@@ -26,3 +26,8 @@ check:
   action: post
   args: { text: "{request}" }
 undo: none
+tool:
+  args:
+    channel: { description: "the Teams channel name", required: true, ask: "Which channel?" }
+    body: { description: "the words to post", required: true, ask: "What should I post?" }
+  phrase: "post in the {channel} channel that {body}"

@@ -24,3 +24,8 @@ check:
   action: weather
   args: { text: "{request}" }
 undo: none
+tool:
+  args:
+    when: { type: time, description: "today, tomorrow, this weekend, or a weekday" }
+    place: { type: place, description: "the city" }
+  phrase: "weather[ {when}][ in {place}]"

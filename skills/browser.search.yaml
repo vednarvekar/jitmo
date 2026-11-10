@@ -23,3 +23,7 @@ check:
   action: search
   args: { text: "{request}" }
 undo: none
+tool:
+  args:
+    query: { description: "what to search the web for", required: true, ask: "What should I search for?" }
+  phrase: "search the web for {query}"

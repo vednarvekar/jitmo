@@ -6,6 +6,7 @@
 //! everywhere.
 
 pub mod apps;
+pub mod budget;
 pub mod credentials;
 pub mod explorer;
 pub mod memory;

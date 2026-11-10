@@ -1899,6 +1899,7 @@ dependencies = [
 name = "jitmo-llm"
 version = "0.1.0"
 dependencies = [
+ "jitmo-adapter-windows",
  "jitmo-core",
  "serde_json",
  "ureq",

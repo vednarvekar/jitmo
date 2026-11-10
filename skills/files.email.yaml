@@ -30,3 +30,8 @@ check:
   action: send
   args: { to: "{contact}", text: "{request}", file: "{request}" }
 undo: none
+tool:
+  args:
+    file: { description: "the file to attach", required: true, ask: "Which file?" }
+    to: { type: person, description: "who to email it to", required: true, ask: "Who should get it?" }
+  phrase: "email {file} to {to}"

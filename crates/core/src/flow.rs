@@ -181,6 +181,30 @@ impl Flow {
         event
     }
 
+    /// The skill's own sentence for typed values from a model. A required value that is missing
+    /// is asked for with the skill's question; `None` when the user gives up.
+    fn sentence_from_call(
+        &mut self,
+        tool: &str,
+        mut args: BTreeMap<String, String>,
+        p: &mut dyn Prompter,
+    ) -> Option<String> {
+        let spec = self.router.skill(tool)?.tool.clone()?;
+        // Values outside the skill's own list are dropped: a model cannot add arguments.
+        args.retain(|k, _| spec.args.contains_key(k));
+        for (name, a) in &spec.args {
+            if a.required && args.get(name).is_none_or(|v| v.trim().is_empty()) {
+                let question = a
+                    .ask
+                    .clone()
+                    .unwrap_or_else(|| format!("What is the {name}?"));
+                let answer = ask_text_twice(p, &question, &a.description)?;
+                args.insert(name.clone(), answer);
+            }
+        }
+        spec.render(&args).ok()
+    }
+
     /// Undo the last undoable action, if any. Returns the one-line result.
     ///
     /// Steps are undone newest first. Only works inside the policy's Undo
@@ -691,6 +715,20 @@ impl Flow {
                     id: s.id.clone(),
                     title: s.title.clone().unwrap_or_else(|| s.id.clone()),
                     examples: s.examples.clone(),
+                    args: s
+                        .tool
+                        .as_ref()
+                        .map(|t| {
+                            t.args
+                                .iter()
+                                .map(|(n, a)| crate::llm::ArgBrief {
+                                    name: n.clone(),
+                                    description: a.description.clone(),
+                                    required: a.required,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                 })
                 .collect();
             let recent = self.last_ok.as_ref().map(|(t, _)| t.clone());
@@ -702,6 +740,16 @@ impl Flow {
             match pick {
                 crate::llm::Pick::Tool(skill_id) if self.router.skill(&skill_id).is_some() => {
                     decision = RouteDecision::Run { skill_id };
+                }
+                // Typed values: the engine builds the skill's own sentence from them (asking for
+                // a required one that is missing, from the skill's question, not from an error
+                // string) and runs it through the normal pipeline.
+                crate::llm::Pick::Call { tool, args } if self.router.skill(&tool).is_some() => {
+                    if let Some(sentence) = self.sentence_from_call(&tool, args, p) {
+                        self.forced_skill = Some(tool);
+                        return self.run(id, &sentence, p);
+                    }
+                    return self.cancelled(id, text, Some(&tool));
                 }
                 // An answer from a model's memory is a guess. It is shown only when it is
                 // grounded in retrieved text, which the writer will do (low-memory brief,
@@ -3291,6 +3339,53 @@ mod tests {
             "{ev:?}"
         );
         assert!(c.calls().is_empty());
+    }
+
+    #[test]
+    fn typed_values_from_the_model_become_the_skills_own_sentence() {
+        const TIMER: &str = include_str!("../../../skills/reminders.timer.yaml");
+        let c = Arc::new(FakeConnector::new("reminders"));
+        let mut args = BTreeMap::new();
+        args.insert("length".to_string(), "10 minutes".to_string());
+        args.insert("extra".to_string(), "dropped".to_string());
+        let mut flow =
+            flow_with(&[TIMER], vec![("reminders", c.clone())]).with_llm(Box::new(Scripted(vec![
+                crate::llm::Pick::Call {
+                    tool: "reminders.timer".into(),
+                    args,
+                },
+            ])));
+        let mut u = TestUser::default();
+        let ev = flow.handle(1, "blorp zibble wonk", &mut u);
+        assert!(matches!(ev, CoreEvent::Done { .. }), "{ev:?}");
+        let sentence = c
+            .calls()
+            .into_iter()
+            .find_map(|call| match call {
+                Call::Execute { args, .. } => args.get("text").cloned(),
+                _ => None,
+            })
+            .expect("the timer must have run");
+        assert_eq!(sentence, "set a timer for 10 minutes");
+    }
+
+    #[test]
+    fn a_missing_required_value_is_asked_from_the_skills_own_question() {
+        const TIMER: &str = include_str!("../../../skills/reminders.timer.yaml");
+        let c = Arc::new(FakeConnector::new("reminders"));
+        let mut flow =
+            flow_with(&[TIMER], vec![("reminders", c)]).with_llm(Box::new(Scripted(vec![
+                crate::llm::Pick::Call {
+                    tool: "reminders.timer".into(),
+                    args: BTreeMap::new(),
+                },
+            ])));
+        let mut u = TestUser {
+            text_answers: vec!["5 minutes".into()],
+            ..TestUser::default()
+        };
+        let _ = flow.handle(2, "blorp zibble wonk", &mut u);
+        assert_eq!(u.questions, ["For how long?"]);
     }
 
     #[test]

@@ -32,3 +32,8 @@ check:
 undo:
   - connector: outlook_calendar
     action: invite
+tool:
+  args:
+    who: { type: person, description: "who to invite", required: true, ask: "Who should I invite?" }
+    event: { description: "the meeting, by its title or time", required: true, ask: "Which meeting?" }
+  phrase: "invite {who} to {event}"

@@ -116,6 +116,95 @@ pub enum Undo {
     Steps(Vec<Step>),
 }
 
+/// One typed argument of a skill, for a model that fills arguments instead of the engine
+/// parsing English.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolArg {
+    /// person, text, time, duration, app, file, place, number...
+    #[serde(rename = "type", default = "default_arg_kind")]
+    pub kind: String,
+    #[serde(default)]
+    pub required: bool,
+    /// What it is, for the model ("who to email").
+    pub description: String,
+    /// The question to ask when it is missing ("Who should I email?").
+    #[serde(default)]
+    pub ask: Option<String>,
+}
+
+fn default_arg_kind() -> String {
+    "text".into()
+}
+
+/// The typed shape of a skill: its arguments and the sentence they make. The engine turns the
+/// arguments into that sentence and runs it through the normal pipeline, so every guard,
+/// slot, policy, confirm and check still applies; nothing about safety moves into a model.
+///
+/// `phrase` uses `{arg}` and optional groups `[ in {place}]`, which appear only when every
+/// argument inside them has a value.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tool {
+    pub args: BTreeMap<String, ToolArg>,
+    pub phrase: String,
+}
+
+impl Tool {
+    /// The sentence for these argument values, or the name of the required one that is missing.
+    pub fn render(&self, values: &BTreeMap<String, String>) -> Result<String, String> {
+        for (name, a) in &self.args {
+            if a.required && values.get(name).is_none_or(|v| v.trim().is_empty()) {
+                return Err(name.clone());
+            }
+        }
+        let has = |n: &str| values.get(n).is_some_and(|v| !v.trim().is_empty());
+        let mut out = String::new();
+        let mut chars = self.phrase.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '[' {
+                let mut group = String::new();
+                for g in chars.by_ref() {
+                    if g == ']' {
+                        break;
+                    }
+                    group.push(g);
+                }
+                let names = placeholders(&group).unwrap_or_default();
+                if names.iter().all(|n| has(n)) {
+                    out.push_str(&fill_values(&group, values));
+                }
+            } else if c == '{' {
+                let mut name = String::new();
+                for g in chars.by_ref() {
+                    if g == '}' {
+                        break;
+                    }
+                    name.push(g);
+                }
+                out.push_str(values.get(&name).map_or("", |v| v.trim()));
+            } else {
+                out.push(c);
+            }
+        }
+        Ok(out.split_whitespace().collect::<Vec<_>>().join(" "))
+    }
+}
+
+fn fill_values(template: &str, values: &BTreeMap<String, String>) -> String {
+    let mut out = String::new();
+    let mut rest = template;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else { break };
+        out.push_str(values.get(&after[..close]).map_or("", |v| v.trim()));
+        rest = &after[close + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Skill {
@@ -142,6 +231,9 @@ pub struct Skill {
     pub check: Option<Step>,
     pub undo: Undo,
     pub fallback: Option<String>,
+    /// Typed arguments a model can fill, and the sentence they make (see [`Tool`]).
+    #[serde(default)]
+    pub tool: Option<Tool>,
 }
 
 /// True for capabilities that send or share, like `whatsapp.send` or `gmail.share:link`.
@@ -200,6 +292,28 @@ impl Skill {
                         "slot `{name}` has `ask:` but type `{}` comes from a list, not typed words",
                         sp.kind
                     ));
+                }
+            }
+        }
+
+        if let Some(t) = &self.tool {
+            let names: BTreeSet<&str> = t.args.keys().map(String::as_str).collect();
+            let flat = t.phrase.replace(['[', ']'], "");
+            match placeholders(&flat) {
+                Err(e) => p.push(format!("tool phrase {e}")),
+                Ok(used) => {
+                    for u in &used {
+                        if !names.contains(u.as_str()) {
+                            p.push(format!(
+                                "tool phrase uses `{{{u}}}`, which is not a tool arg"
+                            ));
+                        }
+                    }
+                    for (n, a) in &t.args {
+                        if a.required && !used.iter().any(|u| u == n) {
+                            p.push(format!("required tool arg `{n}` is not in the phrase"));
+                        }
+                    }
                 }
             }
         }
@@ -533,5 +647,74 @@ mod tests {
             .replace("risk: sends_or_shares", "risk: read_only")
             .replace("resolve: [named_contact, usual_contact]", "resolve: []");
         assert!(problems(&yaml).len() >= 2);
+    }
+}
+
+#[cfg(test)]
+mod tool_tests {
+    use super::*;
+
+    fn tool() -> Tool {
+        let arg = |d: &str, required: bool| ToolArg {
+            kind: "text".into(),
+            required,
+            description: d.into(),
+            ask: None,
+        };
+        Tool {
+            args: BTreeMap::from([
+                ("what".to_string(), arg("what to do", true)),
+                ("when".to_string(), arg("when", false)),
+                ("place".to_string(), arg("where", false)),
+            ]),
+            phrase: "remind me to {what}[ {when}][ in {place}]".into(),
+        }
+    }
+
+    fn vals(p: &[(&str, &str)]) -> BTreeMap<String, String> {
+        p.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn the_phrase_is_built_from_the_arguments() {
+        assert_eq!(
+            tool()
+                .render(&vals(&[("what", "call mom"), ("when", "at 5pm")]))
+                .unwrap(),
+            "remind me to call mom at 5pm"
+        );
+    }
+
+    #[test]
+    fn optional_groups_appear_only_when_all_their_arguments_are_there() {
+        let t = tool();
+        assert_eq!(
+            t.render(&vals(&[("what", "stretch")])).unwrap(),
+            "remind me to stretch"
+        );
+        assert_eq!(
+            t.render(&vals(&[("what", "stretch"), ("place", "the gym")]))
+                .unwrap(),
+            "remind me to stretch in the gym"
+        );
+    }
+
+    #[test]
+    fn a_missing_required_argument_is_named() {
+        assert_eq!(
+            tool().render(&vals(&[("when", "at 5pm")])).unwrap_err(),
+            "what"
+        );
+        assert_eq!(tool().render(&vals(&[("what", "  ")])).unwrap_err(), "what");
+    }
+
+    #[test]
+    fn a_phrase_naming_an_unknown_arg_is_invalid() {
+        let yaml = include_str!("../../../skills/apps.open.yaml").to_string()
+            + "tool:\n  args:\n    app: { description: the app, required: true }\n  phrase: \"open {nope}\"\n";
+        let err = Skill::parse(&yaml).unwrap_err().to_string();
+        assert!(err.contains("not a tool arg"), "{err}");
     }
 }

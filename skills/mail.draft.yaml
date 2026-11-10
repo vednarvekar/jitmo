@@ -30,3 +30,8 @@ check:
 undo:
   - connector: outlook
     action: draft
+tool:
+  args:
+    to: { type: person, description: "who the draft is for", required: true, ask: "Who is the draft for?" }
+    body: { description: "the words of the draft", required: true, ask: "What should it say?" }
+  phrase: "draft an email to {to} saying {body}"
