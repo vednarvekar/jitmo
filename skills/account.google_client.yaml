@@ -1,0 +1,23 @@
+id: account.google_client
+title: "Set the Google client id"
+version: 1
+category: account
+capabilities:
+  - account.write
+network: google
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "set google client id to 123456-abc.apps.googleusercontent.com and secret GOCSPX-abc"
+slots: {}
+steps:
+  - connector: google_account
+    action: set_client_id
+    args: { text: "{request}" }
+check:
+  connector: google_account
+  action: set_client_id
+  args: { text: "{request}" }
+undo: none

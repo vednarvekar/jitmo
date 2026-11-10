@@ -46,7 +46,13 @@ pub struct OAuthConfig {
     /// Always a loopback address: `http://127.0.0.1:PORT/`.
     pub redirect_uri: String,
     pub scopes: Vec<String>,
+    /// Google's desktop clients send one with the code. It is not a secret (it ships in the
+    /// app), but the token endpoint insists on it. Always `None` for Microsoft.
+    pub client_secret: Option<String>,
 }
+
+/// `OAuthConfig::tenant` value that selects Google's endpoints instead of Microsoft's.
+pub const GOOGLE: &str = "google";
 
 fn encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -106,12 +112,32 @@ impl OAuthConfig {
         )
     }
 
+    pub fn is_google(&self) -> bool {
+        self.tenant == GOOGLE
+    }
+
     pub fn token_url(&self) -> String {
+        if self.is_google() {
+            return "https://oauth2.googleapis.com/token".to_string();
+        }
         format!("{}/token", self.base())
     }
 
     /// The page the user signs in on (opened in the default browser).
     pub fn authorize_url(&self, state: &str, challenge: &str) -> String {
+        if self.is_google() {
+            // offline + consent: Google hands out a refresh token only on the first consent.
+            return format!(
+                "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&response_type=code\
+                 &redirect_uri={}&scope={}&state={}&code_challenge={}&code_challenge_method=S256\
+                 &access_type=offline&prompt=consent",
+                encode(&self.client_id),
+                encode(&self.redirect_uri),
+                encode(&self.scopes.join(" ")),
+                encode(state),
+                encode(challenge),
+            );
+        }
         format!(
             "{}/authorize?client_id={}&response_type=code&redirect_uri={}&response_mode=query\
              &scope={}&state={}&code_challenge={}&code_challenge_method=S256&prompt=select_account",
@@ -385,6 +411,33 @@ impl TokenStore for CredentialTokenStore {
     }
 }
 
+/// The Google refresh token in Windows Credential Manager, target `jitmo/google/refresh-token`.
+#[cfg(windows)]
+pub struct GoogleTokenStore;
+
+#[cfg(windows)]
+const GOOGLE_REFRESH_TARGET: &str = "jitmo/google/refresh-token";
+
+#[cfg(windows)]
+impl TokenStore for GoogleTokenStore {
+    fn load(&self) -> Option<String> {
+        jitmo_adapter_windows::credentials::read_secret(GOOGLE_REFRESH_TARGET)
+            .ok()
+            .flatten()
+            .filter(|t| !t.is_empty())
+    }
+    fn save(&self, refresh_token: &str) -> Result<(), String> {
+        jitmo_adapter_windows::credentials::write_secret(
+            GOOGLE_REFRESH_TARGET,
+            "jitmo",
+            refresh_token,
+        )
+    }
+    fn clear(&self) {
+        let _ = jitmo_adapter_windows::credentials::delete_secret(GOOGLE_REFRESH_TARGET);
+    }
+}
+
 /// Seconds of slack: a token that expires within this is refreshed first.
 const EXPIRY_SLACK: i64 = 60;
 
@@ -455,9 +508,7 @@ impl Session {
                 self.sign_out();
                 Err(AuthError::SignInAgain)
             }
-            Err(code) => Err(AuthError::Failed(format!(
-                "Microsoft sign-in failed ({code})."
-            ))),
+            Err(code) => Err(AuthError::Failed(format!("Sign-in failed ({code})."))),
         }
     }
 
@@ -476,19 +527,20 @@ impl Session {
             ));
         }
         let scope = self.cfg.scopes.join(" ");
+        let mut form: Vec<(&str, &str)> = vec![
+            ("client_id", &self.cfg.client_id),
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", redirect_uri),
+            ("code_verifier", verifier),
+            ("scope", &scope),
+        ];
+        if let Some(secret) = self.cfg.client_secret.as_deref() {
+            form.push(("client_secret", secret));
+        }
         let (status, body) = self
             .transport
-            .post_form(
-                &self.cfg.token_url(),
-                &[
-                    ("client_id", &self.cfg.client_id),
-                    ("grant_type", "authorization_code"),
-                    ("code", code),
-                    ("redirect_uri", redirect_uri),
-                    ("code_verifier", verifier),
-                    ("scope", &scope),
-                ],
-            )
+            .post_form(&self.cfg.token_url(), &form)
             .map_err(|_| AuthError::Offline)?;
         self.take(status, &body, now)
     }
@@ -505,17 +557,18 @@ impl Session {
         }
         let refresh = self.store.load().ok_or(AuthError::SignInAgain)?;
         let scope = self.cfg.scopes.join(" ");
+        let mut form: Vec<(&str, &str)> = vec![
+            ("client_id", &self.cfg.client_id),
+            ("grant_type", "refresh_token"),
+            ("refresh_token", &refresh),
+            ("scope", &scope),
+        ];
+        if let Some(secret) = self.cfg.client_secret.as_deref() {
+            form.push(("client_secret", secret));
+        }
         let (status, body) = self
             .transport
-            .post_form(
-                &self.cfg.token_url(),
-                &[
-                    ("client_id", &self.cfg.client_id),
-                    ("grant_type", "refresh_token"),
-                    ("refresh_token", &refresh),
-                    ("scope", &scope),
-                ],
-            )
+            .post_form(&self.cfg.token_url(), &form)
             .map_err(|_| AuthError::Offline)?;
         self.take(status, &body, now)?;
         self.access
@@ -545,6 +598,7 @@ mod tests {
             tenant: "common".into(),
             redirect_uri: "http://127.0.0.1:53682/".into(),
             scopes: vec![scopes::OFFLINE.into(), scopes::MAIL_READ.into()],
+            client_secret: None,
         }
     }
 

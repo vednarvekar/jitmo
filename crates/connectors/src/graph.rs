@@ -89,6 +89,8 @@ pub struct Graph {
     session: Arc<Session>,
     now: Box<dyn Fn() -> i64 + Send + Sync>,
     base: String,
+    /// What the service is called in messages ("Microsoft 365", "Google").
+    label: String,
 }
 
 fn epoch_now() -> i64 {
@@ -102,7 +104,14 @@ impl Graph {
             session,
             now: Box::new(epoch_now),
             base: BASE.into(),
+            label: "Microsoft 365".into(),
         }
+    }
+
+    /// The same client for another service, named as it should be in messages.
+    pub fn labelled(mut self, label: &str) -> Graph {
+        self.label = label.to_string();
+        self
     }
 
     #[cfg(test)]
@@ -129,35 +138,38 @@ impl Graph {
         let (status, text) = self
             .http
             .send(method, &url, &token, prefer, body.as_deref())
-            .map_err(|_| ConnError::Offline("Microsoft 365".into()))?;
+            .map_err(|_| ConnError::Offline(self.label.clone()))?;
         match status {
             200..=299 => {
                 if text.trim().is_empty() {
                     Ok(Value::Null)
                 } else {
                     serde_json::from_str(&text).map_err(|_| {
-                        ConnError::Failed("Microsoft 365 sent an answer I can't read.".into())
+                        ConnError::Failed(format!("{} sent an answer I can't read.", self.label))
                     })
                 }
             }
             401 => {
                 self.session.sign_out();
-                Err(ConnError::NotSignedIn("Microsoft 365".into()))
+                Err(ConnError::NotSignedIn(self.label.clone()))
             }
-            403 => Err(ConnError::Failed(
-                "Microsoft 365 did not allow that. The app may need another permission.".into(),
-            )),
-            404 => Err(ConnError::Failed(
-                "Microsoft 365 could not find that.".into(),
-            )),
-            429 | 500..=599 => Err(ConnError::Offline("Microsoft 365".into())),
+            403 => Err(ConnError::Failed(format!(
+                "{} did not allow that. The app may need another permission.",
+                self.label
+            ))),
+            404 => Err(ConnError::Failed(format!(
+                "{} could not find that.",
+                self.label
+            ))),
+            429 | 500..=599 => Err(ConnError::Offline(self.label.clone())),
             other => {
                 let msg = serde_json::from_str::<Value>(&text)
                     .ok()
                     .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
                     .unwrap_or_default();
                 Err(ConnError::Failed(format!(
-                    "Microsoft 365 refused that ({other}). {msg}"
+                    "{} refused that ({other}). {msg}",
+                    self.label
                 )))
             }
         }
@@ -775,6 +787,7 @@ mod tests {
                 tenant: "common".into(),
                 redirect_uri: "http://127.0.0.1:1/".into(),
                 scopes: vec![],
+                client_secret: None,
             },
             Box::new(Ok1),
             Box::new(MemoryTokenStore::default()),
@@ -1005,6 +1018,7 @@ mod live {
                 tenant: "common".into(),
                 redirect_uri: String::new(),
                 scopes: crate::ms365_account::default_scopes(),
+                client_secret: None,
             },
             Box::new(UreqTransport),
             Box::new(CredentialTokenStore),

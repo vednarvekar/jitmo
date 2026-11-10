@@ -534,6 +534,20 @@ fn work_skill(lower: &str) -> Option<&'static str> {
     {
         return Some("whatsapp.send_file");
     }
+    // The Google account: set the client, sign in, sign out.
+    let google = has("google") || has("gmail") || has("g suite") || has("workspace");
+    if google && (has("client id") || has("client secret")) && (starts("set") || starts("save")) {
+        return Some("account.google_client");
+    }
+    if google && (has("sign out") || has("log out") || has("logout") || has("disconnect")) {
+        return Some("account.google_sign_out");
+    }
+    if google
+        && (has("sign in") || has("log in") || has("login") || has("connect"))
+        && !has("search")
+    {
+        return Some("account.google_sign_in");
+    }
     // The Microsoft account: set the app id, sign in, sign out.
     let ms = has("microsoft") || has("outlook") || has("office 365") || has("m365");
     if ms && (has("client id") || has("app id")) && (starts("set") || starts("save")) {
@@ -1225,5 +1239,34 @@ mod tests {
         assert_eq!(normalize("opener"), "opener");
         assert_eq!(normalize("startup"), "startup");
         assert_eq!(normalize("open"), "open");
+    }
+}
+
+#[cfg(test)]
+mod google_routes {
+    use super::*;
+
+    #[test]
+    fn google_account_sentences_route_to_the_google_skills() {
+        assert_eq!(
+            work_skill("sign in to google"),
+            Some("account.google_sign_in")
+        );
+        assert_eq!(
+            work_skill("connect my gmail"),
+            Some("account.google_sign_in")
+        );
+        assert_eq!(
+            work_skill("sign out of google"),
+            Some("account.google_sign_out")
+        );
+        assert_eq!(
+            work_skill("set google client id to x.apps.googleusercontent.com and secret GOCSPX-y"),
+            Some("account.google_client")
+        );
+        assert_ne!(
+            work_skill("search google for pizza"),
+            Some("account.google_sign_in")
+        );
     }
 }

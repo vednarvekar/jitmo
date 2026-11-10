@@ -120,6 +120,9 @@ fn load_skills() -> Vec<Skill> {
         include_str!("../../../skills/account.ms365_sign_in.yaml"),
         include_str!("../../../skills/account.ms365_sign_out.yaml"),
         include_str!("../../../skills/account.ms365_client.yaml"),
+        include_str!("../../../skills/account.google_sign_in.yaml"),
+        include_str!("../../../skills/account.google_sign_out.yaml"),
+        include_str!("../../../skills/account.google_client.yaml"),
     ]
     .iter()
     .map(|y| Skill::parse(y).expect("built-in skill is invalid"))
@@ -267,6 +270,7 @@ pub(crate) fn connectors(
         Arc::new(FakeConnector::new("windows_system")),
     );
     add_ms365(&mut map, db, key);
+    add_google(&mut map, db, key);
     map
 }
 
@@ -294,6 +298,7 @@ fn add_ms365(
         tenant,
         redirect_uri: String::new(),
         scopes: default_scopes(),
+        client_secret: None,
     });
     #[cfg(windows)]
     let tokens: Box<dyn jitmo_connectors::oauth::TokenStore> =
@@ -373,6 +378,121 @@ fn add_ms365(
         agenda,
         Arc::new(OneDrive::new(drive, health())) as Arc<dyn Connector>,
         Arc::new(Teams::new(chat, health())),
+        workflows,
+    ] {
+        map.insert(c.id().to_string(), c);
+    }
+}
+
+/// Google Workspace: when a Google client is saved and Microsoft is not (or `mail_provider`
+/// is "google"), the same mail, calendar and file connectors run on Gmail, Google Calendar
+/// and Drive. The skills do not change, only what is behind the connectors.
+fn add_google(
+    map: &mut HashMap<String, Arc<dyn Connector>>,
+    db: &std::path::Path,
+    key: Option<&jitmo_store::Key>,
+) {
+    use jitmo_connectors::google::{scopes, GoogleCalendar, GoogleDrive, GoogleMail};
+    use jitmo_connectors::google_account::GoogleAccount;
+    use jitmo_connectors::graph::{Graph, NoChat, UreqHttp};
+    use jitmo_connectors::ms365::Outlook;
+    use jitmo_connectors::ms365_cal::OutlookCalendar;
+    use jitmo_connectors::ms365_work::{OneDrive, WorkflowParts, Workflows};
+    use jitmo_connectors::oauth::{OAuthConfig, Session, UreqTransport, GOOGLE};
+    use jitmo_connectors::Health;
+
+    let id = setting_reader(db, key, "google_client_id")().filter(|s| !s.trim().is_empty());
+    let secret = setting_reader(db, key, "google_client_secret")().filter(|s| !s.trim().is_empty());
+    let cfg = match (id, secret) {
+        (Some(id), Some(secret)) => Some(OAuthConfig {
+            client_id: id.trim().to_string(),
+            tenant: GOOGLE.to_string(),
+            redirect_uri: String::new(),
+            scopes: scopes(),
+            client_secret: Some(secret.trim().to_string()),
+        }),
+        _ => None,
+    };
+    #[cfg(windows)]
+    let tokens: Box<dyn jitmo_connectors::oauth::TokenStore> =
+        Box::new(jitmo_connectors::oauth::GoogleTokenStore);
+    #[cfg(not(windows))]
+    let tokens: Box<dyn jitmo_connectors::oauth::TokenStore> =
+        Box::new(jitmo_connectors::oauth::MemoryTokenStore::default());
+    let session = cfg
+        .clone()
+        .map(|c| Arc::new(Session::new(c, Box::new(UreqTransport), tokens)));
+
+    let (save_db, save_key) = (db.to_path_buf(), key.copied());
+    let saver = move |id: &str, secret: &str| -> Result<(), String> {
+        let store = open_store(&save_db, save_key.as_ref()).map_err(|e| e.to_string())?;
+        store
+            .set_setting("google_client_id", id)
+            .map_err(|e| e.to_string())?;
+        store
+            .set_setting("google_client_secret", secret)
+            .map_err(|e| e.to_string())
+    };
+    map.insert(
+        "google_account".into(),
+        Arc::new(GoogleAccount::new(
+            cfg,
+            session.clone(),
+            Box::new(open_in_browser),
+            Box::new(saver),
+        )),
+    );
+
+    let Some(session) = session else { return };
+    // Microsoft stays in charge when it is set up, unless Google is chosen explicitly.
+    let ms_set_up =
+        setting_reader(db, key, "ms365_client_id")().is_some_and(|s| !s.trim().is_empty());
+    let chosen = setting_reader(db, key, "mail_provider")()
+        .is_some_and(|s| s.trim().eq_ignore_ascii_case("google"));
+    if ms_set_up && !chosen {
+        return;
+    }
+
+    let health = {
+        let session = session.clone();
+        move || -> Box<dyn Fn() -> Health + Send + Sync> {
+            let s = session.clone();
+            Box::new(move || {
+                if s.is_signed_in() {
+                    Health::Ready
+                } else {
+                    Health::NotSignedIn
+                }
+            })
+        }
+    };
+    let g = Arc::new(Graph::new(Arc::new(UreqHttp), session).labelled("Google"));
+    let mail = Arc::new(GoogleMail::new(g.clone()));
+    let calendar = Arc::new(GoogleCalendar::new(g.clone()));
+    let drive = Arc::new(GoogleDrive::new(g));
+    let now = || -> Box<dyn Fn() -> chrono::DateTime<chrono::Local> + Send + Sync> {
+        Box::new(chrono::Local::now)
+    };
+    let outlook: Arc<dyn Connector> = Arc::new(Outlook::new(mail.clone(), health(), now()));
+    let agenda: Arc<dyn Connector> =
+        Arc::new(OutlookCalendar::new(calendar.clone(), health(), now()));
+    let chat = Arc::new(NoChat);
+    let workflows: Arc<dyn Connector> = Arc::new(Workflows::new(
+        WorkflowParts {
+            mail,
+            calendar,
+            drive: drive.clone(),
+            chat,
+            outlook: outlook.clone(),
+            agenda: agenda.clone(),
+        },
+        health(),
+        now(),
+    ));
+    for c in [
+        outlook,
+        agenda,
+        Arc::new(OneDrive::new(drive, health())) as Arc<dyn Connector>,
         workflows,
     ] {
         map.insert(c.id().to_string(), c);

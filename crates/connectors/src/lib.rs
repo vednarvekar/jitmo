@@ -9,6 +9,8 @@ pub mod browser;
 pub mod dnd;
 pub mod fake;
 pub mod files;
+pub mod google;
+pub mod google_account;
 pub mod graph;
 pub mod local_calc;
 pub mod ms365;

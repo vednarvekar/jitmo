@@ -1,0 +1,24 @@
+id: account.google_sign_out
+title: "Sign out of Google"
+version: 1
+category: account
+capabilities:
+  - account.write
+network: google
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "sign out of google"
+  - "disconnect gmail"
+slots: {}
+steps:
+  - connector: google_account
+    action: sign_out
+    args: {}
+check:
+  connector: google_account
+  action: sign_out
+  args: {}
+undo: none

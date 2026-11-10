@@ -1,0 +1,25 @@
+id: account.google_sign_in
+title: "Sign in to Google"
+version: 1
+category: account
+capabilities:
+  - account.write
+network: google
+limits:
+  cpu_ms: 500
+  timeout_s: 20
+risk: changes_data
+examples:
+  - "sign in to google"
+  - "connect my gmail"
+  - "log in to google"
+slots: {}
+steps:
+  - connector: google_account
+    action: sign_in
+    args: {}
+check:
+  connector: google_account
+  action: sign_in
+  args: {}
+undo: none

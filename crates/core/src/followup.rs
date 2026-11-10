@@ -46,9 +46,18 @@ fn place_in(s: &str) -> Option<String> {
 }
 
 fn is_weather(last: &str) -> bool {
-    ["weather", "rain", "temperature", "forecast", "sunny", "umbrella", "hot", "cold"]
-        .iter()
-        .any(|w| last.contains(w))
+    [
+        "weather",
+        "rain",
+        "temperature",
+        "forecast",
+        "sunny",
+        "umbrella",
+        "hot",
+        "cold",
+    ]
+    .iter()
+    .any(|w| last.contains(w))
 }
 
 fn is_calendar(last: &str) -> bool {
@@ -148,7 +157,10 @@ mod tests {
 
     #[test]
     fn again_repeats_and_stand_alone_sentences_pass() {
-        assert_eq!(rewrite("open spotify", "again").as_deref(), Some("open spotify"));
+        assert_eq!(
+            rewrite("open spotify", "again").as_deref(),
+            Some("open spotify")
+        );
         assert_eq!(rewrite("weather in pune", "open chrome"), None);
         assert_eq!(rewrite("", "again"), None);
     }

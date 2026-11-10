@@ -241,6 +241,7 @@ mod tests {
             tenant: "common".into(),
             redirect_uri: String::new(),
             scopes: default_scopes(),
+            client_secret: None,
         }
     }
 
