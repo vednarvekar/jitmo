@@ -13,6 +13,8 @@ chrono-tz = "0.10"
 regex = "1"
 serde_json.workspace = true
 # Windows uses the built-in TLS (schannel), so no C compiler or extra tools are needed.
+sha2 = "0.10"
+base64 = "0.23"
 ureq = { version = "3", default-features = false, features = ["native-tls"] }
 jitmo-store = { path = "../store" }
 

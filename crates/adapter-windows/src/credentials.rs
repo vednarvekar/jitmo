@@ -69,7 +69,6 @@ mod os {
     extern "system" {
         fn CredReadW(target: *const u16, kind: u32, flags: u32, out: *mut *mut CredentialW) -> i32;
         fn CredWriteW(cred: *const CredentialW, flags: u32) -> i32;
-        #[cfg(test)]
         fn CredDeleteW(target: *const u16, kind: u32, flags: u32) -> i32;
         fn CredFree(buffer: *mut core::ffi::c_void);
     }
@@ -88,6 +87,10 @@ mod os {
     }
 
     pub fn random_key() -> Result<[u8; 32], String> {
+        random32()
+    }
+
+    pub fn random32() -> Result<[u8; 32], String> {
         let mut key = [0u8; 32];
         // SAFETY: `key` is valid for 32 bytes; a null algorithm handle with the
         // system-preferred-RNG flag is the documented way to call this.
@@ -161,8 +164,6 @@ mod os {
         Ok(())
     }
 
-    /// Only the live test needs this (to clean up its throwaway credential).
-    #[cfg(test)]
     pub fn delete(target: &str) -> Result<(), String> {
         let t = wide(target);
         // SAFETY: `t` is NUL-terminated and outlives the call.
@@ -185,6 +186,31 @@ fn get_or_create(target: &str, user: &str) -> Result<[u8; 32], String> {
     let key = os::random_key()?;
     os::write(target, user, encode_key(&key).as_bytes())?;
     Ok(key)
+}
+
+/// A secret text kept in Credential Manager under `target` (for example the Microsoft
+/// refresh token, `jitmo/ms365/token`). `Ok(None)` when there is none.
+#[cfg(windows)]
+pub fn read_secret(target: &str) -> Result<Option<String>, String> {
+    Ok(os::read(target)?.map(|b| String::from_utf8_lossy(&b).into_owned()))
+}
+
+/// Store or replace a secret text.
+#[cfg(windows)]
+pub fn write_secret(target: &str, user: &str, value: &str) -> Result<(), String> {
+    os::write(target, user, value.as_bytes())
+}
+
+/// Remove a secret (signing out). Removing one that is not there is not an error.
+#[cfg(windows)]
+pub fn delete_secret(target: &str) -> Result<(), String> {
+    os::delete(target)
+}
+
+/// 32 random bytes from the operating system.
+#[cfg(windows)]
+pub fn random_bytes32() -> Result<[u8; 32], String> {
+    os::random32()
 }
 
 /// Read the database key from Credential Manager, creating it on first use.

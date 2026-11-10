@@ -10,6 +10,8 @@ pub mod dnd;
 pub mod fake;
 pub mod files;
 pub mod local_calc;
+pub mod ms365;
+pub mod oauth;
 pub mod reminders;
 pub mod repeat;
 pub mod settings;
