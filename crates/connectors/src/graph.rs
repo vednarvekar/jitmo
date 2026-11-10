@@ -50,6 +50,11 @@ impl Http for UreqHttp {
     ) -> Result<(u16, String), String> {
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
+            .tls_config(
+                ureq::tls::TlsConfig::builder()
+                    .provider(ureq::tls::TlsProvider::NativeTls)
+                    .build(),
+            )
             .timeout_global(Some(std::time::Duration::from_secs(20)))
             .build()
             .into();

@@ -316,6 +316,11 @@ impl Transport for UreqTransport {
     fn post_form(&self, url: &str, form: &[(&str, &str)]) -> Result<(u16, String), String> {
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
+            .tls_config(
+                ureq::tls::TlsConfig::builder()
+                    .provider(ureq::tls::TlsProvider::NativeTls)
+                    .build(),
+            )
             .timeout_global(Some(Duration::from_secs(20)))
             .build()
             .into();
