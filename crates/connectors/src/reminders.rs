@@ -220,6 +220,35 @@ pub fn parse(text: &str, now: DateTime<Local>) -> Result<Parsed, String> {
         text
     };
     let lower = text.to_lowercase();
+    // "set alarm for 1 min" is a timer; "set alarm for 7am" rings at that time.
+    if lower.contains("alarm") && !lower.contains("timer") {
+        if durations(text).is_some() {
+            return parse(&lower.replace("alarm", "timer"), now);
+        }
+        let rest = Regex::new(r"(?i)\b(set|an?|my|the|new|alarm|for|me|please|wake|up)\b")
+            .map_err(|e| e.to_string())?
+            .replace_all(&lower, "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !rest.is_empty() {
+            let rest = if rest.chars().all(|c| c.is_ascii_digit() || c == ':') {
+                format!("at {rest}")
+            } else {
+                rest
+            };
+            match parse(&format!("remind me {rest} to ring"), now) {
+                Ok(p) => {
+                    return Ok(Parsed {
+                        what: "Alarm".to_string(),
+                        ..p
+                    })
+                }
+                Err(e) if e.starts_with("Which time did you mean") => return Err(e),
+                Err(_) => {}
+            }
+        }
+    }
     let is_timer = lower.contains("timer");
     let mut cut: Vec<(usize, usize)> = Vec::new();
 
@@ -1055,5 +1084,44 @@ mod tests {
             .unwrap()
             .is_empty());
         let _ = std::fs::remove_dir_all(db.parent().unwrap());
+    }
+}
+
+#[cfg(test)]
+mod alarm_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn now() -> DateTime<Local> {
+        Local.with_ymd_and_hms(2026, 11, 8, 14, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn an_alarm_for_a_length_is_a_timer() {
+        for said in [
+            "set alarm for 1min",
+            "set alarm for 1 min",
+            "alarm for 5 minutes",
+            "set an alarm for 10 mins",
+            "set alarm 30 sec",
+        ] {
+            let p = parse(said, now()).unwrap_or_else(|e| panic!("{said}: {e}"));
+            assert!(p.timer, "{said}");
+            assert!(
+                p.due > now() && p.due < now() + Duration::minutes(11),
+                "{said}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_alarm_for_a_time_rings_then() {
+        let p = parse("set alarm for 7am", now()).unwrap();
+        assert_eq!(p.what, "Alarm");
+        assert!(!p.timer);
+        // A bare hour is asked about, like any other.
+        assert!(parse("set alarm for 7", now())
+            .unwrap_err()
+            .starts_with("Which time did you mean?"));
     }
 }
