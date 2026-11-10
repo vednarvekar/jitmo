@@ -591,3 +591,14 @@ fn whatsapp_desktop_installed() -> bool {
         false
     }
 }
+
+/// The calendar connector for the meeting heads-up (its own instance, so it never waits on
+/// the engine's thread).
+pub(crate) fn calendar_connector(
+    db: &std::path::Path,
+    key: Option<&jitmo_store::Key>,
+) -> Arc<dyn Connector> {
+    let mut all = connectors(db, key);
+    all.remove("outlook_calendar")
+        .unwrap_or_else(|| Arc::new(jitmo_connectors::fake::FakeConnector::new("outlook_calendar")))
+}

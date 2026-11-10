@@ -50,3 +50,39 @@ pub(crate) fn start_reminder_scheduler(
 pub(crate) fn chrono_utc_now() -> String {
     jitmo_connectors::reminders::utc_text(chrono::Local::now())
 }
+
+/// Once a minute, look at the calendar (Microsoft or Google, whichever is signed in) and tell
+/// the user about a meeting that starts within ten minutes, once per meeting. Off with the
+/// setting `meeting_headsup` = `off`. A calendar that is not set up or signed in is skipped
+/// quietly: this must never nag.
+pub(crate) fn start_meeting_headsup(
+    db: std::path::PathBuf,
+    key: Option<jitmo_store::Key>,
+    app: AppHandle,
+) {
+    std::thread::spawn(move || {
+        let calendar = crate::registry::calendar_connector(&db, key.as_ref());
+        let mut announced: std::collections::HashSet<String> = std::collections::HashSet::new();
+        loop {
+            std::thread::sleep(Duration::from_secs(60));
+            let off = open_store(&db, key.as_ref())
+                .ok()
+                .and_then(|s| s.get_setting("meeting_headsup").ok().flatten())
+                .is_some_and(|v| v.trim().eq_ignore_ascii_case("off"));
+            if off {
+                continue;
+            }
+            let args: jitmo_connectors::Args = [("text".to_string(), "10".to_string())].into();
+            let Ok(out) = calendar.execute("heads_up", &args) else {
+                continue;
+            };
+            let message = out.0.get("message").cloned().unwrap_or_default();
+            let Some(id) = out.0.get("id").cloned().filter(|_| !message.is_empty()) else {
+                continue;
+            };
+            if announced.insert(id) {
+                crate::bar::show_notice(&app, &message);
+            }
+        }
+    });
+}

@@ -362,3 +362,9 @@ pub(crate) fn hide(app: &AppHandle) {
         }
     });
 }
+
+/// A message nobody asked for that is not an alarm (a meeting about to start): the bar shows
+/// it without taking the keyboard, so typing elsewhere is not swallowed.
+pub(crate) fn show_notice(app: &AppHandle, text: &str) {
+    show_notice_inner(app, text, "bar-notice");
+}

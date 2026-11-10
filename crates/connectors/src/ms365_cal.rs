@@ -533,6 +533,7 @@ impl Connector for OutlookCalendar {
             a("decline", &["text"]),
             a("accept", &["text"]),
             a("context", &["text"]),
+            a("heads_up", &[]),
         ]
     }
 
@@ -545,6 +546,35 @@ impl Connector for OutlookCalendar {
         let text = arg(args, "text").unwrap_or("");
         let today = self.today();
         match action {
+            // The next meeting starting within `text` minutes (default 10), for the heads-up
+            // toast: its id (so it is announced once), minutes to go and a one-line message.
+            "heads_up" => {
+                let within: i64 = text.trim().parse().unwrap_or(10);
+                let now = (self.now)().naive_local();
+                let soon = self
+                    .backend
+                    .all()?
+                    .into_iter()
+                    .filter(|e| !e.declined && !e.invite_pending && e.start > now)
+                    .filter(|e| (e.start - now).num_minutes() <= within)
+                    .min_by_key(|e| e.start);
+                Ok(match soon {
+                    Some(e) => {
+                        let mins = ((e.start - now).num_seconds() + 59) / 60;
+                        let msg = if mins <= 1 {
+                            format!("{} starts now.", e.title)
+                        } else {
+                            format!("{} starts in {mins} minutes.", e.title)
+                        };
+                        out(&[
+                            ("message", msg),
+                            ("id", e.id),
+                            ("minutes", mins.to_string()),
+                        ])
+                    }
+                    None => out(&[("message", String::new())]),
+                })
+            }
             // "when is my next meeting": the next one that has not started yet.
             "agenda"
                 if {
@@ -1043,7 +1073,7 @@ impl Connector for OutlookCalendar {
     fn check(&self, action: &str, args: &Args) -> Result<bool, ConnError> {
         ready(&*self.health, "Outlook calendar")?;
         match action {
-            "agenda" | "free" | "context" => Ok(true),
+            "agenda" | "free" | "context" | "heads_up" => Ok(true),
             // A check sees only the arguments, so these prove the calendar is reachable.
             "add" | "block" | "invite" | "move" | "decline" | "accept" => {
                 Ok(self.backend.all().is_ok())
@@ -1345,5 +1375,22 @@ mod next_tests {
         let m = c.execute("agenda", &args).unwrap().0["message"].clone();
         // It is 10:00 on Monday: the 09:30 standup has started, the 15:00 review has not.
         assert_eq!(m, "Your next meeting is “Project review” at 15:00.");
+    }
+
+    #[test]
+    fn heads_up_names_a_meeting_starting_soon_and_nothing_otherwise() {
+        let c = OutlookCalendar::fake(Arc::new(FakeCalendar::seeded()));
+        let none = c.execute("heads_up", &Args::new()).unwrap();
+        // 10:00: the review is at 15:00, well outside ten minutes.
+        assert_eq!(none.0["message"], "");
+        let mut a = Args::new();
+        a.insert("text".into(), "300".into());
+        let some = c.execute("heads_up", &a).unwrap();
+        assert!(
+            some.0["message"].contains("Project review starts in"),
+            "{:?}",
+            some.0
+        );
+        assert!(some.0.contains_key("id"));
     }
 }
