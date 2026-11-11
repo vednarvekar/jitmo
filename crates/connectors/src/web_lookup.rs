@@ -1863,7 +1863,7 @@ mod tests {
             Err(ConnError::MissingArg(_))
         ));
         assert_eq!(c.id(), "web_lookup");
-        assert_eq!(c.actions().len(), 2);
+        assert_eq!(c.actions().len(), 3);
     }
 }
 
