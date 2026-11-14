@@ -32,10 +32,17 @@ pub struct LlmConfig {
     pub context: u32,
     /// Seconds without a request before the server is stopped.
     pub idle_seconds: u64,
-    /// Constrain the one-token pick with a grammar. Off by default: a fine-tuned picker answers
-    /// with the digit on its own (checked in code), and on Qwen3.5 a grammar made the server use
-    /// about 6 GB. For an untuned model on a small-vocabulary model only.
+    /// Constrain the one-token pick with a grammar (only the digits that exist). On by default:
+    /// measured on the tuned Gemma 3 270M over the held-out set, 70.2% right tools with it
+    /// against 64.1% without (without it the model sometimes answers with a word of the
+    /// request), at the same speed and memory. Turn it off for Qwen3.5, where a grammar made
+    /// the server use about 6 GB (the memory cap would stop the model).
     pub grammar: bool,
+    /// Pick with the short numbered prompt and a one-digit answer: the form the tool-picker is
+    /// fine-tuned on (`training/router_train.jsonl`) and the form `jitmo-llmbench --compact`
+    /// measures. On by default so the app runs what was trained and measured. Off = the long
+    /// prompt with a JSON answer, for a model that was not tuned.
+    pub compact: bool,
 }
 
 /// Physical cores minus one, at most three: the model must never take the whole CPU. (Logical
@@ -54,7 +61,8 @@ impl LlmConfig {
             threads: default_threads(),
             context: 2048,
             idle_seconds: 90,
-            grammar: false,
+            grammar: true,
+            compact: true,
         }
     }
 }
@@ -191,11 +199,13 @@ fn agent(secs: u64) -> ureq::Agent {
 pub struct LocalLlm {
     host: Arc<Mutex<Host>>,
     grammar: bool,
+    compact: bool,
 }
 
 impl LocalLlm {
     pub fn new(cfg: LlmConfig) -> LocalLlm {
         let grammar = cfg.grammar;
+        let compact = cfg.compact;
         let idle = Duration::from_secs(cfg.idle_seconds.max(10));
         let host = Arc::new(Mutex::new(Host {
             cfg,
@@ -217,7 +227,11 @@ impl LocalLlm {
                 }
             }
         });
-        LocalLlm { host, grammar }
+        LocalLlm {
+            host,
+            grammar,
+            compact,
+        }
     }
 
     /// Start loading the model in the background (when the bar opens: the load hides behind
@@ -334,6 +348,11 @@ pub fn pick_compact_system(tools: &[ToolBrief]) -> String {
     )
 }
 
+/// The tool a one-digit answer means: 1 is the first tool; 0, or a number with no tool, is none.
+pub fn tool_for_number(n: usize, tools: &[ToolBrief]) -> Option<&ToolBrief> {
+    n.checked_sub(1).and_then(|i| tools.get(i))
+}
+
 /// The system prompt that makes the model pick one tool, with the catalog in it.
 pub fn pick_system(tools: &[ToolBrief]) -> String {
     let catalog: String = tools
@@ -437,22 +456,29 @@ Question: {question}"
     }
 
     fn route(&mut self, request: &str, tools: &[ToolBrief], recent: Option<&str>) -> Pick {
-        let system = pick_system(tools);
-        let user = match recent {
-            Some(r) => format!("(Earlier: {r})\nRequest: {request}"),
-            None => request.to_string(),
+        let tool = if self.compact {
+            // Exactly what the picker is trained on and measured with: the numbered titles, the
+            // request alone as the user message (a follow-up is already a full sentence by the
+            // time it gets here), and one digit back. Only nine tools can have a digit.
+            let tools = &tools[..tools.len().min(9)];
+            self.pick_number(&pick_compact_system(tools), request, tools.len())
+                .ok()
+                .and_then(|n| tool_for_number(n, tools))
+        } else {
+            let user = match recent {
+                Some(r) => format!("(Earlier: {r})\nRequest: {request}"),
+                None => request.to_string(),
+            };
+            self.chat(&pick_system(tools), &user, Some(&pick_schema(tools)), 40)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                .and_then(|v| v["tool"].as_str().map(str::to_string))
+                .and_then(|id| tools.iter().find(|t| t.id == id))
         };
-        let picked = self
-            .chat(&system, &user, Some(&pick_schema(tools)), 40)
-            .ok()
-            .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-            .and_then(|v| v["tool"].as_str().map(str::to_string));
-        let Some(id) = picked else {
+        let Some(tool) = tool else {
             return Pick::Nothing;
         };
-        let Some(tool) = tools.iter().find(|t| t.id == id) else {
-            return Pick::Nothing;
-        };
+        let id = tool.id.clone();
         if tool.args.is_empty() {
             return Pick::Tool(id);
         }
@@ -518,6 +544,27 @@ mod tests {
         // An empty value and a key the tool does not have are both dropped.
         let none = parse_args(r#"{"app":"","other":"x"}"#, &t[0]).unwrap();
         assert!(none.is_empty());
+    }
+
+    #[test]
+    fn the_compact_prompt_is_the_one_in_the_training_data() {
+        // The system messages in training/router_train.jsonl have exactly this shape.
+        assert_eq!(
+            pick_compact_system(&tools()),
+            "Pick the tool number for the request, or 0 if no tool fits.\n1: Open an app\n2: Weather"
+        );
+        let cfg = LlmConfig::new("server".into(), "model".into());
+        assert!(cfg.compact && cfg.grammar);
+    }
+
+    #[test]
+    fn a_digit_means_that_tool_and_zero_or_too_big_means_none() {
+        let t = tools();
+        let id = |n| tool_for_number(n, &t).map(|x| x.id.as_str());
+        assert_eq!(id(1), Some("apps.open"));
+        assert_eq!(id(2), Some("web.weather"));
+        assert_eq!(id(0), None);
+        assert_eq!(id(3), None);
     }
 
     #[test]

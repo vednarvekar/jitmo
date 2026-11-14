@@ -22,7 +22,12 @@ pub(crate) fn router() -> Router {
             // back to the weak rule-based router, so say where they are.
             let mut args = Vec::new();
             for (flag, sub) in [("--models", "router"), ("--extractor", "ner")] {
-                match find_model_dir(sub) {
+                // The fine-tuned tool encoder (`models/tools`) is used when it is there.
+                let found = (sub == "router")
+                    .then(|| find_model_dir("tools"))
+                    .flatten()
+                    .or_else(|| find_model_dir(sub));
+                match found {
                     Some(dir) => {
                         args.push(flag.to_string());
                         args.push(dir.to_string_lossy().into_owned());
@@ -609,7 +614,9 @@ pub(crate) fn calendar_connector(
 /// The local language model, when its two files are on this PC: `llama-server.exe` and a
 /// `.gguf` model, by default in `<app data>/models/` (`models/llama/llama-server.exe` and the
 /// first `.gguf` there), or wherever the settings `llm_server` and `llm_model` point. Off with
-/// the setting `llm` = `off`. Without the files the engine runs exactly as before.
+/// the setting `llm` = `off`. The tool pick uses the short numbered prompt the picker is
+/// fine-tuned on; the setting `llm_prompt` = `long` switches to the long prompt for a model
+/// that was not tuned, and `llm_grammar` = `off` drops the digit grammar. Without the files the engine runs exactly as before.
 pub(crate) fn local_llm(
     store: &jitmo_store::Store,
     data_dir: &std::path::Path,
@@ -644,6 +651,14 @@ pub(crate) fn local_llm(
     let mut cfg = LlmConfig::new(server, model);
     if let Some(t) = setting("llm_threads").and_then(|t| t.parse().ok()) {
         cfg.threads = t;
+    }
+    // A model that was not fine-tuned on jitmo's tools does better with the long prompt.
+    if setting("llm_prompt").is_some_and(|v| v.eq_ignore_ascii_case("long")) {
+        cfg.compact = false;
+    }
+    // The digit grammar is on by default; some models (Qwen3.5) need it off.
+    if setting("llm_grammar").is_some_and(|v| v.eq_ignore_ascii_case("off")) {
+        cfg.grammar = false;
     }
     eprintln!("local language model: {}", cfg.model.display());
     let llm = LocalLlm::new(cfg);

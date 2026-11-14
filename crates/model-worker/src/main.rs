@@ -3,7 +3,8 @@
 //! Options:
 //! - `--idle-secs N`  exit after N seconds without a request (default 300, 0 = never)
 //! - `--models DIR`   folder with the router files (else `JITMO_MODELS`, else
-//!   `models/router` next to the program, else `./models/router`)
+//!   `models/tools` or `models/router` next to the program, else the same under `./`; `tools`
+//!   wins when both exist)
 //! - `--extractor DIR` folder with the extractor (NER) model (else `JITMO_NER_DIR`, else
 //!   `models/ner` next to the program, else `./models/ner`); loaded on first use, and without it
 //!   the extractor uses the rules only
@@ -21,11 +22,15 @@ fn models_dir(arg: Option<String>) -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
     candidates.extend(arg.map(PathBuf::from));
     candidates.extend(std::env::var_os("JITMO_MODELS").map(PathBuf::from));
+    // `tools` (the fine-tuned tool encoder, classes are skill ids) wins over `router` (the
+    // older frozen encoder with a head over the spec's task ids) when both are there.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("models").join("tools"));
             candidates.push(dir.join("models").join("router"));
         }
     }
+    candidates.push(PathBuf::from("models/tools"));
     candidates.push(PathBuf::from("models/router"));
     candidates
         .into_iter()
