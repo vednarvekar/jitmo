@@ -972,7 +972,7 @@ fn main() {
             program: w.into(),
             args: vec![
                 "--models".into(),
-                flag(&args, "--models").unwrap_or_else(|| "models/router".into()),
+                flag(&args, "--models").unwrap_or_else(default_models),
                 "--idle-secs".into(),
                 "0".into(),
                 "--extractor".into(),
@@ -1129,4 +1129,14 @@ fn main() {
     }
     std::fs::write(&out_path, lines.join("\n") + "\n").expect("could not write the training file");
     println!("wrote {} examples to {out_path}", lines.len());
+}
+
+/// `models/tools` (the fine-tuned tool encoder) when it has a model, else `models/router`: the
+/// same choice as the model worker and the app.
+fn default_models() -> String {
+    if std::path::Path::new("models/tools/model_int8.onnx").exists() {
+        "models/tools".into()
+    } else {
+        "models/router".into()
+    }
 }

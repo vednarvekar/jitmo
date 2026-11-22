@@ -29,6 +29,15 @@ pub struct RuntimeConfig {
     pub log_file: Option<PathBuf>,
     /// The model name sent in requests (the config's `model.name`).
     pub model: String,
+    /// Constrain the one-token pick with a grammar (only the digits that exist). On by default:
+    /// measured on the tuned Gemma 3 270M over the held-out set, 70.2% right tools with it
+    /// against 64.1% without, at the same speed and memory. Off for models where a grammar
+    /// costs too much memory (Qwen3.5 used about 6 GB).
+    pub grammar: bool,
+    /// Pick with the short numbered prompt and a one-digit answer: the form the tool-picker is
+    /// fine-tuned on (`training/router_train.jsonl`). Off = the long prompt with a JSON
+    /// answer, for a model that was not tuned.
+    pub compact: bool,
 }
 
 impl RuntimeConfig {
@@ -41,6 +50,8 @@ impl RuntimeConfig {
             llama_server: None,
             log_file: None,
             model: model.into(),
+            grammar: true,
+            compact: true,
         }
     }
 
@@ -53,6 +64,8 @@ impl RuntimeConfig {
             llama_server: None,
             log_file: None,
             model: model.into(),
+            grammar: true,
+            compact: true,
         }
     }
 }
@@ -145,6 +158,18 @@ impl Runtime {
                 let _ = child.wait();
                 Err("jitmo-runtime did not report its port".into())
             }
+        }
+    }
+
+    /// The base URL of a runtime that is already there, without starting one.
+    pub(crate) fn running(&mut self) -> Option<String> {
+        if let Some(url) = &self.cfg.url {
+            return Some(url.clone());
+        }
+        if self.child_alive() {
+            self.base.clone()
+        } else {
+            None
         }
     }
 

@@ -51,6 +51,7 @@ Doc numbers (00.x, 1 to 12) are stable and are what the docs use when they say "
 | [11 Action Plan](03-delivery/11%20Action%20Plan.md) | 33-week plan across build, users, marketing and business, with go or no-go checks; pre-implementation gap list |
 | [12 Development Phases (Full Plate)](03-delivery/12%20Development%20Phases%20%28Full%20Plate%29.md) | End-goal roadmap: ten phases over about two years (V1 is phases 0 to 4; 8 and 11 give the detail) |
 | [16 Audit and Engine Work (14 Nov)](03-delivery/16%20-%20Audit%20and%20Engine%20Work%20%2814%20Nov%29.md) | Second end-to-end audit: findings, 13 tool-choosing approaches measured, the fine-tuned tool encoder, voice and orb plans, next steps, decisions waiting on the owner |
+| [17 Models on jitmo-runtime (22 Nov)](03-delivery/17%20-%20Models%20on%20jitmo-runtime%20%2822%20Nov%29.md) | The language model moves to jitmo-runtime: what moved, request mapping, how jitmo starts the runtime, settings, identical results on all three sets, real-app check, open items |
 
 Relationship: **8** is the V1 engineering build; **12** is the whole-product roadmap that contains V1 as phases 0 to 4; **11** is the calendar and business side of the same V1 journey.
 

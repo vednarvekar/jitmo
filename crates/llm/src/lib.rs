@@ -1,194 +1,20 @@
-//! A local language model: llama.cpp's `llama-server` run on this PC, on loopback only, as a
-//! child process that starts on first use and exits after a few idle minutes (so it costs
-//! nothing while you are not asking). Nothing leaves the PC.
+//! The local language model, run by jitmo-runtime (`V:\Code\jitmo-runtime`) on this PC, on
+//! loopback only. The runtime loads the model on first use, unloads it when idle or when the
+//! PC is short of memory, caps its memory and CPU, and exits with jitmo. Nothing leaves the PC.
 //!
-//! [`LocalLlm`] implements the engine's [`Llm`] trait: pick a tool from the catalog as
-//! schema-constrained JSON (the model cannot answer with anything but a real skill id or
-//! "none"), or write an honest answer. Prompts live here so the benchmark tool and the app
-//! use the same ones.
+//! [`LocalLlm`] implements the engine's [`Llm`] trait: pick a tool from the catalog (one digit
+//! under a grammar, or schema-constrained JSON: the model cannot answer with anything but a real
+//! skill id or "none"), fill a tool's typed values, or answer from a passage. Prompts live here
+//! so the benchmark tool and the app use the same ones.
 
 use jitmo_core::llm::{Llm, Pick, ToolBrief};
 use serde_json::{json, Value};
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 mod runtime;
 use runtime::Runtime;
 pub use runtime::RuntimeConfig;
-
-/// The model process may not use more than this (1.2 GB: the owner's hard limit).
-const MEMORY_CAP: u64 = 1200 * 1024 * 1024;
-/// Free memory that must remain after a load.
-#[cfg(windows)]
-const MIN_FREE_AFTER_LOAD: u64 = 1500 * 1024 * 1024;
-
-/// Where the pieces are and how big to run them.
-#[derive(Debug, Clone)]
-pub struct LlmConfig {
-    /// `llama-server.exe`.
-    pub server_exe: PathBuf,
-    /// The GGUF model file.
-    pub model: PathBuf,
-    pub port: u16,
-    pub threads: u32,
-    pub context: u32,
-    /// Seconds without a request before the server is stopped.
-    pub idle_seconds: u64,
-    /// Constrain the one-token pick with a grammar (only the digits that exist). On by default:
-    /// measured on the tuned Gemma 3 270M over the held-out set, 70.2% right tools with it
-    /// against 64.1% without (without it the model sometimes answers with a word of the
-    /// request), at the same speed and memory. Turn it off for Qwen3.5, where a grammar made
-    /// the server use about 6 GB (the memory cap would stop the model).
-    pub grammar: bool,
-    /// Pick with the short numbered prompt and a one-digit answer: the form the tool-picker is
-    /// fine-tuned on (`training/router_train.jsonl`) and the form `jitmo-llmbench --compact`
-    /// measures. On by default so the app runs what was trained and measured. Off = the long
-    /// prompt with a JSON answer, for a model that was not tuned.
-    pub compact: bool,
-}
-
-/// Physical cores minus one, at most three: the model must never take the whole CPU. (Logical
-/// processors are halved as an estimate of physical cores.)
-pub fn default_threads() -> u32 {
-    let logical = std::thread::available_parallelism().map_or(2, |n| n.get() as u32);
-    (logical / 2).saturating_sub(1).clamp(1, 3)
-}
-
-impl LlmConfig {
-    pub fn new(server_exe: PathBuf, model: PathBuf) -> LlmConfig {
-        LlmConfig {
-            server_exe,
-            model,
-            port: 8791,
-            threads: default_threads(),
-            context: 2048,
-            idle_seconds: 90,
-            grammar: true,
-            compact: true,
-        }
-    }
-}
-
-struct Host {
-    cfg: LlmConfig,
-    child: Option<Child>,
-    last_used: Instant,
-    /// The Job Object that caps the child's memory and ends it with the job.
-    #[cfg(windows)]
-    cap: Option<jitmo_adapter_windows::budget::MemoryCap>,
-}
-
-impl Host {
-    fn base(&self) -> String {
-        format!("http://127.0.0.1:{}", self.cfg.port)
-    }
-
-    fn alive(&mut self) -> bool {
-        match self.child.as_mut() {
-            Some(c) => matches!(c.try_wait(), Ok(None)),
-            None => false,
-        }
-    }
-
-    /// Start the server if it is not running and wait until it answers.
-    fn ensure(&mut self) -> Result<(), String> {
-        self.last_used = Instant::now();
-        if self.alive() {
-            return Ok(());
-        }
-        // The budget: never load when it would leave the PC short of memory (the model file plus
-        // 1.5 GB must be free), so jitmo never pushes the machine into paging.
-        #[cfg(windows)]
-        {
-            let need =
-                std::fs::metadata(&self.cfg.model).map_or(0, |m| m.len()) + MIN_FREE_AFTER_LOAD;
-            if let Some(free) = jitmo_adapter_windows::budget::free_physical_bytes() {
-                if free < need {
-                    return Err("not enough free memory to load the language model".into());
-                }
-            }
-        }
-        let mut cmd = Command::new(&self.cfg.server_exe);
-        cmd.args([
-            "-m".as_ref(),
-            self.cfg.model.as_os_str(),
-            "--host".as_ref(),
-            "127.0.0.1".as_ref(),
-            "--port".as_ref(),
-            self.cfg.port.to_string().as_ref(),
-            "-c".as_ref(),
-            self.cfg.context.to_string().as_ref(),
-            "-t".as_ref(),
-            self.cfg.threads.to_string().as_ref(),
-            "--no-webui".as_ref(),
-            "--parallel".as_ref(),
-            "1".as_ref(),
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            // No console window, and below normal priority so the PC stays responsive.
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            const BELOW_NORMAL: u32 = 0x0000_4000;
-            cmd.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL);
-        }
-        let child = cmd
-            .spawn()
-            .map_err(|e| format!("could not start the language model: {e}"))?;
-        #[cfg(windows)]
-        {
-            // A hard cap on the model process; if it cannot be set the model does not run.
-            match jitmo_adapter_windows::budget::cap_memory(&child, MEMORY_CAP) {
-                Ok(cap) => self.cap = Some(cap),
-                Err(e) => {
-                    let mut child = child;
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(e);
-                }
-            }
-        }
-        self.child = Some(child);
-        let url = format!("{}/health", self.base());
-        let started = Instant::now();
-        while started.elapsed() < Duration::from_secs(120) {
-            if !self.alive() {
-                return Err("the language model stopped while loading".into());
-            }
-            if let Ok(mut r) = agent(5).get(&url).call() {
-                if r.status().as_u16() == 200 {
-                    let _ = r.body_mut().read_to_string();
-                    return Ok(());
-                }
-            }
-            std::thread::sleep(Duration::from_millis(300));
-        }
-        self.stop();
-        Err("the language model took too long to load".into())
-    }
-
-    fn stop(&mut self) {
-        #[cfg(windows)]
-        {
-            self.cap = None;
-        }
-        if let Some(mut c) = self.child.take() {
-            let _ = c.kill();
-            let _ = c.wait();
-        }
-    }
-}
-
-impl Drop for Host {
-    fn drop(&mut self) {
-        self.stop();
-    }
-}
 
 fn agent(secs: u64) -> ureq::Agent {
     ureq::Agent::config_builder()
@@ -198,102 +24,38 @@ fn agent(secs: u64) -> ureq::Agent {
         .into()
 }
 
-/// The local model, started on demand. Clones share one server process.
+/// The local model on jitmo-runtime. Clones share one runtime.
 #[derive(Clone)]
 pub struct LocalLlm {
-    backend: Backend,
+    rt: Arc<Mutex<Runtime>>,
     grammar: bool,
     compact: bool,
 }
 
-/// Who runs the model: jitmo's own llama-server child, or jitmo-runtime.
-#[derive(Clone)]
-enum Backend {
-    Own(Arc<Mutex<Host>>),
-    Runtime(Arc<Mutex<Runtime>>),
-}
-
 impl LocalLlm {
-    /// The model on jitmo-runtime. The same prompts, grammar and schemas as [`LocalLlm::new`];
-    /// only the transport differs. `grammar` and `compact` as in [`LlmConfig`].
-    pub fn runtime(cfg: RuntimeConfig, grammar: bool, compact: bool) -> LocalLlm {
-        LocalLlm {
-            backend: Backend::Runtime(Arc::new(Mutex::new(Runtime::new(cfg)))),
-            grammar,
-            compact,
-        }
-    }
-
-    /// True when the model runs on jitmo-runtime.
-    pub fn on_runtime(&self) -> bool {
-        matches!(self.backend, Backend::Runtime(_))
-    }
-
-    pub fn new(cfg: LlmConfig) -> LocalLlm {
+    /// `grammar` and `compact` are taken from the config (see [`RuntimeConfig`]).
+    pub fn new(cfg: RuntimeConfig) -> LocalLlm {
         let grammar = cfg.grammar;
         let compact = cfg.compact;
-        let idle = Duration::from_secs(cfg.idle_seconds.max(10));
-        let host = Arc::new(Mutex::new(Host {
-            cfg,
-            child: None,
-            last_used: Instant::now(),
-            #[cfg(windows)]
-            cap: None,
-        }));
-        // Stop the server after it has been idle for a while (and when this value goes away,
-        // `Host::drop` stops it).
-        let weak = Arc::downgrade(&host);
-        std::thread::spawn(move || {
-            while let Some(h) = weak.upgrade() {
-                std::thread::sleep(Duration::from_secs(20));
-                if let Ok(mut g) = h.lock() {
-                    if g.child.is_some() && g.last_used.elapsed() > idle {
-                        g.stop();
-                    }
-                }
-            }
-        });
         LocalLlm {
-            backend: Backend::Own(host),
+            rt: Arc::new(Mutex::new(Runtime::new(cfg))),
             grammar,
             compact,
         }
     }
 
     /// Start loading the model in the background (when the bar opens: the load hides behind
-    /// the typing). Nothing happens when it is already running or memory is short.
+    /// the typing). The runtime refuses when memory is short.
     pub fn warm(&self) {
-        match &self.backend {
-            Backend::Own(host) => {
-                let host = host.clone();
-                std::thread::spawn(move || {
-                    if let Ok(mut h) = host.lock() {
-                        let _ = h.ensure();
-                    }
-                });
-            }
-            Backend::Runtime(rt) => {
-                let rt = rt.clone();
-                std::thread::spawn(move || {
-                    let _ = runtime_call(&rt, "/admin/load", Some(json!({})), 180);
-                });
-            }
-        }
+        let rt = self.rt.clone();
+        std::thread::spawn(move || {
+            let _ = runtime_call(&rt, "/admin/load", Some(json!({})), 180, true);
+        });
     }
 
-    /// Stop the model process now (memory pressure, or the user turned it off).
+    /// Unload the model now (Windows says memory is low). Never starts a runtime to do so.
     pub fn unload(&self) {
-        match &self.backend {
-            Backend::Own(host) => {
-                if let Ok(mut h) = host.lock() {
-                    h.stop();
-                }
-            }
-            // The runtime unloads on memory pressure itself; this asks it to do so now.
-            Backend::Runtime(rt) => {
-                let _ = runtime_call(rt, "/admin/unload", None, 30);
-            }
-        }
+        let _ = runtime_call(&self.rt, "/admin/unload", None, 30, false);
     }
 
     /// One chat completion; `schema` makes the answer valid JSON of that shape.
@@ -349,34 +111,7 @@ impl LocalLlm {
     }
 
     fn post(&self, body: Value) -> Result<String, String> {
-        let host = match &self.backend {
-            Backend::Own(h) => h,
-            Backend::Runtime(rt) => {
-                let v = runtime_call(rt, "/v1/chat/completions", Some(body), 180)?;
-                return v["choices"][0]["message"]["content"]
-                    .as_str()
-                    .map(|s| s.trim().to_string())
-                    .ok_or_else(|| "the model sent no answer".to_string());
-            }
-        };
-        let base = {
-            let mut h = host.lock().map_err(|_| "model lock".to_string())?;
-            h.ensure()?;
-            h.base()
-        };
-        let mut resp = agent(180)
-            .post(&format!("{base}/v1/chat/completions"))
-            .header("Content-Type", "application/json")
-            .send(body.to_string())
-            .map_err(|e| e.to_string())?;
-        let text = resp
-            .body_mut()
-            .read_to_string()
-            .map_err(|e| e.to_string())?;
-        if let Ok(mut h) = host.lock() {
-            h.last_used = Instant::now();
-        }
-        let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+        let v = runtime_call(&self.rt, "/v1/chat/completions", Some(body), 180, true)?;
         v["choices"][0]["message"]["content"]
             .as_str()
             .map(|s| s.trim().to_string())
@@ -384,19 +119,25 @@ impl LocalLlm {
     }
 }
 
-/// One request to jitmo-runtime (POST when `body` is given or the path is an admin action).
-/// Chat bodies get the configured model name; every request is marked interactive. A runtime
-/// error (`503 insufficient_memory`, `queue_full`, `502 engine_error`, ...) is an `Err`, so the
-/// engine falls back to its rules.
+/// One POST to jitmo-runtime. Bodies get the configured model name; every request is marked
+/// interactive. A runtime error (`503 insufficient_memory`, `queue_full`, `502 engine_error`,
+/// ...) is an `Err`, so the engine falls back to its rules. `start` = false: only talk to a
+/// runtime that is already there.
 fn runtime_call(
     rt: &Arc<Mutex<Runtime>>,
     path: &str,
     body: Option<Value>,
     secs: u64,
+    start: bool,
 ) -> Result<Value, String> {
     let (base, model) = {
         let mut r = rt.lock().map_err(|_| "runtime lock".to_string())?;
-        (r.ensure()?, r.cfg.model.clone())
+        let base = if start {
+            r.ensure()?
+        } else {
+            r.running().ok_or("jitmo-runtime is not running")?
+        };
+        (base, r.cfg.model.clone())
     };
     let mut body = body.unwrap_or_else(|| json!({}));
     if body.get("model").is_none() {
@@ -663,7 +404,7 @@ mod tests {
             pick_compact_system(&tools()),
             "Pick the tool number for the request, or 0 if no tool fits.\n1: Open an app\n2: Weather"
         );
-        let cfg = LlmConfig::new("server".into(), "model".into());
+        let cfg = RuntimeConfig::connect("http://127.0.0.1:1", "m");
         assert!(cfg.compact && cfg.grammar);
     }
 
@@ -678,8 +419,10 @@ mod tests {
     }
 
     #[test]
-    fn threads_never_take_the_whole_cpu() {
-        let t = default_threads();
-        assert!((1..=3).contains(&t));
+    fn unload_never_starts_a_runtime() {
+        let exe = std::env::temp_dir().join("jitmo-no-such-runtime.exe");
+        let llm = LocalLlm::new(RuntimeConfig::spawn(exe, None, "m"));
+        llm.unload();
+        assert!(llm.rt.lock().unwrap().running().is_none());
     }
 }
