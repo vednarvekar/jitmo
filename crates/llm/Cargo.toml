@@ -1,6 +1,6 @@
 [package]
 name = "jitmo-llm"
-description = "A local language model (llama.cpp's server on this PC) behind the engine's Llm trait."
+description = "The local language model, run by jitmo-runtime on this PC, behind the engine's Llm trait."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,5 +11,3 @@ jitmo-core = { path = "../core" }
 serde_json.workspace = true
 ureq = { version = "3", default-features = false }
 
-[target.'cfg(windows)'.dependencies]
-jitmo-adapter-windows = { path = "../adapter-windows" }

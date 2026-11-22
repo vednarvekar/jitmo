@@ -234,7 +234,7 @@ fn main() {
     // With `--worker`, candidates come from jitmo's real router (the shared encoder stand-in);
     // otherwise from the plain word-overlap retrieval.
     let router: Option<Router> = flag(&args, "--worker").map(|w| {
-        let models = flag(&args, "--models").unwrap_or_else(|| "models/router".into());
+        let models = flag(&args, "--models").unwrap_or_else(default_models);
         let ner = flag(&args, "--ner").unwrap_or_else(|| "models/ner".into());
         let launcher = WorkerLauncher {
             program: w.into(),
@@ -679,5 +679,15 @@ fn main() {
     }
     for m in arg_misses.iter().take(show) {
         println!("{m}");
+    }
+}
+
+/// `models/tools` (the fine-tuned tool encoder) when it has a model, else `models/router`: the
+/// same choice as the model worker and the app.
+fn default_models() -> String {
+    if std::path::Path::new("models/tools/model_int8.onnx").exists() {
+        "models/tools".into()
+    } else {
+        "models/router".into()
     }
 }

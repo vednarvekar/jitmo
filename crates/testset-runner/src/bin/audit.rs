@@ -2,21 +2,19 @@
 //!
 //! ```text
 //! cargo run --release -p jitmo-testset-runner --bin jitmo-audit -- \
-//!     [--worker target/release/jitmo-model-worker.exe] [--models models/router] [--ner models/ner] \
+//!     [--worker target/release/jitmo-model-worker.exe] [--models models/tools] [--ner models/ner] \
 //!     [--rules-only] [--threads 4] [--only music.play,reminders.timer] [--kind typo] \
 //!     [--corpus testset/audit_corpus.txt] [--verbose] [--md out.md] [--strict] \
-//!     [--llm-model model.gguf --llm-server llama-server.exe [--llm-threads 3] [--llm-pick]]
-//!     [--llm-runtime http://127.0.0.1:8090 | --llm-runtime jitmo-runtime.exe [--llm-runtime-config t.toml]]
+//!     [--llm-model model.gguf [--llm-server llama-server.exe] [--llm-pick]
+//!      [--llm-runtime http://127.0.0.1:8090 | --llm-runtime jitmo-runtime.exe] [--llm-runtime-config t.toml]]
 //! ```
 //!
-//! With `--llm-runtime` the same model calls go to jitmo-runtime instead of a llama-server this
-//! tool starts: a URL connects to a running runtime, a program path starts one (with
-//! `config/jitmo-runtime.toml` unless `--llm-runtime-config` is given; `--llm-model` and
-//! `--llm-server` are passed on as overrides).
-//!
-//! With `--llm-model` the engine gets the local language model the app would plug in (it fills
-//! typed values for skills that take them; with `--llm-pick` also a tool pick when the router is
-//! unsure), as the app does with the same settings.
+//! With `--llm-model` or `--llm-runtime` the engine gets the local language model the app plugs
+//! in, run by jitmo-runtime (it fills typed values for skills that take them; with `--llm-pick`
+//! also a tool pick when the router is unsure). `--llm-runtime` is a URL (connect to a running
+//! runtime) or a program path (default: `../jitmo-runtime/runtime/target/release/
+//! jitmo-runtime.exe` beside this repo), started with `config/jitmo-runtime.toml` unless
+//! `--llm-runtime-config` is given; `--llm-model` and `--llm-server` are passed on as overrides.
 //!
 //! Needs no network. Skips cleanly (exit 0) when the model worker or the model folders are
 //! missing, unless `--rules-only` is given (then only the rule-based router is exercised).
@@ -38,6 +36,16 @@ fn find_root() -> Result<PathBuf, String> {
     }
 }
 
+/// `models/tools` when it has a model, else `models/router` (as the worker and the app choose).
+fn default_models(root: &std::path::Path) -> PathBuf {
+    let tools = root.join("models/tools");
+    if tools.join("model_int8.onnx").exists() {
+        tools
+    } else {
+        root.join("models/router")
+    }
+}
+
 fn go() -> Result<bool, String> {
     let mut root: Option<PathBuf> = None;
     let mut worker: Option<PathBuf> = None;
@@ -54,7 +62,6 @@ fn go() -> Result<bool, String> {
     let mut md: Option<PathBuf> = None;
     let mut llm_model: Option<PathBuf> = None;
     let mut llm_server: Option<PathBuf> = None;
-    let mut llm_threads: Option<u32> = None;
     let mut llm_picks = false;
     let mut llm_runtime: Option<String> = None;
     let mut llm_runtime_config: Option<PathBuf> = None;
@@ -85,13 +92,6 @@ fn go() -> Result<bool, String> {
             "--llm-runtime-config" => {
                 llm_runtime_config = Some(val("--llm-runtime-config")?.into())
             }
-            "--llm-threads" => {
-                llm_threads = Some(
-                    val("--llm-threads")?
-                        .parse()
-                        .map_err(|_| "bad --llm-threads")?,
-                )
-            }
             "--rules-only" => rules_only = true,
             "--verbose" => verbose = true,
             "--strict" => strict = true,
@@ -119,11 +119,15 @@ fn go() -> Result<bool, String> {
         cases.retain(|c| &c.kind == k);
     }
 
+    let mut router_dir = String::from("rules");
     let launcher = if rules_only {
         None
     } else {
         let worker = worker.unwrap_or_else(|| root.join("target/release/jitmo-model-worker.exe"));
-        let models = models.unwrap_or_else(|| root.join("models/router"));
+        // The same choice as the model worker and the app: the fine-tuned tool encoder
+        // (`models/tools`) when it is there, else the older router (`models/router`).
+        let models = models.unwrap_or_else(|| default_models(&root));
+        router_dir = models.display().to_string();
         let ner = ner.unwrap_or_else(|| root.join("models/ner"));
         if !worker.exists() || !models.join("model_int8.onnx").exists() {
             println!(
@@ -150,10 +154,20 @@ fn go() -> Result<bool, String> {
         })
     };
 
-    let llm = if let Some(rt) = llm_runtime {
+    let llm = if llm_runtime.is_some() || llm_model.is_some() {
+        let rt = llm_runtime.unwrap_or_else(|| {
+            root.join("../jitmo-runtime/runtime/target/release/jitmo-runtime.exe")
+                .to_string_lossy()
+                .into_owned()
+        });
         let mut c = if rt.starts_with("http://") || rt.starts_with("https://") {
             jitmo_llm::RuntimeConfig::connect(rt, "jitmo-router")
         } else {
+            if !std::path::Path::new(&rt).is_file() {
+                return Err(format!(
+                    "jitmo-runtime not found at {rt} (use --llm-runtime)"
+                ));
+            }
             let config = llm_runtime_config
                 .or_else(|| Some(root.join("config/jitmo-runtime.toml")))
                 .filter(|p| p.exists());
@@ -161,19 +175,12 @@ fn go() -> Result<bool, String> {
         };
         c.model_file = llm_model;
         c.llama_server = llm_server;
-        Some(jitmo_llm::LocalLlm::runtime(c, true, true))
+        Some(jitmo_llm::LocalLlm::new(c))
     } else {
-        match (llm_model, llm_server) {
-            (Some(model), Some(server)) => {
-                let mut c = jitmo_llm::LlmConfig::new(server, model);
-                if let Some(t) = llm_threads {
-                    c.threads = t;
-                }
-                Some(jitmo_llm::LocalLlm::new(c))
-            }
-            (None, None) => None,
-            _ => return Err("--llm-model and --llm-server go together".into()),
+        if llm_server.is_some() {
+            return Err("--llm-server needs --llm-model or --llm-runtime".into());
         }
+        None
     };
     let cfg = audit::Config {
         root: root.clone(),
@@ -183,16 +190,14 @@ fn go() -> Result<bool, String> {
         llm_picks,
     };
     println!(
-        "jitmo-audit: {} cases, router = {}, {} threads",
+        "jitmo-audit: {} cases, router = {} ({}), {} threads",
         cases.len(),
         match (cfg.worker.is_some(), cfg.llm.is_some()) {
-            (true, true) if cfg.llm.as_ref().is_some_and(|l| l.on_runtime()) => {
-                "real model worker + language model on jitmo-runtime"
-            }
-            (true, true) => "real model worker + language model",
+            (true, true) => "real model worker + language model on jitmo-runtime",
             (true, false) => "real model worker",
             (false, _) => "rule-based only",
         },
+        router_dir,
         threads
     );
     let started = std::time::Instant::now();
