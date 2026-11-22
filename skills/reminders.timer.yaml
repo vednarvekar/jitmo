@@ -17,11 +17,11 @@ slots: {}
 steps:
   - connector: reminders
     action: set
-    args: { text: "{request}" }
+    args: { text: "{request}", length: "{length?}" }
 check:
   connector: reminders
   action: set
-  args: { text: "{request}" }
+  args: { text: "{request}", length: "{length?}" }
 undo:
   - connector: reminders
     action: set

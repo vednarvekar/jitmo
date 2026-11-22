@@ -807,7 +807,7 @@ impl Connector for WebLookup {
             return self.passages(text);
         }
         let message = match action {
-            "weather" => self.weather(text)?,
+            "weather" => self.weather(&weather_request(args, text))?,
             "fact" => self.fact(text)?,
             other => return Err(ConnError::UnknownAction(other.to_string())),
         };
@@ -823,7 +823,8 @@ impl Connector for WebLookup {
             .get("text")
             .ok_or_else(|| ConnError::MissingArg("text".into()))?;
         match action {
-            "weather" => Ok(parse_weather(text).place.is_some() || self.saved_place().is_some()),
+            "weather" => Ok(parse_weather(&weather_request(args, text)).place.is_some()
+                || self.saved_place().is_some()),
             "fact" => Ok(parse_fact_subject(text).is_some()),
             other => Err(ConnError::UnknownAction(other.to_string())),
         }
@@ -858,6 +859,34 @@ pub struct WeatherQuery {
     pub place: Option<String>,
     pub day: Day,
     pub kind: Kind,
+}
+
+/// The forecast question to answer. The place the sentence names wins; a typed place from the
+/// model stands in only when the rules found none ("kal pune mein baarish hogi kya"). The day
+/// and what is asked (rain, temperature) come from the sentence.
+fn weather_request(args: &Args, text: &str) -> String {
+    let typed_place = args
+        .get("place")
+        .map(|v| v.trim().trim_end_matches(['.', '?', '!']).to_string())
+        .filter(|v| !v.is_empty());
+    let q = parse_weather(text);
+    match (q.place, typed_place) {
+        (None, Some(place)) => {
+            let kind = match q.kind {
+                Kind::Rain => "rain",
+                Kind::Temperature => "temperature",
+                Kind::General => "weather",
+            };
+            let when = match q.day {
+                Day::Today => "today",
+                Day::Tomorrow => "tomorrow",
+                Day::DayAfterTomorrow => "day after tomorrow",
+                Day::Weekend => "this weekend",
+            };
+            format!("{kind} {when} in {place}")
+        }
+        _ => text.to_string(),
+    }
 }
 
 pub fn parse_weather(text: &str) -> WeatherQuery {
@@ -1905,5 +1934,40 @@ mod honest_facts {
         ] {
             assert!(is_lookup_question(q), "{q}");
         }
+    }
+
+    #[test]
+    fn a_typed_place_stands_in_only_when_the_sentence_names_none() {
+        let a = |pairs: &[(&str, &str)]| -> Args {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        };
+        assert_eq!(
+            weather_request(
+                &a(&[("place", "Delhi"), ("when", "this weekend")]),
+                "how hot will it be this weekend in delhi"
+            ),
+            "how hot will it be this weekend in delhi",
+            "the sentence names a place: it wins"
+        );
+        assert_eq!(
+            weather_request(
+                &a(&[("place", "Pune")]),
+                "kal pune mein baarish hogi kya, will it rain tomorrow"
+            ),
+            "rain tomorrow in Pune"
+        );
+        // No typed values: the sentence as said.
+        assert_eq!(
+            weather_request(&a(&[]), "weather in mumbai"),
+            "weather in mumbai"
+        );
+        let q = parse_weather(&weather_request(
+            &a(&[("place", "Mumbai")]),
+            "is it going to pour",
+        ));
+        assert_eq!(q.place.as_deref(), Some("Mumbai"));
     }
 }

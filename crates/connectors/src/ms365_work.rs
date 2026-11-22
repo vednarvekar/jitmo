@@ -331,6 +331,39 @@ fn chat_request(text: &str, channels: &[String]) -> Option<(String, String)> {
     message_text(text).map(|m| (channel, m))
 }
 
+/// The channel and the words to post: `body` is the words the user confirmed; the channel is
+/// the one the sentence names, else the model's typed `channel`.
+fn post_parts(args: &Args, channels: &[String]) -> Option<(String, String)> {
+    let text = args.get("text").map_or("", String::as_str);
+    let parsed = chat_request(text, channels);
+    // The channel the sentence names; the model's only when the rules found none.
+    let channel = parsed
+        .as_ref()
+        .map(|p| p.0.clone())
+        .or_else(|| args.get("channel").and_then(|c| channel_named(c, channels)))?;
+    let message = args
+        .get("body")
+        .map(|b| b.trim().to_string())
+        .filter(|b| !b.is_empty())
+        .or_else(|| parsed.map(|p| p.1))?;
+    Some((channel, message))
+}
+
+/// The real channel a typed name means ("the general channel", "General").
+fn channel_named(name: &str, channels: &[String]) -> Option<String> {
+    let lower = name.to_lowercase();
+    channels
+        .iter()
+        .find(|c| {
+            let c = c.to_lowercase();
+            lower.trim() == c
+                || lower
+                    .split(|ch: char| !ch.is_alphanumeric())
+                    .any(|w| w == c)
+        })
+        .cloned()
+}
+
 pub struct Teams {
     backend: Arc<dyn ChatBackend>,
     health: Box<dyn Fn() -> Health + Send + Sync>,
@@ -369,7 +402,7 @@ impl Connector for Teams {
         ready(&*self.health, "Teams")?;
         match action {
             "post" => {
-                let (channel, message) = chat_request(arg(args, "text")?, &self.backend.channels()?)
+                let (channel, message) = post_parts(args, &self.backend.channels()?)
                     .ok_or_else(|| {
                         ConnError::Failed(
                             "Which channel, and what should I say? Try “tell the team channel standup moves to 11”.".into(),
@@ -390,9 +423,7 @@ impl Connector for Teams {
         ready(&*self.health, "Teams")?;
         match action {
             "post" => {
-                let Some((channel, message)) =
-                    chat_request(arg(args, "text")?, &self.backend.channels()?)
-                else {
+                let Some((channel, message)) = post_parts(args, &self.backend.channels()?) else {
                     return Ok(false);
                 };
                 Ok(self
@@ -764,6 +795,23 @@ mod tests {
             chat,
             flows,
         }
+    }
+
+    #[test]
+    fn the_confirmed_words_go_and_a_typed_channel_fills_in() {
+        let w = world();
+        let t = Teams::fake(w.chat.clone());
+        let a = args(&[
+            ("text", "drop a note in the general chat that lunch is here"),
+            ("channel", "the Team channel"),
+            ("body", "Lunch is here."),
+        ]);
+        let r = t.execute("post", &a).unwrap();
+        assert_eq!(r.0["message"], "Posted in team: “Lunch is here.”");
+        assert_eq!(t.check("post", &a), Ok(true));
+        // A channel that does not exist is not guessed.
+        let bad = args(&[("text", "x"), ("channel", "design"), ("body", "Hi.")]);
+        assert!(t.execute("post", &bad).is_err());
     }
 
     #[test]

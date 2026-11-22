@@ -653,6 +653,36 @@ impl Reminders {
     }
 }
 
+/// The sentence the model's typed values make (`length` for a timer; `what` and `when` for a
+/// reminder), when it gave them.
+fn typed_sentence(args: &Args) -> Option<String> {
+    let typed = |k: &str| args.get(k).map(|v| v.trim()).filter(|v| !v.is_empty());
+    if let Some(length) = typed("length") {
+        return Some(format!("set a timer for {length}"));
+    }
+    let (what, when) = (typed("what")?, typed("when")?);
+    let what = what.strip_prefix("to ").unwrap_or(what);
+    Some(format!("remind me to {what} {when}"))
+}
+
+/// The user's own sentence first, as the rules read it. Only when the rules cannot find a part
+/// (no length, no time, nothing to be reminded of) do the model's typed values stand in. A
+/// question the rules ask ("Which time did you mean?" for "at 6") stays a question: the
+/// model's guess must not answer it.
+fn parse_request(args: &Args, now: DateTime<Local>) -> Result<Parsed, ConnError> {
+    let text = args
+        .get("text")
+        .ok_or_else(|| ConnError::MissingArg("text".into()))?;
+    match parse(text, now) {
+        Ok(p) => Ok(p),
+        Err(e) if e.starts_with("Which time did you mean") => Err(ConnError::Failed(e)),
+        Err(e) => match typed_sentence(args) {
+            Some(s) => parse(&s, now).map_err(|_| ConnError::Failed(e)),
+            None => Err(ConnError::Failed(e)),
+        },
+    }
+}
+
 impl Connector for Reminders {
     fn id(&self) -> &str {
         "reminders"
@@ -673,11 +703,8 @@ impl Connector for Reminders {
         if action != "set" {
             return Err(ConnError::UnknownAction(action.to_string()));
         }
-        let text = args
-            .get("text")
-            .ok_or_else(|| ConnError::MissingArg("text".into()))?;
         let now = (self.now)();
-        let p = parse(text, now).map_err(ConnError::Failed)?;
+        let p = parse_request(args, now)?;
         let id = self
             .store()?
             .add_reminder_repeating(
@@ -715,10 +742,7 @@ impl Connector for Reminders {
         if action != "set" {
             return Err(ConnError::UnknownAction(action.to_string()));
         }
-        let text = args
-            .get("text")
-            .ok_or_else(|| ConnError::MissingArg("text".into()))?;
-        let p = parse(text, (self.now)()).map_err(ConnError::Failed)?;
+        let p = parse_request(args, (self.now)())?;
         let pending = self
             .store()?
             .pending_reminders()
@@ -1010,6 +1034,61 @@ mod tests {
         assert_eq!(out.0["message"], "Timer set for 10 minutes.");
         let due = Store::open(&db, None).unwrap().pending_reminders().unwrap();
         assert_eq!(due[0].due_at, utc_text(now() + Duration::minutes(10)));
+        let _ = std::fs::remove_dir_all(db.parent().unwrap());
+    }
+
+    #[test]
+    fn the_sentence_comes_first_and_typed_values_fill_in() {
+        let typed = |pairs: &[(&str, &str)]| -> Args {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        };
+        assert_eq!(
+            typed_sentence(&typed(&[("length", "4 minutes")])).as_deref(),
+            Some("set a timer for 4 minutes")
+        );
+        assert_eq!(
+            typed_sentence(&typed(&[
+                ("what", "to call mom"),
+                ("when", "tomorrow at 9am")
+            ]))
+            .as_deref(),
+            Some("remind me to call mom tomorrow at 9am")
+        );
+        assert_eq!(typed_sentence(&typed(&[("what", "stretch")])), None);
+        // The rules read the sentence: a cut-short typed length does not win.
+        let p = parse_request(
+            &typed(&[
+                ("text", "timer for 1 hour 30 minutes"),
+                ("length", "1 hour"),
+            ]),
+            now(),
+        )
+        .unwrap();
+        assert_eq!(p.due - now(), Duration::minutes(90));
+        // A question the rules ask stays a question; the model's guess does not answer it.
+        let e = parse_request(
+            &typed(&[
+                ("text", "remind me at 6 to call mom"),
+                ("what", "call mom"),
+                ("when", "6pm"),
+            ]),
+            now(),
+        )
+        .unwrap_err();
+        assert!(e.to_string().starts_with("Which time did you mean"), "{e}");
+        let db = temp_db("typed");
+        let c = Reminders::new(db.clone()).with_now(now);
+        let a = typed(&[
+            ("text", "chai ke liye timer laga do"),
+            ("length", "10 minutes"),
+        ]);
+        assert_eq!(
+            c.execute("set", &a).unwrap().0["message"],
+            "Timer set for 10 minutes."
+        );
         let _ = std::fs::remove_dir_all(db.parent().unwrap());
     }
 

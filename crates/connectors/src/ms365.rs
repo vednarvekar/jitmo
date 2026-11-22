@@ -759,8 +759,13 @@ impl Connector for Outlook {
                 let request = arg(args, "text")?;
                 let attachment = args.get("file").and_then(|f| attachment_name(f));
                 let attachment = attachment.as_deref();
+                // The words the user confirmed (`body`), else the words after "that"/"saying".
                 // A file sent with no words ("email budget.xlsx to Rahul") gets a plain line.
-                let body = message_text(request)
+                let body = args
+                    .get("body")
+                    .map(|b| b.trim().to_string())
+                    .filter(|b| !b.is_empty())
+                    .or_else(|| message_text(request))
                     .or_else(|| attachment.map(|_| "Here is the file.".to_string()))
                     .ok_or_else(|| {
                         ConnError::Failed(

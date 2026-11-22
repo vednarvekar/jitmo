@@ -19,11 +19,11 @@ slots: {}
 steps:
   - connector: reminders
     action: set
-    args: { text: "{request}" }
+    args: { text: "{request}", what: "{what?}", when: "{when?}" }
 check:
   connector: reminders
   action: set
-  args: { text: "{request}" }
+  args: { text: "{request}", what: "{what?}", when: "{when?}" }
 undo:
   - connector: reminders
     action: set

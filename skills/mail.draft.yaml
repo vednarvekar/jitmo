@@ -22,11 +22,11 @@ slots:
 steps:
   - connector: outlook
     action: draft
-    args: { to: "{contact}", text: "{request}" }
+    args: { to: "{contact}", text: "{request}", body: "{message?}" }
 check:
   connector: outlook
   action: draft
-  args: { to: "{contact}", text: "{request}" }
+  args: { to: "{contact}", text: "{request}", body: "{message?}" }
 undo:
   - connector: outlook
     action: draft

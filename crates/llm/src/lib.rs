@@ -14,6 +14,10 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+mod runtime;
+use runtime::Runtime;
+pub use runtime::RuntimeConfig;
+
 /// The model process may not use more than this (1.2 GB: the owner's hard limit).
 const MEMORY_CAP: u64 = 1200 * 1024 * 1024;
 /// Free memory that must remain after a load.
@@ -197,12 +201,34 @@ fn agent(secs: u64) -> ureq::Agent {
 /// The local model, started on demand. Clones share one server process.
 #[derive(Clone)]
 pub struct LocalLlm {
-    host: Arc<Mutex<Host>>,
+    backend: Backend,
     grammar: bool,
     compact: bool,
 }
 
+/// Who runs the model: jitmo's own llama-server child, or jitmo-runtime.
+#[derive(Clone)]
+enum Backend {
+    Own(Arc<Mutex<Host>>),
+    Runtime(Arc<Mutex<Runtime>>),
+}
+
 impl LocalLlm {
+    /// The model on jitmo-runtime. The same prompts, grammar and schemas as [`LocalLlm::new`];
+    /// only the transport differs. `grammar` and `compact` as in [`LlmConfig`].
+    pub fn runtime(cfg: RuntimeConfig, grammar: bool, compact: bool) -> LocalLlm {
+        LocalLlm {
+            backend: Backend::Runtime(Arc::new(Mutex::new(Runtime::new(cfg)))),
+            grammar,
+            compact,
+        }
+    }
+
+    /// True when the model runs on jitmo-runtime.
+    pub fn on_runtime(&self) -> bool {
+        matches!(self.backend, Backend::Runtime(_))
+    }
+
     pub fn new(cfg: LlmConfig) -> LocalLlm {
         let grammar = cfg.grammar;
         let compact = cfg.compact;
@@ -228,7 +254,7 @@ impl LocalLlm {
             }
         });
         LocalLlm {
-            host,
+            backend: Backend::Own(host),
             grammar,
             compact,
         }
@@ -237,18 +263,36 @@ impl LocalLlm {
     /// Start loading the model in the background (when the bar opens: the load hides behind
     /// the typing). Nothing happens when it is already running or memory is short.
     pub fn warm(&self) {
-        let host = self.host.clone();
-        std::thread::spawn(move || {
-            if let Ok(mut h) = host.lock() {
-                let _ = h.ensure();
+        match &self.backend {
+            Backend::Own(host) => {
+                let host = host.clone();
+                std::thread::spawn(move || {
+                    if let Ok(mut h) = host.lock() {
+                        let _ = h.ensure();
+                    }
+                });
             }
-        });
+            Backend::Runtime(rt) => {
+                let rt = rt.clone();
+                std::thread::spawn(move || {
+                    let _ = runtime_call(&rt, "/admin/load", Some(json!({})), 180);
+                });
+            }
+        }
     }
 
     /// Stop the model process now (memory pressure, or the user turned it off).
     pub fn unload(&self) {
-        if let Ok(mut h) = self.host.lock() {
-            h.stop();
+        match &self.backend {
+            Backend::Own(host) => {
+                if let Ok(mut h) = host.lock() {
+                    h.stop();
+                }
+            }
+            // The runtime unloads on memory pressure itself; this asks it to do so now.
+            Backend::Runtime(rt) => {
+                let _ = runtime_call(rt, "/admin/unload", None, 30);
+            }
         }
     }
 
@@ -305,8 +349,18 @@ impl LocalLlm {
     }
 
     fn post(&self, body: Value) -> Result<String, String> {
+        let host = match &self.backend {
+            Backend::Own(h) => h,
+            Backend::Runtime(rt) => {
+                let v = runtime_call(rt, "/v1/chat/completions", Some(body), 180)?;
+                return v["choices"][0]["message"]["content"]
+                    .as_str()
+                    .map(|s| s.trim().to_string())
+                    .ok_or_else(|| "the model sent no answer".to_string());
+            }
+        };
         let base = {
-            let mut h = self.host.lock().map_err(|_| "model lock".to_string())?;
+            let mut h = host.lock().map_err(|_| "model lock".to_string())?;
             h.ensure()?;
             h.base()
         };
@@ -319,7 +373,7 @@ impl LocalLlm {
             .body_mut()
             .read_to_string()
             .map_err(|e| e.to_string())?;
-        if let Ok(mut h) = self.host.lock() {
+        if let Ok(mut h) = host.lock() {
             h.last_used = Instant::now();
         }
         let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
@@ -328,6 +382,49 @@ impl LocalLlm {
             .map(|s| s.trim().to_string())
             .ok_or_else(|| "the model sent no answer".to_string())
     }
+}
+
+/// One request to jitmo-runtime (POST when `body` is given or the path is an admin action).
+/// Chat bodies get the configured model name; every request is marked interactive. A runtime
+/// error (`503 insufficient_memory`, `queue_full`, `502 engine_error`, ...) is an `Err`, so the
+/// engine falls back to its rules.
+fn runtime_call(
+    rt: &Arc<Mutex<Runtime>>,
+    path: &str,
+    body: Option<Value>,
+    secs: u64,
+) -> Result<Value, String> {
+    let (base, model) = {
+        let mut r = rt.lock().map_err(|_| "runtime lock".to_string())?;
+        (r.ensure()?, r.cfg.model.clone())
+    };
+    let mut body = body.unwrap_or_else(|| json!({}));
+    if body.get("model").is_none() {
+        body["model"] = json!(model);
+    }
+    let sent = agent(secs)
+        .post(&format!("{base}{path}"))
+        .header("Content-Type", "application/json")
+        .header("X-Jitmo-Priority", "interactive")
+        .send(body.to_string());
+    let mut resp = match sent {
+        Ok(r) => r,
+        Err(e) => {
+            if let Ok(mut r) = rt.lock() {
+                r.lost();
+            }
+            return Err(format!("jitmo-runtime: {e}"));
+        }
+    };
+    let status = resp.status().as_u16();
+    let text = resp
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| e.to_string())?;
+    if !(200..300).contains(&status) {
+        return Err(runtime::error_text(status, &text));
+    }
+    serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
 /// The short prompt a fine-tuned tool-picker reads: a one-line instruction and the numbered
@@ -482,14 +579,27 @@ Question: {question}"
         if tool.args.is_empty() {
             return Pick::Tool(id);
         }
-        // Second step: the typed values, as JSON that cannot have any other keys.
-        match self.chat(&args_system(tool), request, Some(&args_schema(tool)), 120) {
-            Ok(text) => match parse_args(&text, tool) {
-                Some(args) => Pick::Call { tool: id, args },
-                None => Pick::Tool(id),
-            },
-            Err(_) => Pick::Tool(id),
+        // Second step: the typed values.
+        let tool = tool.clone();
+        match self.fill(request, &tool) {
+            Some(args) => Pick::Call { tool: id, args },
+            None => Pick::Tool(id),
         }
+    }
+
+    /// The typed values as JSON that cannot have any other keys.
+    fn fill(
+        &mut self,
+        request: &str,
+        tool: &ToolBrief,
+    ) -> Option<std::collections::BTreeMap<String, String>> {
+        if tool.args.is_empty() {
+            return None;
+        }
+        let text = self
+            .chat(&args_system(tool), request, Some(&args_schema(tool)), 120)
+            .ok()?;
+        parse_args(&text, tool)
     }
 }
 

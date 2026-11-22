@@ -8,7 +8,9 @@
 use crate::ms365::{arg, out, person_in, ready};
 use crate::reminders::{durations, weekday};
 use crate::{ActionSpec, Args, ConnError, Connector, Health, Output};
-use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Weekday};
+use chrono::{
+    DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday,
+};
 use std::sync::{Arc, Mutex};
 
 const FMT: &str = "%Y-%m-%d %H:%M";
@@ -481,6 +483,197 @@ impl OutlookCalendar {
             )),
         }
     }
+
+    /// The meetings a typed "which one" names ("my 3pm", "tomorrow's standup", "the design
+    /// review", "the 11 o'clock call"), from today to two weeks ahead, soonest first. A time
+    /// or a day in the words narrows by it; title words narrow to the best title match.
+    fn events_named(
+        &self,
+        which: &str,
+        today: NaiveDate,
+        pending_only: bool,
+    ) -> Result<Vec<Event>, ConnError> {
+        let times = meeting_times(which);
+        let day = day_in(which, today);
+        let words = title_words(which);
+        let last = today + Duration::days(14);
+        let mut hits: Vec<Event> = self
+            .backend
+            .all()?
+            .into_iter()
+            .filter(|e| !e.declined && (!pending_only || e.invite_pending))
+            .filter(|e| e.start.date() >= today && e.start.date() <= last)
+            .filter(|e| day.is_none_or(|d| e.start.date() == d))
+            .filter(|e| {
+                times.is_empty()
+                    || times.iter().any(|&(h, m)| {
+                        e.start.time() == NaiveTime::from_hms_opt(h, m, 0).unwrap_or_default()
+                    })
+            })
+            .collect();
+        if !words.is_empty() {
+            let score = |e: &Event| title_score(&e.title, &words);
+            let best = hits.iter().map(score).max().unwrap_or(0);
+            if best > 0 {
+                hits.retain(|e| score(e) == best);
+            } else if times.is_empty() && day.is_none() {
+                // Title words that match nothing, and nothing else to go by.
+                hits.clear();
+            }
+        }
+        hits.sort_by_key(|e| e.start);
+        Ok(hits)
+    }
+
+    /// The one meeting a typed value names. Several with the same title are a series: the
+    /// next one is meant. Different meetings are a question.
+    fn one_event(&self, which: &str, today: NaiveDate, pending: bool) -> Result<Event, ConnError> {
+        let hits = self.events_named(which, today, pending)?;
+        let what = if pending { "invite" } else { "meeting" };
+        match hits.as_slice() {
+            [] => Err(ConnError::Failed(format!("I can't find that {what}."))),
+            [first, rest @ ..] if rest.iter().all(|e| e.title == first.title) => Ok(first.clone()),
+            _ => Err(ConnError::Failed(format!(
+                "Which {what}? Say its time or its title, like “the 3pm” or “the design review”."
+            ))),
+        }
+    }
+}
+
+/// Clock times in a typed meeting value: "3pm", "10:30 am", and also "11 o'clock" or a bare
+/// hour after "at" ("at 4"), which mean a working hour (1 to 7 are afternoon).
+fn meeting_times(text: &str) -> Vec<(u32, u32)> {
+    let mut times = clock_times(text);
+    if times.is_empty() {
+        let lower = text.to_lowercase().replace("o'clock", " oclock");
+        let words: Vec<&str> = lower.split_whitespace().collect();
+        for (i, w) in words.iter().enumerate() {
+            let next = words.get(i + 1).copied().unwrap_or("");
+            let prev = if i > 0 { words[i - 1] } else { "" };
+            let Ok(h) = w.trim_end_matches(['\'', 's']).parse::<u32>() else {
+                continue;
+            };
+            if (1..=12).contains(&h) && (next == "oclock" || prev == "at" || prev == "my") {
+                times.push((working_hour(h), 0));
+            }
+        }
+    }
+    times
+}
+
+/// A bare hour as a working hour: 8 to 12 as said, 1 to 7 in the afternoon.
+fn working_hour(h: u32) -> u32 {
+    if h < 8 {
+        h + 12
+    } else {
+        h % 24
+    }
+}
+
+/// The words of a typed value that could be part of a meeting title.
+fn title_words(text: &str) -> Vec<String> {
+    const SKIP: &[&str] = &[
+        "the",
+        "my",
+        "our",
+        "and",
+        "with",
+        "for",
+        "meeting",
+        "meetings",
+        "call",
+        "invite",
+        "invitation",
+        "event",
+        "today",
+        "todays",
+        "tomorrow",
+        "tomorrows",
+        "this",
+        "next",
+        "week",
+        "oclock",
+        "clock",
+        "morning",
+        "afternoon",
+        "evening",
+        "tonight",
+        "from",
+    ];
+    text.to_lowercase()
+        .replace("'s", "")
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() > 2 && !SKIP.contains(w) && weekday(w).is_none())
+        // Numbers and clock words ("3pm", "1030am") are times, not title words.
+        .filter(|w| !w.starts_with(|c: char| c.is_ascii_digit()))
+        .map(str::to_string)
+        .collect()
+}
+
+/// How many of `words` are in a title (a plural or a short form counts: "reviews", "sync").
+fn title_score(title: &str, words: &[String]) -> usize {
+    let t: Vec<String> = title
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() > 2)
+        .map(str::to_string)
+        .collect();
+    words
+        .iter()
+        .filter(|w| {
+            t.iter()
+                .any(|x| x == *w || x.trim_end_matches('s') == w.trim_end_matches('s'))
+        })
+        .count()
+}
+
+/// The new start a typed "to when" gives for `e`: "4" or "4pm" (a new time the same day),
+/// "tomorrow", "friday morning", "next week" (a new day, same time unless one is said), "an
+/// hour later", "30 minutes earlier". `None` when it says none of these.
+fn moved_start(to: &str, e: &Event, today: NaiveDate) -> Option<NaiveDateTime> {
+    let lower = to.to_lowercase();
+    // "an hour later", "half an hour earlier", "push it back 30 minutes".
+    let later = ["later", "back", "after"].iter().any(|w| lower.contains(w));
+    let earlier = ["earlier", "sooner", "before", "forward", "up"]
+        .iter()
+        .any(|w| lower.split_whitespace().any(|x| x == *w));
+    if later || earlier {
+        if let Some((d, _)) = durations(&lower) {
+            return Some(if earlier { e.start - d } else { e.start + d });
+        }
+    }
+    let mut day = day_in(&lower.replace("my ", ""), today);
+    if day.is_none() && lower.contains("next week") {
+        day = Some(e.start.date() + Duration::days(7));
+    }
+    let time = clock_times(&lower)
+        .first()
+        .copied()
+        .or_else(|| {
+            // A bare hour ("to 4", "4 o'clock"): the one nearest the meeting's own time.
+            let l = lower.replace("o'clock", " ");
+            l.split_whitespace()
+                .find_map(|w| w.parse::<u32>().ok().filter(|h| (1..=12).contains(h)))
+                .map(|h| {
+                    let base = e.start.hour();
+                    let pm = if h < 12 { h + 12 } else { h };
+                    let am = h % 12;
+                    let near = |x: u32| (x as i32 - base as i32).abs();
+                    (if near(pm) <= near(am) { pm } else { am }, 0)
+                })
+        })
+        .or_else(|| {
+            // "friday morning": the first hour of that part of the day.
+            part_of_day(&lower).map(|(from, _)| (from.max(9), 0))
+        });
+    if day.is_none() && time.is_none() {
+        return None;
+    }
+    let date = day.unwrap_or(e.start.date());
+    let at = time
+        .and_then(|(h, m)| NaiveTime::from_hms_opt(h, m, 0))
+        .unwrap_or(e.start.time());
+    Some(date.and_time(at))
 }
 
 fn title_from(request: &str) -> String {
@@ -938,6 +1131,59 @@ impl Connector for OutlookCalendar {
                     ("start", start.format(FMT).to_string()),
                 ]))
             }
+            // Typed values: the meeting the model named and where it goes, used when the
+            // sentence alone is not enough.
+            "move" if args.contains_key("event") => {
+                // The sentence as the rules read it first; the typed values only when that fails.
+                let mut plain = args.clone();
+                plain.remove("event");
+                plain.remove("to");
+                if let Ok(done) = self.execute("move", &plain) {
+                    return Ok(done);
+                }
+                let e = self.one_event(arg(args, "event")?, today, false)?;
+                let to = args.get("to").map_or("", String::as_str);
+                let new_start = moved_start(to, &e, today).ok_or_else(|| {
+                    ConnError::Failed("To when? Try “move my 3pm to tomorrow”.".into())
+                })?;
+                if new_start == e.start {
+                    return Err(ConnError::Failed(format!(
+                        "“{}” is already at that time.",
+                        e.title
+                    )));
+                }
+                let len = e.end - e.start;
+                self.backend.reschedule(&e.id, new_start, new_start + len)?;
+                Ok(out(&[
+                    (
+                        "message",
+                        format!(
+                            "Moved “{}” to {} at {}.",
+                            e.title,
+                            day_name(new_start.date()),
+                            short(new_start)
+                        ),
+                    ),
+                    ("id", e.id.clone()),
+                    ("old_start", e.start.format(FMT).to_string()),
+                    ("old_end", e.end.format(FMT).to_string()),
+                ]))
+            }
+            "decline" if args.contains_key("event") => {
+                // The sentence as the rules read it first; the typed values only when that fails.
+                let mut plain = args.clone();
+                plain.remove("event");
+                plain.remove("to");
+                if let Ok(done) = self.execute("decline", &plain) {
+                    return Ok(done);
+                }
+                let e = self.one_event(arg(args, "event")?, today, true)?;
+                self.backend.set_declined(&e.id, true)?;
+                Ok(out(&[
+                    ("message", format!("Declined “{}”.", e.title)),
+                    ("id", e.id.clone()),
+                ]))
+            }
             "move" => {
                 let times = clock_times(text);
                 let day = today;
@@ -1285,6 +1531,78 @@ mod tests {
         );
         let r = run(&c, "move", "move my 3pm to friday at 4pm").unwrap();
         assert!(r.0["message"].ends_with("Fri 13 Nov at 16:00."));
+    }
+
+    #[test]
+    fn typed_values_name_the_meeting_and_where_it_goes() {
+        let (c, b) = setup();
+        let moved = |event: &str, to: &str| {
+            c.execute(
+                "move",
+                &args(&[("text", "ignored"), ("event", event), ("to", to)]),
+            )
+        };
+        // A bare hour goes to the nearest working hour: 4 after a 3pm is 4pm.
+        let r = moved("my 3pm", "4").unwrap();
+        assert_eq!(
+            r.0["message"],
+            "Moved “Project review” to Mon 9 Nov at 16:00."
+        );
+        assert_eq!(c.undo("move", &r), Some(Ok(())));
+        // A title and a whole week; the time stays.
+        let r = moved("the dentist checkup", "next week").unwrap();
+        assert_eq!(
+            r.0["message"],
+            "Moved “Dentist checkup” to Tue 17 Nov at 11:00."
+        );
+        // Relative moves.
+        let r = moved("the team sync", "an hour later").unwrap();
+        assert!(r.0["message"].ends_with("Mon 9 Nov at 18:00."), "{r:?}");
+        let r = moved("the 11 o'clock budget sync", "friday morning").unwrap();
+        assert_eq!(
+            r.0["message"],
+            "Moved “Budget sync” to Fri 13 Nov at 09:00."
+        );
+        // Two different meetings fit: ask, never guess.
+        let e = moved("the review", "tomorrow").unwrap_err();
+        assert!(e.to_string().starts_with("Which meeting?"), "{e}");
+        // Nothing fits, or nowhere to go.
+        assert!(moved("the yoga class", "tomorrow").is_err());
+        assert!(moved("my 3pm", "whenever").is_err());
+        assert_eq!(
+            b.all()
+                .unwrap()
+                .iter()
+                .find(|e| e.id == "e2")
+                .unwrap()
+                .start,
+            dt("2026-11-09 15:00"),
+            "a failed move changes nothing"
+        );
+    }
+
+    #[test]
+    fn a_typed_invite_is_declined_only_when_it_is_pending() {
+        let (c, b) = setup();
+        let declined = |event: &str| {
+            let said = format!("decline {event}");
+            c.execute("decline", &args(&[("text", &said), ("event", event)]))
+        };
+        let r = declined("the friday review").unwrap();
+        assert_eq!(r.0["message"], "Declined “Friday review”.");
+        assert!(
+            b.all()
+                .unwrap()
+                .iter()
+                .find(|e| e.id == "e6")
+                .unwrap()
+                .declined
+        );
+        // The standup is a meeting, not an invite.
+        assert_eq!(
+            declined("tomorrow's standup").unwrap_err().to_string(),
+            "I can't find that invite."
+        );
     }
 
     #[test]

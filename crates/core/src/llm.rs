@@ -53,6 +53,13 @@ pub trait Llm: Send {
     /// worked, for follow-ups.
     fn route(&mut self, request: &str, tools: &[ToolBrief], recent: Option<&str>) -> Pick;
 
+    /// The typed values of one tool, copied from the words of the request: only the tool's own
+    /// names, non-empty values only. `None` when the model could not answer. The engine checks
+    /// every value (contacts, files and apps are resolved, times are parsed) before anything runs.
+    fn fill(&mut self, _request: &str, _tool: &ToolBrief) -> Option<BTreeMap<String, String>> {
+        None
+    }
+
     /// Write an answer to `question` using ONLY `passage` (retrieved text), or `None`. The
     /// engine shows it only if [`crate::grounding::supported`] agrees.
     fn answer_from(&mut self, _question: &str, _passage: &str) -> Option<String> {

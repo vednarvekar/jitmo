@@ -18,11 +18,11 @@ slots: {}
 steps:
   - connector: web_lookup
     action: weather
-    args: { text: "{request}" }
+    args: { text: "{request}", place: "{place?}", when: "{when?}" }
 check:
   connector: web_lookup
   action: weather
-  args: { text: "{request}" }
+  args: { text: "{request}", place: "{place?}", when: "{when?}" }
 undo: none
 tool:
   args:

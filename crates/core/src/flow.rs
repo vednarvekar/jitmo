@@ -79,6 +79,14 @@ pub struct Flow {
     pending_learn: Option<(String, String, Option<String>)>,
     /// The key of a remembered request now running (forgotten if it fails).
     cache_hit: Option<String>,
+    /// Typed values the model already gave with its tool pick: (skill, values). The sentence
+    /// built from them then runs without asking the model a second time.
+    pending_typed: Option<(String, BTreeMap<String, String>)>,
+    /// Ask the model for a tool when the router declined too (off by default: see `run`).
+    llm_on_decline: bool,
+    /// Ask the model for a tool when the router is unsure. Off by default: on the day-in-the-life
+    /// set it turned questions the router would have asked into wrong actions (doc 16).
+    llm_picks: bool,
 }
 
 impl Flow {
@@ -104,6 +112,9 @@ impl Flow {
             retriever: None,
             pending_learn: None,
             cache_hit: None,
+            pending_typed: None,
+            llm_on_decline: false,
+            llm_picks: false,
         }
     }
 
@@ -112,6 +123,21 @@ impl Flow {
     /// resolved, confirmed and checked like any other request.
     pub fn with_llm(mut self, llm: Box<dyn crate::llm::Llm>) -> Self {
         self.llm = Some(llm);
+        self
+    }
+
+    /// Also let the model pick a tool when the router declined. Off by default: on the
+    /// held-out set a small model overruling the tool encoder's "no tool fits" turned
+    /// out-of-scope requests into wrong actions far more often than it rescued real ones.
+    pub fn with_llm_on_decline(mut self, on: bool) -> Self {
+        self.llm_on_decline = on;
+        self
+    }
+
+    /// Let the model pick a tool when the router is unsure. Off by default: the model then only
+    /// fills typed values, and an unsure route asks the user to choose.
+    pub fn with_llm_picks(mut self, on: bool) -> Self {
+        self.llm_picks = on;
         self
     }
 
@@ -178,6 +204,7 @@ impl Flow {
         let text = rewritten.as_deref().unwrap_or(text);
         self.pending_learn = None;
         self.cache_hit = None;
+        self.pending_typed = None;
         let event = self.run(id, text, prompter);
         if matches!(event, CoreEvent::Done { .. }) {
             self.last_ok = Some((text.to_string(), Instant::now()));
@@ -304,6 +331,46 @@ impl Flow {
             }
         }
         spec.render(&args).ok()
+    }
+
+    /// Typed values for a skill whose steps take them (`{name?}`), filled by the model from the
+    /// words of the request. Only the skill's own names are kept. `None` when there is no
+    /// model, the skill takes no typed values, or the model left a required value empty: the
+    /// connector then reads the whole sentence, as it did before (and asks what is missing).
+    fn typed_args(&mut self, skill_id: &str, text: &str) -> Option<BTreeMap<String, String>> {
+        let skill = self.router.skill(skill_id)?.clone();
+        if !skill.takes_typed() {
+            return None;
+        }
+        let spec = skill.tool.as_ref()?;
+        let given = self
+            .pending_typed
+            .take()
+            .filter(|(id, _)| id == skill_id)
+            .map(|(_, v)| v);
+        let mut values = match given {
+            Some(v) => v,
+            None => self.llm.as_mut()?.fill(text, &tool_brief(&skill))?,
+        };
+        values.retain(|k, v| spec.args.contains_key(k) && !v.trim().is_empty());
+        // A value the request does not contain is the model's invention ("play despacito"
+        // filled as "the latest album"): it is dropped, never used.
+        values.retain(|_, v| grounded_in(v, text));
+        // Words to send that are only the recipient ("email the team" → "the team") are not
+        // a message.
+        if let Some(body) = values.get("body").map(|b| b.trim().to_lowercase()) {
+            let is_person = values
+                .iter()
+                .any(|(k, v)| k != "body" && v.trim().to_lowercase() == body);
+            if is_person {
+                values.remove("body");
+            }
+        }
+        let complete = spec
+            .args
+            .iter()
+            .all(|(name, a)| !a.required || values.contains_key(name));
+        (complete && !values.is_empty()).then_some(values)
     }
 
     /// Undo the last undoable action, if any. Returns the one-line result.
@@ -810,17 +877,17 @@ impl Flow {
             Some(id) => RouteDecision::Run { skill_id: id },
             None => decide(&understanding),
         };
-        // The router is unsure or said no: a language model gets the router's best three
-        // tools (a short prompt is what keeps it fast) and may pick one. Sure routes (and
-        // chains) never wait for it.
-        if self.llm.is_some()
-            && matches!(
-                decision,
-                RouteDecision::Decline
-                    | RouteDecision::Ask { .. }
-                    | RouteDecision::ConfirmTask { .. }
-            )
-        {
+        // The router is unsure: a language model gets the router's best three tools (a short
+        // prompt is what keeps it fast) and may pick one. Sure routes (and chains) never wait
+        // for it. Nor does a decline: when the tool encoder says no tool fits, a small model
+        // overruling it was mostly wrong on the held-out set ("write an essay" became an email,
+        // "make flashcards" a calendar event), and a wrong action is worse than "I can't".
+        let unsure = matches!(
+            decision,
+            RouteDecision::Ask { .. } | RouteDecision::ConfirmTask { .. }
+        );
+        let declined = matches!(decision, RouteDecision::Decline);
+        if self.llm.is_some() && self.llm_picks && (unsure || (declined && self.llm_on_decline)) {
             // The router's best two plus the best word-overlap match: the right tool is among
             // them far more often than among the router's best three.
             let ranked: Vec<String> = understanding
@@ -839,25 +906,7 @@ impl Flow {
             let tools: Vec<crate::llm::ToolBrief> = picks
                 .iter()
                 .filter_map(|id| self.router.skill(id))
-                .map(|s| crate::llm::ToolBrief {
-                    id: s.id.clone(),
-                    title: s.title.clone().unwrap_or_else(|| s.id.clone()),
-                    examples: s.examples.clone(),
-                    args: s
-                        .tool
-                        .as_ref()
-                        .map(|t| {
-                            t.args
-                                .iter()
-                                .map(|(n, a)| crate::llm::ArgBrief {
-                                    name: n.clone(),
-                                    description: a.description.clone(),
-                                    required: a.required,
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default(),
-                })
+                .map(tool_brief)
                 .collect();
             let recent = self.last_ok.as_ref().map(|(t, _)| t.clone());
             let pick = self
@@ -873,7 +922,10 @@ impl Flow {
                 // Typed values: the engine builds the skill's own sentence from them (asking for
                 // a required one that is missing, from the skill's question, not from an error
                 // string) and runs it through the normal pipeline.
-                crate::llm::Pick::Call { tool, args } if self.router.skill(&tool).is_some() => {
+                crate::llm::Pick::Call { tool, mut args } if self.router.skill(&tool).is_some() => {
+                    // Only values copied from the request; an invented one is asked for instead.
+                    args.retain(|_, v| grounded_in(v, text));
+                    self.pending_typed = Some((tool.clone(), args.clone()));
                     if let Some(sentence) = self.sentence_from_call(&tool, args, p) {
                         self.pending_learn = Some((
                             crate::learned::key(text),
@@ -893,7 +945,16 @@ impl Flow {
             }
         }
         let skill_id = match decision {
-            RouteDecision::Decline => return self.fail(id, text, None, "I can't do that yet."),
+            RouteDecision::Decline => {
+                // No tool fits, but a question may still have an answer in a retrieved passage.
+                // Reading changes nothing, and the answer shows only when the passage supports it.
+                if self.llm.is_some() && is_question(text) {
+                    if let Some(event) = self.grounded_answer(id, text) {
+                        return event;
+                    }
+                }
+                return self.fail(id, text, None, "I can't do that yet.");
+            }
             RouteDecision::Chained => {
                 // No saved plan matched. Second approach: route each part on its own; if
                 // every part is a request the router is sure of, that is the plan. (A model
@@ -1025,9 +1086,13 @@ impl Flow {
                 skill_id
             }
         };
+        // Typed values from the model, for skills whose connectors take them.
+        let typed = self.typed_args(&skill_id, text);
         // Other guards of the same kind: a skill runs only when the words really ask for it,
         // so a guess by the router can never archive, move or decline something by accident.
-        {
+        // With typed values the connector looks for the very meeting or invite the model named
+        // and fails when there is none, so the keyword list is the rules' fallback only.
+        if typed.is_none() {
             let l = text.to_lowercase();
             let any = |names: &[&str]| names.iter().any(|n| l.contains(n));
             let refuse = match skill_id.as_str() {
@@ -1072,6 +1137,9 @@ impl Flow {
         // 2. Fill slots. When the extractor found no person in the words but a saved contact
         // is named in them ("Email Rahul that ..."), that name is the contact.
         let mut spans = understanding.spans.clone();
+        if let Some(values) = &typed {
+            seed_spans(&skill, values, &mut spans);
+        }
         add_named_contact(&skill, &mut spans, text, &known);
         let (mut slots, learned) = match resolve_slots(
             &skill,
@@ -1086,17 +1154,32 @@ impl Flow {
             Err(SlotError::Cancelled) => return self.cancelled(id, text, Some(&skill.id)),
         };
         slots.insert("request".to_string(), SlotValue::from_text(text));
+        // The model's values, by their own names (a slot of the same name, resolved above, wins).
+        if let Some(values) = &typed {
+            for (name, value) in values {
+                slots
+                    .entry(name.clone())
+                    .or_insert_with(|| SlotValue::from_text(value));
+            }
+        }
 
         // A send must show, and send, the words the user meant, never the whole sentence.
         if matches!(
             skill.id.as_str(),
             "mail.send" | "chat.post" | "mail.draft" | "whatsapp.send_message"
         ) {
-            let body = if skill.id == "chat.post" {
+            let typed_body = typed
+                .as_ref()
+                .and_then(|v| v.get("body"))
+                .map(|b| tidy_body(b))
+                .filter(|b| !b.is_empty());
+            // The rules' reading first; the model's words only when the rules found none.
+            let ruled = if skill.id == "chat.post" {
                 crate::normalize::post_body(text)
             } else {
                 crate::normalize::message_body(text)
             };
+            let body = ruled.or(typed_body);
             match body {
                 Some(body) => {
                     slots.insert("message".to_string(), SlotValue::from_text(&body));
@@ -1987,10 +2070,163 @@ fn expand_multi(args: &BTreeMap<String, String>, slots: &Slots) -> Option<Vec<Sl
     (!variants.is_empty()).then_some(variants)
 }
 
+/// A step's arguments with the slots filled in. An optional typed value (`{name?}`) that
+/// nothing filled is left out, so the connector reads the request as before.
 fn fill_args(args: &BTreeMap<String, String>, slots: &Slots) -> Result<Args, String> {
-    args.iter()
-        .map(|(k, v)| Ok((k.clone(), fill(v, slots)?)))
-        .collect()
+    let mut out = Args::new();
+    for (k, v) in args {
+        if let Some(name) = jitmo_skills::optional_placeholder(v) {
+            if let Some(value) = slots.get(name) {
+                out.insert(k.clone(), value.text.clone());
+            }
+            continue;
+        }
+        out.insert(k.clone(), fill(v, slots)?);
+    }
+    Ok(out)
+}
+
+/// Is a model's value copied from the request? At least half of its words (and at least one)
+/// must be in the request, allowing a typo-sized difference ("emial" for "email") and a
+/// number written as digits or word ("10" or "ten" against "10-minute").
+fn grounded_in(value: &str, request: &str) -> bool {
+    let words = |s: &str| -> Vec<String> {
+        s.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    let said = words(request);
+    let close = |a: &str, b: &str| {
+        a == b
+            || (a.len() >= 4 && b.len() >= 4 && (a.starts_with(&b[..4]) || b.starts_with(&a[..4])))
+            || number_word(a).is_some_and(|n| n == b)
+            || number_word(b).is_some_and(|n| n == a)
+    };
+    // Little words carry no evidence either way.
+    const FILLER: &[&str] = &[
+        "the", "a", "an", "to", "of", "my", "for", "in", "on", "at", "me",
+    ];
+    let mine: Vec<String> = words(value)
+        .into_iter()
+        .filter(|w| !FILLER.contains(&w.as_str()))
+        .collect();
+    if mine.is_empty() {
+        return !words(value).is_empty() && words(value).iter().all(|w| said.contains(w));
+    }
+    let found = mine
+        .iter()
+        .filter(|w| said.iter().any(|s| close(w, s)))
+        .count();
+    found * 2 >= mine.len() && found > 0
+}
+
+/// "ten" as "10", for the words people use for small numbers.
+fn number_word(w: &str) -> Option<String> {
+    const N: &[&str] = &[
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve", "fifteen", "twenty", "thirty", "forty", "fifty", "sixty",
+    ];
+    const V: &[u32] = &[
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 20, 30, 40, 50, 60,
+    ];
+    N.iter().position(|n| *n == w).map(|i| V[i].to_string())
+}
+
+/// A request worded as a question ("how do vaccines work", "why is the sky blue?").
+fn is_question(text: &str) -> bool {
+    const STARTS: &[&str] = &[
+        "how ",
+        "why ",
+        "what ",
+        "what's ",
+        "whats ",
+        "who ",
+        "when ",
+        "where ",
+        "which ",
+        "explain ",
+        "is ",
+        "are ",
+        "does ",
+        "do ",
+        "can ",
+        "tell me about ",
+    ];
+    let t = text.trim().to_lowercase();
+    t.ends_with('?') || STARTS.iter().any(|s| t.starts_with(s))
+}
+
+/// One skill as the model sees it.
+fn tool_brief(s: &Skill) -> crate::llm::ToolBrief {
+    crate::llm::ToolBrief {
+        id: s.id.clone(),
+        title: s.title.clone().unwrap_or_else(|| s.id.clone()),
+        examples: s.examples.clone(),
+        args: s
+            .tool
+            .as_ref()
+            .map(|t| {
+                t.args
+                    .iter()
+                    .map(|(n, a)| crate::llm::ArgBrief {
+                        name: n.clone(),
+                        description: a.description.clone(),
+                        required: a.required,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+/// Put the model's values for people, apps and files first among the spans, so the resolver
+/// turns them into a real contact, app or file (and asks when several fit), exactly as it does
+/// for words the extractor found. A tool argument feeds the slot of the same name, or the
+/// contact slot when the argument is a person.
+fn seed_spans(skill: &Skill, values: &BTreeMap<String, String>, spans: &mut Vec<Span>) {
+    let Some(tool) = &skill.tool else { return };
+    for (name, value) in values {
+        let kind = match skill.slots.get(name) {
+            Some(Slot::Param(sp)) => Some(sp.kind.clone()),
+            _ => tool
+                .args
+                .get(name)
+                .filter(|a| a.kind == "person")
+                .and_then(|_| {
+                    skill.slots.values().find_map(|s| match s {
+                        Slot::Param(sp) if sp.kind == "contact" => Some(sp.kind.clone()),
+                        _ => None,
+                    })
+                }),
+        };
+        if let Some(kind) = kind {
+            spans.retain(|s| s.kind != kind);
+            spans.insert(
+                0,
+                Span {
+                    text: value.clone(),
+                    kind,
+                },
+            );
+        }
+    }
+}
+
+/// The words to send, tidied the way the rules tidy them: a capital first letter and a full
+/// stop when the sentence has no ending of its own.
+fn tidy_body(body: &str) -> String {
+    let t = body.trim().trim_matches(['"', '“', '”']).trim();
+    let mut c = t.chars();
+    let Some(first) = c.next() else {
+        return String::new();
+    };
+    let mut out = format!("{}{}", first.to_uppercase(), c.as_str());
+    if !out.ends_with(['.', '!', '?']) {
+        out.push('.');
+    }
+    out
 }
 
 /// Fill every template in the skill (confirm text, step and check arguments)
@@ -3455,10 +3691,12 @@ mod tests {
     #[test]
     fn an_ungrounded_model_answer_never_reaches_the_user() {
         let c = Arc::new(FakeConnector::new("windows_system"));
-        let mut flow =
-            flow_with(&[OPEN], vec![("windows_system", c)]).with_llm(Box::new(Scripted(vec![
-                crate::llm::Pick::Answer("Boil the pasta for ten minutes.".into()),
-            ])));
+        let mut flow = flow_with(&[OPEN], vec![("windows_system", c)])
+            .with_llm_picks(true)
+            .with_llm_on_decline(true)
+            .with_llm(Box::new(Scripted(vec![crate::llm::Pick::Answer(
+                "Boil the pasta for ten minutes.".into(),
+            )])));
         let mut u = TestUser::default();
         let ev = flow.handle(1, "blorp the zibble pasta recipe please", &mut u);
         assert!(
@@ -3473,7 +3711,10 @@ mod tests {
         let mut flow = flow_with(&[OPEN], vec![("windows_system", c.clone())]).with_llm(Box::new(
             Scripted(vec![crate::llm::Pick::Tool("apps.open".into())]),
         ));
-        flow = flow.with_app_names(|| vec!["Spotify".to_string()]);
+        flow = flow
+            .with_app_names(|| vec!["Spotify".to_string()])
+            .with_llm_picks(true)
+            .with_llm_on_decline(true);
         let mut u = TestUser::default();
         let ev = flow.handle(2, "blorp spotify zibble", &mut u);
         // The picked skill went through slot resolution like any other: with no app named it
@@ -3492,15 +3733,15 @@ mod tests {
         let mut args = BTreeMap::new();
         args.insert("length".to_string(), "10 minutes".to_string());
         args.insert("extra".to_string(), "dropped".to_string());
-        let mut flow =
-            flow_with(&[TIMER], vec![("reminders", c.clone())]).with_llm(Box::new(Scripted(vec![
-                crate::llm::Pick::Call {
-                    tool: "reminders.timer".into(),
-                    args,
-                },
-            ])));
+        let mut flow = flow_with(&[TIMER], vec![("reminders", c.clone())])
+            .with_llm_picks(true)
+            .with_llm_on_decline(true)
+            .with_llm(Box::new(Scripted(vec![crate::llm::Pick::Call {
+                tool: "reminders.timer".into(),
+                args,
+            }])));
         let mut u = TestUser::default();
-        let ev = flow.handle(1, "blorp zibble wonk", &mut u);
+        let ev = flow.handle(1, "blorp zibble wonk 10 minutes", &mut u);
         assert!(matches!(ev, CoreEvent::Done { .. }), "{ev:?}");
         let sentence = c
             .calls()
@@ -3513,22 +3754,156 @@ mod tests {
         assert_eq!(sentence, "set a timer for 10 minutes");
     }
 
+    /// A model that never picks a tool but fills typed values.
+    struct Filler(Vec<(&'static str, &'static str)>);
+    impl crate::llm::Llm for Filler {
+        fn route(
+            &mut self,
+            _r: &str,
+            _t: &[crate::llm::ToolBrief],
+            _recent: Option<&str>,
+        ) -> crate::llm::Pick {
+            crate::llm::Pick::Nothing
+        }
+        fn fill(
+            &mut self,
+            _r: &str,
+            _t: &crate::llm::ToolBrief,
+        ) -> Option<BTreeMap<String, String>> {
+            Some(
+                self.0
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            )
+        }
+    }
+
+    fn executed_args(c: &FakeConnector) -> Args {
+        c.calls()
+            .into_iter()
+            .find_map(|call| match call {
+                Call::Execute { args, .. } => Some(args),
+                _ => None,
+            })
+            .expect("the connector must have run")
+    }
+
+    const SEARCH: &str = include_str!("../../../skills/browser.search.yaml");
+
+    #[test]
+    fn typed_values_go_straight_to_the_connector() {
+        let c = Arc::new(FakeConnector::new("browser"));
+        let mut flow =
+            flow_with(&[SEARCH], vec![("browser", c.clone())]).with_llm(Box::new(Filler(vec![
+                ("query", "cheap flights to goa"),
+                ("extra", "dropped"),
+            ])));
+        let ev = flow.handle(
+            1,
+            "search the web for cheap flights to goa",
+            &mut TestUser::default(),
+        );
+        assert!(matches!(ev, CoreEvent::Done { .. }), "{ev:?}");
+        let args = executed_args(&c);
+        assert_eq!(
+            args.get("query").map(String::as_str),
+            Some("cheap flights to goa")
+        );
+        assert!(args.contains_key("text"), "the sentence still goes along");
+        assert!(!args.contains_key("extra"), "a model cannot add arguments");
+    }
+
+    #[test]
+    fn without_a_model_the_typed_values_are_left_out() {
+        let c = Arc::new(FakeConnector::new("browser"));
+        let mut flow = flow_with(&[SEARCH], vec![("browser", c.clone())]);
+        let ev = flow.handle(
+            1,
+            "search the web for cheap flights to goa",
+            &mut TestUser::default(),
+        );
+        assert!(matches!(ev, CoreEvent::Done { .. }), "{ev:?}");
+        let args = executed_args(&c);
+        assert!(!args.contains_key("query"));
+        assert_eq!(
+            args.get("text").map(String::as_str),
+            Some("search the web for cheap flights to goa")
+        );
+    }
+
+    #[test]
+    fn a_model_that_leaves_a_required_value_empty_falls_back_to_the_rules() {
+        let c = Arc::new(FakeConnector::new("browser"));
+        let mut flow = flow_with(&[SEARCH], vec![("browser", c.clone())])
+            .with_llm(Box::new(Filler(vec![("query", "  ")])));
+        let ev = flow.handle(
+            1,
+            "search the web for cheap flights to goa",
+            &mut TestUser::default(),
+        );
+        assert!(matches!(ev, CoreEvent::Done { .. }), "{ev:?}");
+        assert!(!executed_args(&c).contains_key("query"));
+    }
+
+    #[test]
+    fn a_post_shows_and_sends_the_same_words_and_invented_values_are_dropped() {
+        const POST: &str = include_str!("../../../skills/chat.post.yaml");
+        let run = |values: Vec<(&'static str, &'static str)>| {
+            let c = Arc::new(FakeConnector::new("teams"));
+            let mut flow =
+                flow_with(&[POST], vec![("teams", c.clone())]).with_llm(Box::new(Filler(values)));
+            let mut u = TestUser::default();
+            let ev = flow.handle(
+                1,
+                "post in the project channel that the build is ready",
+                &mut u,
+            );
+            assert!(matches!(ev, CoreEvent::Done { .. }), "{ev:?}");
+            (u.shown, executed_args(&c))
+        };
+        // Values copied from the request go along; the words come from the sentence.
+        let (shown, args) = run(vec![("channel", "project"), ("body", "the build is ready")]);
+        assert_eq!(shown, ["Post this in Teams? “The build is ready.”"]);
+        assert_eq!(
+            args.get("body").map(String::as_str),
+            Some("The build is ready.")
+        );
+        assert_eq!(args.get("channel").map(String::as_str), Some("project"));
+        // Words the request does not contain are the model's invention: never shown or sent.
+        let (shown, args) = run(vec![("channel", "design"), ("body", "the file is updated")]);
+        assert_eq!(shown, ["Post this in Teams? “The build is ready.”"]);
+        assert!(!args.contains_key("channel"), "{args:?}");
+    }
+
+    #[test]
+    fn grounding_keeps_copied_values_and_drops_invented_ones() {
+        assert!(grounded_in("despacito", "play despacito"));
+        assert!(!grounded_in("the latest album", "play despacito"));
+        assert!(grounded_in(
+            "the contract",
+            "find the emial about the contrat"
+        ));
+        assert!(grounded_in("10 minutes", "set a ten minutes timer"));
+        assert!(!grounded_in("model", "open notepad and type hello world"));
+    }
+
     #[test]
     fn a_missing_required_value_is_asked_from_the_skills_own_question() {
         const TIMER: &str = include_str!("../../../skills/reminders.timer.yaml");
         let c = Arc::new(FakeConnector::new("reminders"));
-        let mut flow =
-            flow_with(&[TIMER], vec![("reminders", c)]).with_llm(Box::new(Scripted(vec![
-                crate::llm::Pick::Call {
-                    tool: "reminders.timer".into(),
-                    args: BTreeMap::new(),
-                },
-            ])));
+        let mut flow = flow_with(&[TIMER], vec![("reminders", c)])
+            .with_llm_picks(true)
+            .with_llm_on_decline(true)
+            .with_llm(Box::new(Scripted(vec![crate::llm::Pick::Call {
+                tool: "reminders.timer".into(),
+                args: BTreeMap::new(),
+            }])));
         let mut u = TestUser {
             text_answers: vec!["5 minutes".into()],
             ..TestUser::default()
         };
-        let _ = flow.handle(2, "blorp zibble wonk", &mut u);
+        let _ = flow.handle(2, "blorp zibble wonk 10 minutes", &mut u);
         assert_eq!(u.questions, ["For how long?"]);
     }
 
@@ -3539,13 +3914,13 @@ mod tests {
         let mut args = BTreeMap::new();
         args.insert("length".to_string(), "10 minutes".to_string());
         // The script holds ONE pick: the second time the model has nothing to say.
-        let mut flow =
-            flow_with(&[TIMER], vec![("reminders", c.clone())]).with_llm(Box::new(Scripted(vec![
-                crate::llm::Pick::Call {
-                    tool: "reminders.timer".into(),
-                    args,
-                },
-            ])));
+        let mut flow = flow_with(&[TIMER], vec![("reminders", c.clone())])
+            .with_llm_picks(true)
+            .with_llm_on_decline(true)
+            .with_llm(Box::new(Scripted(vec![crate::llm::Pick::Call {
+                tool: "reminders.timer".into(),
+                args,
+            }])));
         let runs = |c: &Arc<FakeConnector>| {
             c.calls()
                 .iter()
@@ -3553,10 +3928,10 @@ mod tests {
                 .count()
         };
         let mut u = TestUser::default();
-        let first = flow.handle(1, "blorp zibble wonk", &mut u);
+        let first = flow.handle(1, "blorp zibble wonk 10 minutes", &mut u);
         assert!(matches!(first, CoreEvent::Done { .. }), "{first:?}");
         assert_eq!(runs(&c), 1);
-        let again = flow.handle(2, "Blorp  zibble wonk!", &mut u);
+        let again = flow.handle(2, "Blorp  zibble wonk 10 MINUTES!", &mut u);
         assert!(matches!(again, CoreEvent::Done { .. }), "{again:?}");
         assert_eq!(runs(&c), 2, "the remembered request must run on its own");
     }
@@ -3567,16 +3942,19 @@ mod tests {
         let c = Arc::new(FakeConnector::new("reminders"));
         let mut args = BTreeMap::new();
         args.insert("length".to_string(), "10 minutes".to_string());
-        let mut flow =
-            flow_with(&[TIMER], vec![("reminders", c.clone())]).with_llm(Box::new(Scripted(vec![
-                crate::llm::Pick::Call {
-                    tool: "reminders.timer".into(),
-                    args,
-                },
-            ])));
+        let mut flow = flow_with(&[TIMER], vec![("reminders", c.clone())])
+            .with_llm_picks(true)
+            .with_llm_on_decline(true)
+            .with_llm(Box::new(Scripted(vec![crate::llm::Pick::Call {
+                tool: "reminders.timer".into(),
+                args,
+            }])));
         let mut u = TestUser::default();
-        let _ = flow.handle(1, "blorp zibble wonk", &mut u);
-        assert!(flow.learned_mut().get("blorp zibble wonk").is_some());
+        let _ = flow.handle(1, "blorp zibble wonk 10 minutes", &mut u);
+        assert!(flow
+            .learned_mut()
+            .get("blorp zibble wonk 10 minutes")
+            .is_some());
         // The connector now fails: the remembered request is dropped.
         flow.connectors.insert(
             "reminders".into(),
@@ -3584,9 +3962,12 @@ mod tests {
                 FakeConnector::new("reminders").fail_execute_with(ConnError::Failed("nope".into())),
             ),
         );
-        let ev = flow.handle(2, "blorp zibble wonk", &mut u);
+        let ev = flow.handle(2, "blorp zibble wonk 10 minutes", &mut u);
         assert!(matches!(ev, CoreEvent::Failed { .. }), "{ev:?}");
-        assert!(flow.learned_mut().get("blorp zibble wonk").is_none());
+        assert!(flow
+            .learned_mut()
+            .get("blorp zibble wonk 10 minutes")
+            .is_none());
     }
 
     // ---- grounded answers -------------------------------------------------------------
@@ -3684,12 +4065,38 @@ mod tests {
     }
 
     #[test]
+    fn a_declined_request_is_not_handed_to_the_model_by_default() {
+        const TIMER: &str = include_str!("../../../skills/reminders.timer.yaml");
+        let c = Arc::new(FakeConnector::new("reminders"));
+        let mut args = BTreeMap::new();
+        args.insert("length".to_string(), "10 minutes".to_string());
+        let mut flow =
+            flow_with(&[TIMER], vec![("reminders", c.clone())]).with_llm(Box::new(Scripted(vec![
+                crate::llm::Pick::Call {
+                    tool: "reminders.timer".into(),
+                    args,
+                },
+            ])));
+        let ev = flow.handle(1, "blorp zibble wonk 10 minutes", &mut TestUser::default());
+        assert!(
+            matches!(&ev, CoreEvent::Failed { message, .. } if message == "I can't do that yet."),
+            "{ev:?}"
+        );
+        assert!(
+            c.calls().is_empty(),
+            "nothing may run on a declined request"
+        );
+    }
+
+    #[test]
     fn nothing_from_the_model_keeps_the_old_answer() {
         let c = Arc::new(FakeConnector::new("windows_system"));
-        let mut flow =
-            flow_with(&[OPEN], vec![("windows_system", c)]).with_llm(Box::new(Scripted(vec![])));
+        let mut flow = flow_with(&[OPEN], vec![("windows_system", c)])
+            .with_llm_picks(true)
+            .with_llm_on_decline(true)
+            .with_llm(Box::new(Scripted(vec![])));
         let mut u = TestUser::default();
-        let ev = flow.handle(3, "blorp zibble wonk", &mut u);
+        let ev = flow.handle(3, "blorp zibble wonk 10 minutes", &mut u);
         assert!(matches!(ev, CoreEvent::Failed { .. }), "{ev:?}");
     }
 }

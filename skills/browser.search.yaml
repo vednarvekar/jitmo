@@ -17,11 +17,11 @@ slots: {}
 steps:
   - connector: browser
     action: search
-    args: { text: "{request}" }
+    args: { text: "{request}", query: "{query?}" }
 check:
   connector: browser
   action: search
-  args: { text: "{request}" }
+  args: { text: "{request}", query: "{query?}" }
 undo: none
 tool:
   args:

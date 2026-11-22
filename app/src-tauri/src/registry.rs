@@ -621,15 +621,16 @@ pub(crate) fn local_llm(
     store: &jitmo_store::Store,
     data_dir: &std::path::Path,
 ) -> Option<Box<dyn jitmo_core::llm::Llm>> {
-    use jitmo_llm::{LlmConfig, LocalLlm};
-    let setting = |k: &str| {
-        store
-            .get_setting(k)
-            .ok()
-            .flatten()
-            .filter(|v| !v.trim().is_empty())
+    use jitmo_llm::{LlmConfig, LocalLlm, RuntimeConfig};
+    let setting = |k: &str| match store.get_setting(k) {
+        Ok(v) => v.filter(|v| !v.trim().is_empty()),
+        Err(e) => {
+            eprintln!("language model: could not read setting {k}: {e}");
+            None
+        }
     };
     if setting("llm").is_some_and(|v| v.eq_ignore_ascii_case("off")) {
+        eprintln!("language model: off (setting llm = off)");
         return None;
     }
     let models = data_dir.join("models");
@@ -644,8 +645,17 @@ pub(crate) fn local_llm(
                 .flatten()
                 .map(|e| e.path())
                 .find(|p| p.extension().and_then(|x| x.to_str()) == Some("gguf"))
-        })?;
+        });
+    let Some(model) = model else {
+        eprintln!("language model: none (no .gguf in {})", models.display());
+        return None;
+    };
     if !server.is_file() || !model.is_file() {
+        eprintln!(
+            "language model: none ({} or {} is missing)",
+            server.display(),
+            model.display()
+        );
         return None;
     }
     let mut cfg = LlmConfig::new(server, model);
@@ -660,8 +670,38 @@ pub(crate) fn local_llm(
     if setting("llm_grammar").is_some_and(|v| v.eq_ignore_ascii_case("off")) {
         cfg.grammar = false;
     }
-    eprintln!("local language model: {}", cfg.model.display());
-    let llm = LocalLlm::new(cfg);
+    // `llm_backend` = `runtime`: the same model calls go to jitmo-runtime (V:\Code\jitmo-runtime)
+    // instead of a llama-server jitmo starts itself. `runtime_url` connects to a running one;
+    // otherwise `runtime_exe` (default models\runtime\jitmo-runtime.exe) is started as jitmo's
+    // child with `runtime_config` (default models\jitmo-runtime.toml, else its built-in defaults).
+    let llm = if setting("llm_backend").is_some_and(|v| v.eq_ignore_ascii_case("runtime")) {
+        let name = setting("runtime_model").unwrap_or_else(|| "jitmo-router".into());
+        let mut rc = match setting("runtime_url") {
+            Some(url) => RuntimeConfig::connect(url, name),
+            None => {
+                let exe = setting("runtime_exe")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| models.join("runtime").join("jitmo-runtime.exe"));
+                if !exe.is_file() {
+                    eprintln!("jitmo-runtime not found at {}", exe.display());
+                    return None;
+                }
+                let config = setting("runtime_config")
+                    .map(std::path::PathBuf::from)
+                    .or_else(|| Some(models.join("jitmo-runtime.toml")))
+                    .filter(|p| p.is_file());
+                RuntimeConfig::spawn(exe, config, name)
+            }
+        };
+        rc.model_file = Some(cfg.model.clone());
+        rc.llama_server = Some(cfg.server_exe.clone());
+        rc.log_file = Some(data_dir.join("runtime.log"));
+        eprintln!("language model on jitmo-runtime: {}", cfg.model.display());
+        LocalLlm::runtime(rc, cfg.grammar, cfg.compact)
+    } else {
+        eprintln!("local language model: {}", cfg.model.display());
+        LocalLlm::new(cfg)
+    };
     crate::llm_host::install(llm.clone());
     Some(Box::new(llm))
 }

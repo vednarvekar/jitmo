@@ -24,11 +24,11 @@ confirm:
 steps:
   - connector: outlook
     action: send
-    args: { to: "{contact}", text: "{request}" }
+    args: { to: "{contact}", text: "{request}", body: "{message?}" }
 check:
   connector: outlook
   action: send
-  args: { to: "{contact}", text: "{request}" }
+  args: { to: "{contact}", text: "{request}", body: "{message?}" }
 undo: none
 tool:
   args:
