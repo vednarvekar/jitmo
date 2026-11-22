@@ -6,6 +6,7 @@ use jitmo_core::router::Router;
 use jitmo_model_worker::{WorkerClient, WorkerLauncher};
 use jitmo_skills::Skill;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Skills shipped with the app. Dev build: parsed without signature checks.
@@ -615,10 +616,9 @@ pub(crate) fn calendar_connector(
 /// setting `llm` = `off`.
 ///
 /// - `runtime_url`: connect to a runtime that is already running. Otherwise jitmo starts
-///   `runtime_exe` as its child (default: `jitmo-runtime.exe` next to jitmo, else
-///   `<app data>\models\runtime\jitmo-runtime.exe`); it exits with jitmo.
-/// - `runtime_config`: its TOML (default `<app data>\models\jitmo-runtime.toml`, else
-///   `jitmo-runtime.toml` next to jitmo; jitmo's is `config/jitmo-runtime.toml` in the repo).
+///   `runtime_exe` as its child; it exits with jitmo. Search order: [`runtime_files`].
+/// - `runtime_config`: its TOML. Search order: [`runtime_files`]. The app ships
+///   `runtime\jitmo-runtime.toml` (from `app/src-tauri/runtime/`), which names no files.
 /// - `llm_model` / `llm_server`: passed on as `--model` / `--llama-server` (default: the first
 ///   `.gguf` in `<app data>\models` and `models\llama\llama-server.exe`, when there).
 /// - `runtime_model`: the model name sent in requests (default `jitmo-router`).
@@ -628,10 +628,10 @@ pub(crate) fn calendar_connector(
 /// Without a runtime or a model the engine runs on its rules, exactly as before.
 pub(crate) fn local_llm(
     store: &jitmo_store::Store,
-    data_dir: &std::path::Path,
+    data_dir: &Path,
+    resource_dir: Option<&Path>,
 ) -> Option<Box<dyn jitmo_core::llm::Llm>> {
     use jitmo_llm::{LocalLlm, RuntimeConfig};
-    use std::path::PathBuf;
     let setting = |k: &str| match store.get_setting(k) {
         Ok(v) => v.filter(|v| !v.trim().is_empty()),
         Err(e) => {
@@ -644,19 +644,23 @@ pub(crate) fn local_llm(
         return None;
     }
     let models = data_dir.join("models");
-    let beside = |name: &str| {
-        std::env::current_exe()
-            .ok()
-            .and_then(|e| e.parent().map(|d| d.join(name)))
-    };
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(PathBuf::from));
     let name = setting("runtime_model").unwrap_or_else(|| "jitmo-router".into());
+    // The shipped config names no model file, so it needs one from the app data folder.
+    let mut shipped_config = false;
     let mut rc = match setting("runtime_url") {
         Some(url) => RuntimeConfig::connect(url, name),
         None => {
-            let exe = setting("runtime_exe")
-                .map(PathBuf::from)
-                .or_else(|| beside("jitmo-runtime.exe").filter(|p| p.is_file()))
-                .unwrap_or_else(|| models.join("runtime").join("jitmo-runtime.exe"));
+            let found = runtime_files(
+                setting("runtime_exe").map(PathBuf::from),
+                setting("runtime_config").map(PathBuf::from),
+                &models,
+                exe_dir.as_deref(),
+                resource_dir,
+            );
+            let exe = found.exe;
             if !exe.is_file() {
                 eprintln!(
                     "language model: none (jitmo-runtime not found at {})",
@@ -664,11 +668,8 @@ pub(crate) fn local_llm(
                 );
                 return None;
             }
-            let config = setting("runtime_config")
-                .map(PathBuf::from)
-                .or_else(|| Some(models.join("jitmo-runtime.toml")).filter(|p| p.is_file()))
-                .or_else(|| beside("jitmo-runtime.toml"))
-                .filter(|p| p.is_file());
+            shipped_config = found.config_is_shipped;
+            let config = found.config;
             let mut rc = RuntimeConfig::spawn(exe, config, name);
             rc.log_file = Some(data_dir.join("runtime.log"));
             rc
@@ -685,7 +686,7 @@ pub(crate) fn local_llm(
         eprintln!("language model: none ({} is missing)", m.display());
         return None;
     }
-    if rc.url.is_none() && rc.config.is_none() && rc.model_file.is_none() {
+    if rc.url.is_none() && (rc.config.is_none() || shipped_config) && rc.model_file.is_none() {
         eprintln!(
             "language model: none (no runtime config and no .gguf in {})",
             models.display()
@@ -711,4 +712,145 @@ pub(crate) fn local_llm(
     let llm = LocalLlm::new(rc);
     crate::llm_host::install(llm.clone());
     Some(Box::new(llm))
+}
+
+/// Where `local_llm` found the runtime and its config.
+#[derive(Debug)]
+struct RuntimeFiles {
+    /// The runtime program. It may not exist (then there is no language model).
+    exe: PathBuf,
+    config: Option<PathBuf>,
+    /// The config is the one shipped with the app (it names no model file).
+    config_is_shipped: bool,
+}
+
+/// Search order for jitmo-runtime and its config; the first file that exists wins.
+///
+/// Program: the `runtime_exe` setting, `jitmo-runtime.exe` next to jitmo,
+/// `<resources>\runtime\jitmo-runtime.exe` (where the app bundle puts it),
+/// `<app data>\models\runtime\jitmo-runtime.exe`.
+///
+/// Config: the `runtime_config` setting, `<app data>\models\jitmo-runtime.toml`,
+/// `jitmo-runtime.toml` next to jitmo, `<resources>\runtime\jitmo-runtime.toml`.
+///
+/// On Windows Tauri's resource folder is the program's folder, so the bundled files sit in
+/// `runtime\` beside `jitmo-app.exe` (also in `target\debug` after `cargo build`).
+fn runtime_files(
+    exe_setting: Option<PathBuf>,
+    config_setting: Option<PathBuf>,
+    models: &Path,
+    exe_dir: Option<&Path>,
+    resource_dir: Option<&Path>,
+) -> RuntimeFiles {
+    let bundled = |name: &str| resource_dir.map(|d| d.join("runtime").join(name));
+    let beside = |name: &str| exe_dir.map(|d| d.join(name));
+    let exe = exe_setting.unwrap_or_else(|| {
+        [beside("jitmo-runtime.exe"), bundled("jitmo-runtime.exe")]
+            .into_iter()
+            .flatten()
+            .find(|p| p.is_file())
+            .unwrap_or_else(|| models.join("runtime").join("jitmo-runtime.exe"))
+    });
+    let user_config =
+        config_setting.or_else(|| Some(models.join("jitmo-runtime.toml")).filter(|p| p.is_file()));
+    let (config, config_is_shipped) = match user_config {
+        Some(c) => (Some(c).filter(|p| p.is_file()), false),
+        None => {
+            let c = [beside("jitmo-runtime.toml"), bundled("jitmo-runtime.toml")]
+                .into_iter()
+                .flatten()
+                .find(|p| p.is_file());
+            let shipped = c.is_some();
+            (c, shipped)
+        }
+    };
+    RuntimeFiles {
+        exe,
+        config,
+        config_is_shipped,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("jitmo-registry-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn touch(p: &Path) {
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, b"").unwrap();
+    }
+
+    #[test]
+    fn finds_the_bundled_runtime_in_the_resource_folder() {
+        let root = temp("bundled");
+        let exe_dir = root.join("app");
+        let res = root.join("res");
+        let models = root.join("data").join("models");
+        std::fs::create_dir_all(&exe_dir).unwrap();
+        touch(&res.join("runtime").join("jitmo-runtime.exe"));
+        touch(&res.join("runtime").join("jitmo-runtime.toml"));
+        let f = runtime_files(None, None, &models, Some(&exe_dir), Some(&res));
+        assert_eq!(f.exe, res.join("runtime").join("jitmo-runtime.exe"));
+        assert_eq!(
+            f.config,
+            Some(res.join("runtime").join("jitmo-runtime.toml"))
+        );
+        assert!(f.config_is_shipped);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn settings_and_app_data_win_over_the_bundle() {
+        let root = temp("order");
+        let exe_dir = root.join("app");
+        let res = root.join("res");
+        let models = root.join("data").join("models");
+        touch(&res.join("runtime").join("jitmo-runtime.exe"));
+        touch(&res.join("runtime").join("jitmo-runtime.toml"));
+        touch(&exe_dir.join("jitmo-runtime.exe"));
+        touch(&models.join("jitmo-runtime.toml"));
+        let f = runtime_files(None, None, &models, Some(&exe_dir), Some(&res));
+        assert_eq!(f.exe, exe_dir.join("jitmo-runtime.exe"));
+        assert_eq!(f.config, Some(models.join("jitmo-runtime.toml")));
+        assert!(!f.config_is_shipped);
+        let mine = root.join("mine.exe");
+        let f = runtime_files(
+            Some(mine.clone()),
+            None,
+            &models,
+            Some(&exe_dir),
+            Some(&res),
+        );
+        assert_eq!(f.exe, mine);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn nothing_found_points_at_app_data() {
+        let root = temp("none");
+        let models = root.join("data").join("models");
+        let f = runtime_files(None, None, &models, Some(&root), None);
+        assert_eq!(f.exe, models.join("runtime").join("jitmo-runtime.exe"));
+        assert_eq!(f.config, None);
+        assert!(!f.config_is_shipped);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn shipped_config_names_no_machine_paths() {
+        let text = include_str!("../runtime/jitmo-runtime.toml");
+        assert!(
+            !text.contains(":\\"),
+            "absolute Windows path in the shipped config"
+        );
+        assert!(!text.contains(":/"), "absolute path in the shipped config");
+        assert!(!text.contains("jitmo-sandbox"));
+    }
 }

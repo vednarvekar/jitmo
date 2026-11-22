@@ -1,0 +1,33 @@
+# The jitmo-runtime config shipped with the app (bundled to runtime\ beside jitmo-app.exe).
+# Runtime config reference: jitmo-runtime/docs/06-runtime-api.md (every key is optional).
+#
+# No machine paths here. jitmo always passes the files it found in its app data folder:
+#   --model         the first .gguf in <app data>\models (or the setting llm_model)
+#   --llama-server  <app data>\models\llama\llama-server.exe (or the setting llm_server)
+# The two paths below are placeholders, relative to this file; the runtime only checks them
+# when jitmo passes no override.
+#
+# For development with fixed sandbox paths use config/jitmo-runtime.toml in the repo.
+
+[server]
+host = "127.0.0.1"
+port = 0
+max_queue = 8
+max_concurrent = 1
+
+[model]
+name = "jitmo-router"
+kind = "chat"
+path = "jitmo-router.gguf"
+llama_server = "llama-server.exe"
+ctx_size = 2048
+threads = 0
+flash_attn = "auto"
+no_repack = false
+low_priority = true
+
+[budget]
+memory_cap_mb = "auto"
+# The runtime's estimate for a 270M model is ~1.2 GB (fixed overhead); real use is ~330 MB.
+load_estimate_mb = 400
+idle_unload_secs = 90

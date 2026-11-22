@@ -1,0 +1,2 @@
+# jitmo-runtime.exe is copied in by scripts/bundle-runtime.ps1 (built in ../jitmo-runtime).
+/runtime/*.exe

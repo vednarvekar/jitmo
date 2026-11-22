@@ -111,7 +111,7 @@ fn main() {
                 .unwrap_or_else(|| DEFAULT_HOTKEY.to_string());
 
             let selection = SelectionSnapshot::default();
-            let llm = registry::local_llm(&store, &dir);
+            let llm = registry::local_llm(&store, &dir, app.path().resource_dir().ok().as_deref());
             // The model fills typed values. It picks tools only with the setting `llm_picks` =
             // `on` (when the router is unsure), and also when the router declined with
             // `llm_on_decline` = `on`. Both are off: on the test sets they turned questions and

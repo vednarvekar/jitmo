@@ -52,13 +52,37 @@ Config: `config/jitmo-runtime.toml`.
 | `flash_attn` | auto | Matches the old launcher |
 | `load_estimate_mb` | 400 | Keeps the runtime's RAM check inside jitmo's 1.2 GB rule |
 
+### How the runtime ships with the app
+
+The app needs no settings to start the runtime.
+
+| Part | Where |
+|---|---|
+| Source of the bundled files | `app/src-tauri/runtime/` (Tauri bundle resource `runtime/*` in `tauri.conf.json`) |
+| Runtime program | `jitmo-runtime.exe`, copied in by `scripts/bundle-runtime.ps1` from `..\jitmo-runtime\runtime\target\release\` (git-ignored) |
+| Shipped config | `jitmo-runtime.toml`, committed. No machine paths: model and llama-server are placeholders, and jitmo always passes `--model` / `--llama-server` from `<app data>\models` |
+| In the built app | `runtime\` beside `jitmo-app.exe` (Tauri's resource folder is the program folder on Windows; `cargo build` copies it into `target\debug\runtime\` too) |
+
+Steps for a build with the language model: build jitmo-runtime (`cargo build --release` in `jitmo-runtime\runtime`), run `powershell -File scripts\bundle-runtime.ps1`, then build the app. Without the exe (CI) the app builds and runs on its rules.
+
+Search order (`runtime_files` in `app/src-tauri/src/registry.rs`, first file that exists wins):
+
+| File | Order |
+|---|---|
+| Program | `runtime_exe` setting, beside `jitmo-app.exe`, `<resources>\runtime\`, `<app data>\models\runtime\` |
+| Config | `runtime_config` setting, `<app data>\models\jitmo-runtime.toml`, beside `jitmo-app.exe`, `<resources>\runtime\` |
+
+The model (`.gguf`) and `llama-server.exe` are not bundled; they still come from `<app data>\models`. With the shipped config and no `.gguf` there, jitmo runs on its rules. llama-server's own log goes to `runtime\llama-server.log`, so it is written only when that folder is writable (per-user install); otherwise the runtime warns and goes on.
+
+`config/jitmo-runtime.toml` stays the development config (sandbox paths) used by `jitmo-audit`.
+
 ## 4. Settings and audit options
 
 | App setting | What it does |
 |---|---|
 | `runtime_url` | Connect to a runtime already running at this URL |
-| `runtime_exe` | Path to `jitmo-runtime.exe` to start as a child. Default: next to `jitmo-app.exe`, else `<app data>\models\runtime\` |
-| `runtime_config` | Runtime config file to start it with. Default: `<app data>\models\jitmo-runtime.toml`, else next to `jitmo-app.exe` |
+| `runtime_exe` | Path to `jitmo-runtime.exe` to start as a child. Default: next to `jitmo-app.exe`, else the bundled `runtime\`, else `<app data>\models\runtime\` |
+| `runtime_config` | Runtime config file to start it with. Default: `<app data>\models\jitmo-runtime.toml`, else next to `jitmo-app.exe`, else the bundled `runtime\jitmo-runtime.toml` |
 | `runtime_model` | Model name sent in requests. Default `jitmo-router` |
 | `llm_model` | Passed to the runtime as `--model` (override). Default: the first `.gguf` in `<app data>\models` |
 | `llm_server` | Passed to the runtime as `--llama-server` (override) |
