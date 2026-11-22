@@ -20,11 +20,16 @@ confirm:
 steps:
   - connector: outlook_calendar
     action: move
-    args: { text: "{request}" }
+    args: { text: "{request}", event: "{event?}", to: "{to?}" }
 check:
   connector: outlook_calendar
   action: move
-  args: { text: "{request}" }
+  args: { text: "{request}", event: "{event?}", to: "{to?}" }
 undo:
   - connector: outlook_calendar
     action: move
+tool:
+  args:
+    event: { description: "the meeting to move, by its time or title: my 3pm, tomorrow's standup, the design review", required: true, ask: "Which meeting?" }
+    to: { type: time, description: "where it goes: 4pm, tomorrow, friday morning, next week, an hour later", required: true, ask: "To when?" }
+  phrase: "move {event} to {to}"

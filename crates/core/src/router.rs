@@ -167,10 +167,14 @@ impl Router {
                 return stub;
             }
         }
+        // A label is a skill id (the fine-tuned tool encoder, `models/tools`) or a spec task
+        // id (the older head over a frozen encoder, `models/router`).
         let skill_for = |label: &str| {
-            self.skills
-                .iter()
-                .find(|s| s.task.as_deref() == Some(label))
+            self.skills.iter().find(|s| s.id == label).or_else(|| {
+                self.skills
+                    .iter()
+                    .find(|s| s.task.as_deref() == Some(label))
+            })
         };
         // The best task has no skill built yet: say "can't do that" rather than
         // running a lesser match.
@@ -473,6 +477,24 @@ mod tests {
         assert_eq!(u.tasks[0].id, "apps.open");
         assert_eq!(u.tasks[0].score, 0.95);
         assert_eq!(u.spans[0].text.to_lowercase(), "spotify");
+    }
+
+    #[test]
+    fn a_label_that_is_a_skill_id_is_that_skill() {
+        // The fine-tuned tool encoder answers with skill ids, not the spec's task ids.
+        let r = router();
+        let u = r.map_worker_result(
+            model(&[("apps.open", 0.91), ("music.control", 0.04)], 0.01),
+            "can you pull up spotify for me",
+        );
+        assert_eq!(u.tasks[0].id, "apps.open");
+        assert_eq!(u.tasks[1].id, "music.control");
+        assert_eq!(
+            decide(&u),
+            RouteDecision::Run {
+                skill_id: "apps.open".into()
+            }
+        );
     }
 
     fn sp(kind: &str, text: &str) -> Span {

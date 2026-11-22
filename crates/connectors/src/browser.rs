@@ -453,11 +453,21 @@ fn plan(action: &str, args: &Args) -> Result<Plan, ConnError> {
             }
         }
         "search" => {
-            let (engine, q) = parse_search(text).ok_or_else(|| {
-                ConnError::Failed(
-                    "What should I search for? Try “search YouTube for pasta”.".into(),
-                )
-            })?;
+            // The sentence as the rules read it; a typed query from the model only when the
+            // rules find no words to search ("search karo ved narvekar").
+            let typed = args
+                .get("query")
+                .map(|q| q.trim().trim_end_matches(['.', '?', '!']).to_string())
+                .filter(|q| !q.is_empty());
+            let (engine, q) = match (parse_search(text), typed) {
+                (Some(found), _) => found,
+                (None, Some(q)) => (Engine::Web, q),
+                (None, None) => {
+                    return Err(ConnError::Failed(
+                        "What should I search for? Try “search YouTube for pasta”.".into(),
+                    ))
+                }
+            };
             match engine {
                 Engine::YouTube => Plan {
                     url: youtube_search_url(&q),
@@ -781,6 +791,32 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_typed_query_is_searched_on_the_engine_the_sentence_names() {
+        let typed = |text: &str, q: &str| -> Args {
+            [
+                ("text".to_string(), text.to_string()),
+                ("query".to_string(), q.to_string()),
+            ]
+            .into()
+        };
+        let p = plan(
+            "search",
+            &typed("web search for gst filing deadline", "gst filing deadline"),
+        )
+        .unwrap();
+        assert_eq!(p.message, "Opened a web search for “gst filing deadline”.");
+        let p = plan(
+            "search",
+            &typed("search youtube for pasta recipes", "pasta recipes"),
+        )
+        .unwrap();
+        assert_eq!(p.message, "Opened YouTube results for “pasta recipes”.");
+        // A sentence the rules cannot read still searches the typed words.
+        let p = plan("search", &typed("search karo ved narvekar", "ved narvekar")).unwrap();
+        assert!(p.url.contains("ved"), "{}", p.url);
     }
 
     #[test]

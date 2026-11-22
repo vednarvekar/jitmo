@@ -1,0 +1,31 @@
+# jitmo agent's config for jitmo-runtime (V:\Code\jitmo-runtime, docs/06-runtime-api.md).
+# jitmo starts the runtime with: --config <this> --port 0 --parent-pid <jitmo> --port-file ...
+# and passes --model / --llama-server when it knows better paths (app data folder).
+#
+# One model: the fine-tuned Gemma 3 270M tool-picker. Settings match what jitmo's own llama-server
+# launcher used (ctx 2048, repacking on, flash attention auto), so the test sets can be compared
+# one to one. Flip no_repack / flash_attn once the runtime path is the measured one.
+
+[server]
+host = "127.0.0.1"
+port = 0
+max_queue = 8
+max_concurrent = 1
+
+[model]
+name = "jitmo-router"
+kind = "chat"
+path = 'V:\jitmo-sandbox\models\gemma-3-270m-it-router-Q4_K_M.gguf'
+llama_server = 'V:\jitmo-sandbox\llama\llama-server.exe'
+ctx_size = 2048
+threads = 0
+flash_attn = "auto"
+no_repack = false
+low_priority = true
+# No chat_template_kwargs: Gemma has no "thinking" switch (jitmo sends its own per request).
+
+[budget]
+memory_cap_mb = "auto"
+# The runtime's estimate for a 270M model is ~1.2 GB (fixed overhead); real use is ~330 MB.
+load_estimate_mb = 400
+idle_unload_secs = 90

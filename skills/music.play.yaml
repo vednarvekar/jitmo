@@ -19,11 +19,11 @@ slots: {}
 steps:
   - connector: spotify
     action: search
-    args: { text: "{request}" }
+    args: { text: "{request}", what: "{what?}" }
 check:
   connector: spotify
   action: search
-  args: { text: "{request}" }
+  args: { text: "{request}", what: "{what?}" }
 undo: none
 tool:
   args:

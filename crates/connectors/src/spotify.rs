@@ -275,6 +275,18 @@ fn text_arg(args: &Args) -> Result<&String, ConnError> {
         .ok_or_else(|| ConnError::MissingArg("text".into()))
 }
 
+/// What to play, as the model typed it ("arijit singh"), without a trailing "on spotify".
+fn typed_what(args: &Args) -> Option<String> {
+    let w = args.get("what")?.trim().trim_end_matches(['.', '!', '?']);
+    let lower = w.to_lowercase();
+    let w = ["on spotify", "in spotify", "from spotify"]
+        .iter()
+        .find_map(|t| lower.strip_suffix(t).map(|_| &w[..w.len() - t.len()]))
+        .unwrap_or(w)
+        .trim();
+    (!w.is_empty()).then(|| w.to_string())
+}
+
 impl Connector for Spotify {
     fn id(&self) -> &str {
         "spotify"
@@ -316,7 +328,10 @@ impl Connector for Spotify {
                 .into()))
             }
             "search" => {
-                let q = parse_search(text_arg(args)?)
+                let q = text_arg(args)
+                    .ok()
+                    .and_then(|t| parse_search(t))
+                    .or_else(|| typed_what(args))
                     .ok_or_else(|| ConnError::Failed("What should I look for?".into()))?;
                 let url = format!("spotify:search:{}", encode(&q));
                 self.runner
@@ -357,7 +372,7 @@ impl Connector for Spotify {
             // `execute` already read the playback state back and says honestly whether it
             // is playing or only opened. Checking again would wait several more seconds
             // and then turn that honest answer into a failure.
-            "search" => Ok(parse_search(text_arg(args)?).is_some()),
+            "search" => Ok(typed_what(args).is_some() || parse_search(text_arg(args)?).is_some()),
             other => Err(ConnError::UnknownAction(other.to_string())),
         }
     }

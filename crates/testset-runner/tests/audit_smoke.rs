@@ -34,6 +34,8 @@ fn a_few_cases_run_end_to_end_without_models() {
         root: root(),
         worker: None,
         threads: 1,
+        llm: None,
+        llm_picks: true,
     };
     let results = audit::run_all(&cfg, &skills, &cases);
     assert_eq!(results.len(), 3);

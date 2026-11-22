@@ -7,7 +7,7 @@ Untuned 270M to 0.8B models pick the right tool among three candidates only abou
 | File | What it is |
 |---|---|
 | `router_train.jsonl` | 3,180 examples. System message: "Pick the tool number…" plus three numbered tool titles (the router's best two and the best word-overlap match, as the engine builds them). User: the request. Assistant: the number, `0` for none. |
-| `router_train_args.jsonl` | 840 examples. System: the tool and its typed arguments. User: the request. Assistant: JSON with every argument (empty when not said). |
+| `router_train_args.jsonl` | 960 examples (16 skills, including calendar.move and calendar.decline). System: the tool and its typed arguments. User: the request. Assistant: JSON with every argument (empty when not said). |
 | `finetune_router.ipynb` | A Colab notebook: LoRA fine-tune, merge, convert to GGUF, quantise to Q4_K_M, save to Drive. Written without being run: if a cell fails, send the error text to the coding agent. |
 
 The data is made by `cargo run --release -p jitmo-testset-runner --bin jitmo-gendata -- --out training/router_train.jsonl --worker target/release/jitmo-model-worker.exe` from hand-written templates (typos, Hinglish, casing, "please"). It never reads `testset/heldout.txt`, which must stay a fair test.

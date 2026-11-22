@@ -20,11 +20,15 @@ confirm:
 steps:
   - connector: outlook_calendar
     action: decline
-    args: { text: "{request}" }
+    args: { text: "{request}", event: "{event?}" }
 check:
   connector: outlook_calendar
   action: decline
-  args: { text: "{request}" }
+  args: { text: "{request}", event: "{event?}" }
 undo:
   - connector: outlook_calendar
     action: decline
+tool:
+  args:
+    event: { description: "the invite to decline, by its time, day or title: the friday review, tomorrow's standup, the 4pm workshop", required: true, ask: "Which invite?" }
+  phrase: "decline {event}"

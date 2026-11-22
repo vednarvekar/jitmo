@@ -248,6 +248,16 @@ impl Skill {
         self.capabilities.iter().any(|c| is_send_capability(c))
     }
 
+    /// Does a step or the check take typed values (`{name?}`), so a model should fill them?
+    pub fn takes_typed(&self) -> bool {
+        self.tool.is_some()
+            && self
+                .steps
+                .iter()
+                .chain(self.check.iter())
+                .any(|s| s.args.values().any(|v| optional_placeholder(v).is_some()))
+    }
+
     /// Parse YAML without checking signatures. Use [`load_signed`] for real files.
     pub fn parse(yaml: &str) -> Result<Skill, SkillError> {
         let skill: Skill =
@@ -351,6 +361,13 @@ impl Skill {
             Undo::Steps(s) => s,
             Undo::Keyword(_) => &[],
         };
+        // `{name?}` as a whole argument: a typed value the model filled, left out when there is
+        // none (the connector then reads `{request}` as before). It must name a tool argument.
+        let typed: BTreeSet<&str> = self
+            .tool
+            .as_ref()
+            .map(|t| t.args.keys().map(String::as_str).collect())
+            .unwrap_or_default();
         for (i, step) in self
             .steps
             .iter()
@@ -360,6 +377,14 @@ impl Skill {
         {
             for (arg, value) in &step.args {
                 let place = format!("step {} arg `{arg}`", i + 1);
+                if let Some(name) = optional_placeholder(value) {
+                    if !typed.contains(name) && !declared.contains(name) {
+                        p.push(format!(
+                            "{place}: `{{{name}?}}` is not a tool arg or a slot"
+                        ));
+                    }
+                    continue;
+                }
                 check_template(&place, value, &declared, true, &mut p);
             }
         }
@@ -377,6 +402,12 @@ impl Skill {
             })
         }
     }
+}
+
+/// `name` when a step argument is exactly `{name?}`: an optional typed value.
+pub fn optional_placeholder(value: &str) -> Option<&str> {
+    let name = value.strip_prefix('{')?.strip_suffix("?}")?;
+    (!name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_')).then_some(name)
 }
 
 /// The names inside `{...}` in a template. Each is `slot` or `slot.field`.
@@ -583,6 +614,14 @@ mod tests {
     fn bad_undo_keyword_is_rejected() {
         let yaml = SAMPLE.replace("undo: none", "undo: maybe");
         assert!(problems(&yaml).iter().any(|m| m.contains("undo must be")));
+    }
+
+    #[test]
+    fn optional_placeholders_are_whole_values_only() {
+        assert_eq!(optional_placeholder("{when?}"), Some("when"));
+        assert_eq!(optional_placeholder("{when}"), None);
+        assert_eq!(optional_placeholder("at {when?}"), None);
+        assert_eq!(optional_placeholder("{?}"), None);
     }
 
     #[test]

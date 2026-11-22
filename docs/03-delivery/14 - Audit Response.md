@@ -30,6 +30,7 @@ Candidates for the model: the router's best 2 plus the best word-overlap match (
 | FunctionGemma 270M | 42.0% | 53.4% | 58.0% | **194 / 262 ms** | **588 / 355 MB** | 21.9% | 984 ms |
 | Gemma 3 270M | 33.6% | 42.7% | 64.1% | **152 / 255 ms** | **499 / 266 MB** | 24.7% | 1069 ms |
 | Gemma 3 1B | 33.2% | 40.8% | 66.4% | 665 / 982 ms (fails 400 ms) | 1151 / 413 MB (fails 600 MB) | 68.5% | 2715 ms (fails) |
+| **Gemma 3 270M, fine-tuned** (LoRA r16, 3 epochs, 4,020 examples, Colab T4; 14 Nov 2026) | **64.1%** | **75.7%** | **33.2%** | **153 / 269 ms** | **507 / 269 MB** | **89.0%** (91.9% of values) | 511 ms |
 | Qwen3.5-0.8B (earlier run, 3 word-overlap candidates, JSON-schema pick) | 51.1% | 82.7% | 48.9% | 878 / 1374 ms (fails) | 883 / 565 MB (fails 600 MB) | not run | not run |
 
 Gates (doc 15, step 2: peak at most 600 MB, warm p50 at most 400 ms; step 5: tool at least 95%, arguments at least 90%, no wrong sends):
@@ -41,6 +42,8 @@ Gates (doc 15, step 2: peak at most 600 MB, warm p50 at most 400 ms; step 5: too
 - Memory variants (100 requests, FunctionGemma): default 588/355 MB, 194 ms; `--no-repack` 530/304 MB, 283 ms; q8 KV cache with flash attention 467/235 MB, 330 ms. Memory-mapped weights are the llama.cpp default; turning off repacking saves about 50 MB private memory at some cost in reading time.
 - Prompt-prefix cache: with and without it the times differ by less than 25% for every model, so the design does not rely on it (the prompt is short on purpose).
 - Cold load 1.2 to 1.7 s for the 270M and 1B models (2.6 to 2.8 s with the variant flags); the app warms the model when the bar opens.
+
+**First fine-tune (14 Nov 2026).** Tuning Gemma 3 270M nearly doubled the tool pick (33.6% to 64.1%), halved wrong actions (64.1% to 33.2%) and lifted typed arguments from 24.7% to 89.0%, one point under the 90% gate. Speed and memory stay inside the gate. The tool pick is still far from 95%, and the main cause is in the training data: the right answer is candidate "1" in 76% of the pick examples (2,420 of 3,180), because the router ranks the right tool first on the template phrasings. The model learned to lean on slot 1, while on held-out requests the right tool is often second or third. Next: shuffle the candidate order in the training data (each example in more than one order) and tune again. A few picks were a word from the request ("go", "get", "give") instead of a number.
 
 **What is needed to pass the accuracy gate:** fine-tuning on `training/router_train.jsonl` and `router_train_args.jsonl` (3,180 and 840 examples, never from the held-out set) using the Colab notebook, then `jitmo-llmbench` on the held-out set. Even a perfect picker is capped by candidate recall (91.6% with three candidates, 93.8% with five); the shared encoder (step 3) is the way past that and has not been built.
 

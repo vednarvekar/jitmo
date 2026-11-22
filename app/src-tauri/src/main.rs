@@ -112,6 +112,17 @@ fn main() {
 
             let selection = SelectionSnapshot::default();
             let llm = registry::local_llm(&store, &dir);
+            // The model fills typed values. It picks tools only with the setting `llm_picks` =
+            // `on` (when the router is unsure), and also when the router declined with
+            // `llm_on_decline` = `on`. Both are off: on the test sets they turned questions and
+            // refusals into wrong actions (doc 16).
+            let on = |k: &str| -> Result<bool, Box<dyn std::error::Error>> {
+                Ok(store
+                    .get_setting(k)?
+                    .is_some_and(|v| v.eq_ignore_ascii_case("on")))
+            };
+            let llm_picks = on("llm_picks")?;
+            let llm_on_decline = on("llm_on_decline")?;
             let mut flow = Flow::new(
                 registry::router(),
                 store,
@@ -119,7 +130,10 @@ fn main() {
             )
             .with_context(FsContext::for_current_user(selection.clone()));
             if let Some(llm) = llm {
-                flow = flow.with_llm(llm);
+                flow = flow
+                    .with_llm(llm)
+                    .with_llm_picks(llm_picks)
+                    .with_llm_on_decline(llm_on_decline);
             }
             // Installed apps are a closed list for understanding and resolving requests.
             #[cfg(windows)]

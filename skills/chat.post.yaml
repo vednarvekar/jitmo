@@ -20,11 +20,11 @@ confirm:
 steps:
   - connector: teams
     action: post
-    args: { text: "{request}" }
+    args: { text: "{request}", channel: "{channel?}", body: "{message?}" }
 check:
   connector: teams
   action: post
-  args: { text: "{request}" }
+  args: { text: "{request}", channel: "{channel?}", body: "{message?}" }
 undo: none
 tool:
   args:

@@ -959,6 +959,11 @@ pub struct Config {
     pub root: PathBuf,
     pub worker: Option<WorkerLauncher>,
     pub threads: usize,
+    /// A local language model behind the engine, as the app plugs it in (`None`: rules and the
+    /// router only). Every lane shares the one model server.
+    pub llm: Option<jitmo_llm::LocalLlm>,
+    /// With `llm`: may the model also pick tools when the router is unsure? (The app: off.)
+    pub llm_picks: bool,
 }
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -1172,6 +1177,8 @@ pub struct Lane {
     skills: Vec<Skill>,
     worker: Option<WorkerLauncher>,
     diag: Router,
+    llm: Option<jitmo_llm::LocalLlm>,
+    llm_picks: bool,
 }
 
 impl Lane {
@@ -1181,7 +1188,16 @@ impl Lane {
             skills,
             worker,
             diag,
+            llm: None,
+            llm_picks: true,
         }
+    }
+
+    /// The same lane with a language model behind the engine.
+    pub fn with_llm(mut self, llm: Option<jitmo_llm::LocalLlm>, picks: bool) -> Self {
+        self.llm = llm;
+        self.llm_picks = picks;
+        self
     }
 
     pub fn run(&mut self, case: &Case) -> Observed {
@@ -1196,6 +1212,11 @@ impl Lane {
             checks,
             ms,
         } = build_world(&self.skills, &self.worker, &ex.flags, &dir);
+        if let Some(l) = &self.llm {
+            flow = flow
+                .with_llm(Box::new(l.clone()))
+                .with_llm_picks(self.llm_picks);
+        }
 
         // Diagnostics: what the router thinks (same call the flow makes).
         let u = self
@@ -1306,7 +1327,8 @@ pub fn run_all(cfg: &Config, skills: &[Skill], cases: &[Case]) -> Vec<Observed> 
             let next = next.clone();
             let results = results.clone();
             scope.spawn(move || {
-                let mut lane = Lane::new(skills.to_vec(), cfg.worker.clone());
+                let mut lane = Lane::new(skills.to_vec(), cfg.worker.clone())
+                    .with_llm(cfg.llm.clone(), cfg.llm_picks);
                 loop {
                     let i = next.fetch_add(1, Ordering::SeqCst);
                     let Some(case) = cases.get(i) else { break };
