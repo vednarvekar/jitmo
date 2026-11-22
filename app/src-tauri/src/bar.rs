@@ -349,6 +349,9 @@ pub(crate) fn hide(app: &AppHandle) {
         return;
     };
     let _ = w.hide();
+    // Put away while the model works on a request (Esc, a click elsewhere, the hotkey): nobody
+    // is waiting for its answer any more.
+    crate::llm_host::cancel();
     let mine = app
         .state::<AppState>()
         .visibility

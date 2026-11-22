@@ -1,5 +1,6 @@
 //! The language model's budget in the app: it is warmed when the bar opens (the load hides
-//! behind the typing) and dropped at once when Windows says memory is low.
+//! behind the typing), dropped at once when Windows says memory is low, and its running
+//! requests are cancelled when the user presses Esc or puts the bar away.
 
 use jitmo_llm::LocalLlm;
 use std::sync::OnceLock;
@@ -31,5 +32,13 @@ pub(crate) fn install(llm: LocalLlm) {
 pub(crate) fn warm() {
     if let Some(l) = LLM.get() {
         l.warm();
+    }
+}
+
+/// The user pressed Esc or put the bar away: stop the model's running requests. Never blocks
+/// and never starts a runtime; with nothing running it does nothing.
+pub(crate) fn cancel() {
+    if let Some(l) = LLM.get() {
+        l.cancel();
     }
 }

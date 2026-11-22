@@ -205,6 +205,8 @@ impl Flow {
         self.pending_learn = None;
         self.cache_hit = None;
         self.pending_typed = None;
+        // A cancel that came after the last request finished is not for this one.
+        let _ = self.llm_cancelled();
         let event = self.run(id, text, prompter);
         if matches!(event, CoreEvent::Done { .. }) {
             self.last_ok = Some((text.to_string(), Instant::now()));
@@ -251,7 +253,11 @@ impl Flow {
             .get(&format!("url{best}"))
             .cloned()
             .unwrap_or_default();
-        let answer = self.llm.as_mut()?.answer_from(text, &passage)?;
+        let answer = self.llm.as_mut()?.answer_from(text, &passage);
+        if self.llm_cancelled() {
+            return Some(self.cancelled(id, text, Some("web.fact")));
+        }
+        let answer = answer?;
         if !crate::grounding::supported(&answer, &passage) {
             return None;
         }
@@ -647,6 +653,12 @@ impl Flow {
         done(self, message)
     }
 
+    /// The user cancelled the model's call (Esc): the request ends as cancelled, with nothing
+    /// run and no answer. Reading clears it.
+    fn llm_cancelled(&mut self) -> bool {
+        self.llm.as_mut().is_some_and(|m| m.take_cancelled())
+    }
+
     fn cancelled(&self, id: RequestId, request: &str, skill_id: Option<&str>) -> CoreEvent {
         self.log(request, skill_id, Decision::Cancelled, "Cancelled.", None);
         CoreEvent::Done {
@@ -914,6 +926,9 @@ impl Flow {
                 .as_mut()
                 .map(|m| m.route(text, &tools, recent.as_deref()))
                 .unwrap_or(crate::llm::Pick::Nothing);
+            if self.llm_cancelled() {
+                return self.cancelled(id, text, None);
+            }
             match pick {
                 crate::llm::Pick::Tool(skill_id) if self.router.skill(&skill_id).is_some() => {
                     self.pending_learn = Some((crate::learned::key(text), skill_id.clone(), None));
@@ -1088,6 +1103,9 @@ impl Flow {
         };
         // Typed values from the model, for skills whose connectors take them.
         let typed = self.typed_args(&skill_id, text);
+        if self.llm_cancelled() {
+            return self.cancelled(id, text, Some(&skill_id));
+        }
         // Other guards of the same kind: a skill runs only when the words really ask for it,
         // so a guess by the router can never archive, move or decline something by accident.
         // With typed values the connector looks for the very meeting or invite the model named
@@ -3777,6 +3795,67 @@ mod tests {
                     .collect(),
             )
         }
+    }
+
+    /// A model whose every call the user cancels (Esc while it runs).
+    struct Cancelled(bool);
+    impl crate::llm::Llm for Cancelled {
+        fn route(
+            &mut self,
+            _r: &str,
+            _t: &[crate::llm::ToolBrief],
+            _recent: Option<&str>,
+        ) -> crate::llm::Pick {
+            self.0 = true;
+            crate::llm::Pick::Nothing
+        }
+        fn fill(
+            &mut self,
+            _r: &str,
+            _t: &crate::llm::ToolBrief,
+        ) -> Option<BTreeMap<String, String>> {
+            self.0 = true;
+            None
+        }
+        fn take_cancelled(&mut self) -> bool {
+            std::mem::take(&mut self.0)
+        }
+    }
+
+    #[test]
+    fn a_cancelled_pick_ends_the_request_without_falling_back() {
+        let c = Arc::new(FakeConnector::new("windows_system"));
+        let mut flow = flow_with(&[OPEN], vec![("windows_system", c.clone())])
+            .with_app_names(|| vec!["Spotify".to_string()])
+            .with_llm_picks(true)
+            .with_llm_on_decline(true)
+            .with_llm(Box::new(Cancelled(false)));
+        let ev = flow.handle(2, "blorp spotify zibble", &mut TestUser::default());
+        assert!(
+            matches!(&ev, CoreEvent::Done { message, .. } if message == "Cancelled."),
+            "{ev:?}"
+        );
+        assert!(c.calls().is_empty());
+    }
+
+    #[test]
+    fn a_cancelled_fill_runs_nothing() {
+        let c = Arc::new(FakeConnector::new("browser"));
+        let mut flow =
+            flow_with(&[SEARCH], vec![("browser", c.clone())]).with_llm(Box::new(Cancelled(false)));
+        let ev = flow.handle(
+            1,
+            "search the web for cheap flights to goa",
+            &mut TestUser::default(),
+        );
+        assert!(
+            matches!(&ev, CoreEvent::Done { message, .. } if message == "Cancelled."),
+            "{ev:?}"
+        );
+        assert!(!c
+            .calls()
+            .iter()
+            .any(|call| matches!(call, Call::Execute { .. })));
     }
 
     fn executed_args(c: &FakeConnector) -> Args {

@@ -9,6 +9,8 @@
 
 use jitmo_core::llm::{Llm, Pick, ToolBrief};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -24,12 +26,56 @@ fn agent(secs: u64) -> ureq::Agent {
         .into()
 }
 
-/// The local model on jitmo-runtime. Clones share one runtime.
+/// The error text of a call the user cancelled (Esc): the runtime answered
+/// `499 request_cancelled`, or [`LocalLlm::cancel`] was called while it ran.
+pub const CANCELLED: &str = "jitmo-runtime: request cancelled";
+
+/// How the runtime queues a request (`X-Jitmo-Priority`). Waiting interactive requests run
+/// before waiting background ones; a running request is never interrupted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Priority {
+    /// The user is waiting for it (the default).
+    #[default]
+    Interactive,
+    /// Work the user is not waiting for, such as the warm-up.
+    Background,
+}
+
+impl Priority {
+    /// The header value.
+    pub fn header(self) -> &'static str {
+        match self {
+            Priority::Interactive => "interactive",
+            Priority::Background => "background",
+        }
+    }
+}
+
+/// A new request id for `X-Jitmo-Request-Id`, unique in this process and across processes
+/// that share one runtime (the app and an audit run): `jitmo-<pid>-<n>`.
+fn next_request_id() -> String {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    format!(
+        "jitmo-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+/// Requests that are running, by id; `true` once [`LocalLlm::cancel`] has cancelled one.
+type InFlight = Arc<Mutex<HashMap<String, bool>>>;
+
+/// The local model on jitmo-runtime. Clones share one runtime, the same in-flight requests
+/// (so a clone can cancel what another started) and the same "was cancelled" flag.
 #[derive(Clone)]
 pub struct LocalLlm {
     rt: Arc<Mutex<Runtime>>,
     grammar: bool,
     compact: bool,
+    priority: Priority,
+    in_flight: InFlight,
+    /// Set when a call ends cancelled; read (and cleared) by [`Llm::take_cancelled`].
+    cancelled: Arc<AtomicBool>,
 }
 
 impl LocalLlm {
@@ -41,21 +87,66 @@ impl LocalLlm {
             rt: Arc::new(Mutex::new(Runtime::new(cfg))),
             grammar,
             compact,
+            priority: Priority::Interactive,
+            in_flight: Arc::new(Mutex::new(HashMap::new())),
+            cancelled: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// The same model, with the calls made through this handle sent at `priority`
+    /// (`LocalLlm::new` gives [`Priority::Interactive`]).
+    pub fn with_priority(&self, priority: Priority) -> LocalLlm {
+        LocalLlm {
+            priority,
+            ..self.clone()
         }
     }
 
     /// Start loading the model in the background (when the bar opens: the load hides behind
-    /// the typing). The runtime refuses when memory is short.
+    /// the typing). The runtime refuses when memory is short. Sent as background work: the
+    /// runtime accepts the header here, though a load takes no generation slot, so it does
+    /// not change the order of anything today.
     pub fn warm(&self) {
         let rt = self.rt.clone();
         std::thread::spawn(move || {
-            let _ = runtime_call(&rt, "/admin/load", Some(json!({})), 180, true);
+            let _ = runtime_call(
+                &rt,
+                "/admin/load",
+                Some(json!({})),
+                180,
+                true,
+                Priority::Background,
+                None,
+            );
         });
     }
 
     /// Unload the model now (Windows says memory is low). Never starts a runtime to do so.
     pub fn unload(&self) {
-        let _ = runtime_call(&self.rt, "/admin/unload", None, 30, false);
+        let _ = runtime_call(
+            &self.rt,
+            "/admin/unload",
+            None,
+            30,
+            false,
+            Priority::Background,
+            None,
+        );
+    }
+
+    /// Cancel every request that is running (the user pressed Esc or put the bar away). Each
+    /// call that was running ends as [`CANCELLED`], even one whose answer arrives before the
+    /// runtime sees the cancel, so no answer is ever used for it. The `DELETE`s are sent on
+    /// their own thread, so this never blocks (the caller may be the UI thread), and never
+    /// start a runtime. Returns how many requests were cancelled.
+    pub fn cancel(&self) -> usize {
+        let ids = mark_cancelled(&self.in_flight);
+        if !ids.is_empty() {
+            let rt = self.rt.clone();
+            let ids = ids.clone();
+            std::thread::spawn(move || send_cancels(&rt, &ids));
+        }
+        ids.len()
     }
 
     /// One chat completion; `schema` makes the answer valid JSON of that shape.
@@ -110,25 +201,93 @@ impl LocalLlm {
             .map_err(|_| "the model did not answer with a number".to_string())
     }
 
+    /// One chat completion with its own request id, so [`LocalLlm::cancel`] can stop it.
     fn post(&self, body: Value) -> Result<String, String> {
-        let v = runtime_call(&self.rt, "/v1/chat/completions", Some(body), 180, true)?;
-        v["choices"][0]["message"]["content"]
+        let id = next_request_id();
+        if let Ok(mut f) = self.in_flight.lock() {
+            f.insert(id.clone(), false);
+        }
+        let got = runtime_call(
+            &self.rt,
+            "/v1/chat/completions",
+            Some(body),
+            180,
+            true,
+            self.priority,
+            Some((&id, &self.in_flight)),
+        );
+        // Cancelled while it ran (even if an answer came back first): the answer is not used.
+        let cancelled_here = self
+            .in_flight
+            .lock()
+            .ok()
+            .and_then(|mut f| f.remove(&id))
+            .unwrap_or(false);
+        let got = if cancelled_here {
+            Err(CANCELLED.to_string())
+        } else {
+            got
+        };
+        if got.as_ref().is_err_and(|e| e == CANCELLED) {
+            self.cancelled.store(true, Ordering::SeqCst);
+        }
+        got?["choices"][0]["message"]["content"]
             .as_str()
             .map(|s| s.trim().to_string())
             .ok_or_else(|| "the model sent no answer".to_string())
     }
 }
 
-/// One POST to jitmo-runtime. Bodies get the configured model name; every request is marked
-/// interactive. A runtime error (`503 insufficient_memory`, `queue_full`, `502 engine_error`,
-/// ...) is an `Err`, so the engine falls back to its rules. `start` = false: only talk to a
-/// runtime that is already there.
+/// Mark every running request cancelled and return their ids.
+fn mark_cancelled(in_flight: &InFlight) -> Vec<String> {
+    let Ok(mut f) = in_flight.lock() else {
+        return Vec::new();
+    };
+    f.iter_mut()
+        .filter(|(_, c)| !**c)
+        .map(|(id, c)| {
+            *c = true;
+            id.clone()
+        })
+        .collect()
+}
+
+/// `DELETE /v1/requests/{id}` for each id, on a runtime that is already there (never starts
+/// one). A `404` (the request already finished, or never reached the runtime) is fine.
+fn send_cancels(rt: &Arc<Mutex<Runtime>>, ids: &[String]) {
+    let base = match rt.lock() {
+        Ok(mut r) => r.running(),
+        Err(_) => None,
+    };
+    let Some(base) = base else { return };
+    for id in ids {
+        let _ = agent(5).delete(&format!("{base}/v1/requests/{id}")).call();
+    }
+}
+
+/// The headers of one request: its priority, and its id when it has one.
+fn request_headers(priority: Priority, id: Option<&str>) -> Vec<(&'static str, String)> {
+    let mut h = vec![("X-Jitmo-Priority", priority.header().to_string())];
+    if let Some(id) = id {
+        h.push(("X-Jitmo-Request-Id", id.to_string()));
+    }
+    h
+}
+
+/// One POST to jitmo-runtime. Bodies get the configured model name. A runtime error
+/// (`503 insufficient_memory`, `queue_full`, `502 engine_error`, ...) is an `Err`, so the
+/// engine falls back to its rules; `499 request_cancelled` is [`CANCELLED`]. `start` = false:
+/// only talk to a runtime that is already there. `id`: the request id and the in-flight table
+/// it is in; a request cancelled before it could be sent (the runtime was still starting) is
+/// never sent.
 fn runtime_call(
     rt: &Arc<Mutex<Runtime>>,
     path: &str,
     body: Option<Value>,
     secs: u64,
     start: bool,
+    priority: Priority,
+    id: Option<(&str, &InFlight)>,
 ) -> Result<Value, String> {
     let (base, model) = {
         let mut r = rt.lock().map_err(|_| "runtime lock".to_string())?;
@@ -139,15 +298,22 @@ fn runtime_call(
         };
         (base, r.cfg.model.clone())
     };
+    if let Some((id, f)) = id {
+        if f.lock().ok().and_then(|f| f.get(id).copied()) == Some(true) {
+            return Err(CANCELLED.into());
+        }
+    }
     let mut body = body.unwrap_or_else(|| json!({}));
     if body.get("model").is_none() {
         body["model"] = json!(model);
     }
-    let sent = agent(secs)
+    let mut req = agent(secs)
         .post(&format!("{base}{path}"))
-        .header("Content-Type", "application/json")
-        .header("X-Jitmo-Priority", "interactive")
-        .send(body.to_string());
+        .header("Content-Type", "application/json");
+    for (k, v) in request_headers(priority, id.map(|(i, _)| i)) {
+        req = req.header(k, v);
+    }
+    let sent = req.send(body.to_string());
     let mut resp = match sent {
         Ok(r) => r,
         Err(e) => {
@@ -162,6 +328,9 @@ fn runtime_call(
         .body_mut()
         .read_to_string()
         .map_err(|e| e.to_string())?;
+    if status == 499 {
+        return Err(CANCELLED.into());
+    }
     if !(200..300).contains(&status) {
         return Err(runtime::error_text(status, &text));
     }
@@ -342,6 +511,10 @@ Question: {question}"
             .ok()?;
         parse_args(&text, tool)
     }
+
+    fn take_cancelled(&mut self) -> bool {
+        self.cancelled.swap(false, Ordering::SeqCst)
+    }
 }
 
 #[cfg(test)]
@@ -424,5 +597,177 @@ mod tests {
         let llm = LocalLlm::new(RuntimeConfig::spawn(exe, None, "m"));
         llm.unload();
         assert!(llm.rt.lock().unwrap().running().is_none());
+    }
+
+    #[test]
+    fn request_ids_are_unique_and_valid_for_the_runtime() {
+        let ids: std::collections::HashSet<String> = (0..1000).map(|_| next_request_id()).collect();
+        assert_eq!(ids.len(), 1000);
+        // 1 to 128 characters: letters, digits, `.`, `_`, `:`, `-`.
+        assert!(ids.iter().all(|id| id.len() <= 128
+            && id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "._:-".contains(c))));
+    }
+
+    #[test]
+    fn cancel_with_nothing_running_does_nothing_and_never_starts_a_runtime() {
+        let exe = std::env::temp_dir().join("jitmo-no-such-runtime.exe");
+        let mut llm = LocalLlm::new(RuntimeConfig::spawn(exe, None, "m"));
+        assert_eq!(llm.cancel(), 0);
+        send_cancels(&llm.rt, &["jitmo-1-1".into()]);
+        assert!(llm.rt.lock().unwrap().running().is_none());
+        assert!(!llm.take_cancelled());
+    }
+
+    #[test]
+    fn cancel_marks_running_requests_once_and_a_clone_shares_them() {
+        let llm = LocalLlm::new(RuntimeConfig::connect("http://127.0.0.1:1", "m"));
+        let other = llm.with_priority(Priority::Background);
+        llm.in_flight.lock().unwrap().insert("a".into(), false);
+        let ids = mark_cancelled(&other.in_flight);
+        assert_eq!(ids, vec!["a".to_string()]);
+        assert_eq!(llm.in_flight.lock().unwrap().get("a"), Some(&true));
+        // Already cancelled: not sent again.
+        assert!(mark_cancelled(&llm.in_flight).is_empty());
+    }
+
+    #[test]
+    fn a_request_cancelled_before_it_is_sent_is_never_sent_and_counts_as_cancelled() {
+        // Port 1 has no runtime: a request that were sent would fail with a connection error.
+        let llm = LocalLlm::new(RuntimeConfig::connect("http://127.0.0.1:1", "m"));
+        llm.in_flight.lock().unwrap().insert("x".into(), true);
+        let got = runtime_call(
+            &llm.rt,
+            "/v1/chat/completions",
+            None,
+            5,
+            true,
+            Priority::Interactive,
+            Some(("x", &llm.in_flight)),
+        );
+        assert_eq!(got.unwrap_err(), CANCELLED);
+    }
+
+    /// A one-shot HTTP server: answers the first request with `status` and `body`, and hands
+    /// back the request's text.
+    fn one_answer(status: &str, body: &'static str) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", l.local_addr().unwrap());
+        let status = status.to_string();
+        let h = std::thread::spawn(move || {
+            let (mut s, _) = l.accept().unwrap();
+            let mut got = Vec::new();
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = s.read(&mut buf).unwrap();
+                got.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&got).to_string();
+                if let Some(end) = text.find("\r\n\r\n") {
+                    let len = text
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                        })
+                        .unwrap_or(0);
+                    if got.len() >= end + 4 + len || n == 0 {
+                        break;
+                    }
+                }
+            }
+            let _ = write!(
+                s,
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            String::from_utf8_lossy(&got).to_string()
+        });
+        (url, h)
+    }
+
+    #[test]
+    fn a_499_is_cancelled_and_the_engine_is_told_once() {
+        let (url, server) = one_answer(
+            "499 Client Closed Request",
+            r#"{"error":{"code":"request_cancelled","message":"cancelled","type":"request_cancelled"}}"#,
+        );
+        let mut llm = LocalLlm::new(RuntimeConfig::connect(url, "m"));
+        assert_eq!(llm.chat("s", "u", None, 5).unwrap_err(), CANCELLED);
+        let sent = server.join().unwrap().to_ascii_lowercase();
+        assert!(sent.contains("x-jitmo-priority: interactive"), "{sent}");
+        assert!(sent.contains("x-jitmo-request-id: jitmo-"), "{sent}");
+        assert!(llm.in_flight.lock().unwrap().is_empty());
+        assert!(llm.take_cancelled());
+        assert!(!llm.take_cancelled());
+    }
+
+    #[test]
+    fn another_error_is_not_a_cancel() {
+        let (url, server) = one_answer(
+            "503 Service Unavailable",
+            r#"{"error":{"code":"queue_full","message":"busy"}}"#,
+        );
+        let mut llm = LocalLlm::new(RuntimeConfig::connect(url, "m"));
+        let sent_bg = llm.with_priority(Priority::Background);
+        assert!(sent_bg
+            .chat("s", "u", None, 5)
+            .unwrap_err()
+            .contains("queue_full"));
+        assert!(server
+            .join()
+            .unwrap()
+            .to_ascii_lowercase()
+            .contains("x-jitmo-priority: background"));
+        assert!(!llm.take_cancelled());
+    }
+
+    /// Against a real runtime: `JITMO_TEST_RUNTIME_URL=http://127.0.0.1:<port> cargo test -p
+    /// jitmo-llm -- --ignored`. A long generation is cancelled a second in.
+    #[test]
+    #[ignore]
+    fn cancel_stops_a_real_generation() {
+        let url = std::env::var("JITMO_TEST_RUNTIME_URL").expect("JITMO_TEST_RUNTIME_URL");
+        let mut llm = LocalLlm::new(RuntimeConfig::connect(url, "jitmo-router"));
+        let worker = llm.clone();
+        let started = std::time::Instant::now();
+        let h = std::thread::spawn(move || {
+            worker.post(json!({
+                "messages": [{ "role": "user", "content": "Write a very long story." }],
+                "max_tokens": 1500,
+                "ignore_eos": true,
+            }))
+        });
+        std::thread::sleep(Duration::from_millis(1500));
+        assert_eq!(llm.cancel(), 1);
+        let got = h.join().unwrap();
+        eprintln!("ended after {:?}: {got:?}", started.elapsed());
+        assert_eq!(got.unwrap_err(), CANCELLED);
+        assert!(llm.take_cancelled());
+        assert_eq!(llm.cancel(), 0);
+    }
+
+    #[test]
+    fn interactive_is_the_default_and_background_is_per_handle() {
+        let llm = LocalLlm::new(RuntimeConfig::connect("http://127.0.0.1:1", "m"));
+        assert_eq!(llm.priority, Priority::Interactive);
+        assert_eq!(
+            llm.with_priority(Priority::Background).priority,
+            Priority::Background
+        );
+        assert_eq!(llm.priority, Priority::Interactive);
+        assert_eq!(
+            request_headers(Priority::Interactive, Some("jitmo-1-2")),
+            vec![
+                ("X-Jitmo-Priority", "interactive".to_string()),
+                ("X-Jitmo-Request-Id", "jitmo-1-2".to_string())
+            ]
+        );
+        assert_eq!(
+            request_headers(Priority::Background, None),
+            vec![("X-Jitmo-Priority", "background".to_string())]
+        );
     }
 }

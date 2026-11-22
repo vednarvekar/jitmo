@@ -65,4 +65,12 @@ pub trait Llm: Send {
     fn answer_from(&mut self, _question: &str, _passage: &str) -> Option<String> {
         None
     }
+
+    /// `true` once after a call was cancelled by the user (Esc, or the bar was put away), then
+    /// `false` until the next cancel. The call itself answered `Nothing` / `None`; the engine
+    /// then ends the request as cancelled instead of falling back to its rules, so nothing
+    /// runs and no answer is made for it.
+    fn take_cancelled(&mut self) -> bool {
+        false
+    }
 }
