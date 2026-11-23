@@ -31,7 +31,7 @@ All three go to `POST /v1/chat/completions` on the base model. None uses a chain
 | Values (`fill`) | chat completion | `response_format` `json_schema` |
 | Writer (`answer_from`) | chat completion | |
 
-Every request sends `X-Jitmo-Priority: interactive`.
+Every chat request sends `X-Jitmo-Priority: interactive` and its own `X-Jitmo-Request-Id` (`jitmo-<pid>-<n>`), so it can be cancelled (section 8, item 4).
 
 ## 3. How jitmo finds or starts the runtime
 
@@ -151,8 +151,8 @@ The Microsoft Store Python on this PC silently redirects writes under `AppData\R
 
 | Feature | Use in jitmo |
 |---|---|
-| Cancel: `DELETE /v1/requests/{id}` | Stop the model when the user presses Esc (next) |
-| `X-Jitmo-Priority: background` | Work the user is not waiting for (next) |
+| Cancel: `DELETE /v1/requests/{id}` | **Done.** Every chat request has its own id. Esc while working, or putting the bar away (Esc, the hotkey), calls `LocalLlm::cancel`: it sends `DELETE` for each running request on its own thread and never starts a runtime. A `499 request_cancelled`, or an answer that arrives after the cancel, is dropped; the engine then ends the request as `Cancelled.` (`Llm::take_cancelled`) instead of falling back to its rules, so nothing runs. Measured against the real runtime (ignored test `cancel_stops_a_real_generation`): a 1500-token generation cancelled after 1.5 s returned at once, runtime counters `cancelled` +1, no request left. Not yet checked by pressing Esc in the real app. |
+| `X-Jitmo-Priority: background` | **Done** for the warm-up (`/admin/load`) and `/admin/unload`. The runtime ignores the header there (a load takes no generation slot), so it changes nothing today. `LocalLlm::with_priority` gives a background handle; the engine has no other work the user is not waiting for, so nothing else uses it. |
 | Chains with `vars` | Writer steps with fixed prompts, such as question plus passage |
 | `/v1/embeddings` | Replace the ONNX router, only after its vectors are compared with the ONNX MiniLM |
 | LoRA adapters | One base model with per-task adapters instead of several files |
