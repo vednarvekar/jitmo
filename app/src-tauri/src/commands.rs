@@ -37,6 +37,9 @@ pub(crate) fn answer(state: State<AppState>, id: u64, text: String) {
 
 #[tauri::command]
 pub(crate) fn cancel(state: State<AppState>, id: u64) {
+    // The engine may be waiting on the language model: stop that first, so the engine sees
+    // the cancel at once instead of after the model's answer.
+    crate::llm_host::cancel();
     state.core.send(UiRequest::Cancel { id });
 }
 
