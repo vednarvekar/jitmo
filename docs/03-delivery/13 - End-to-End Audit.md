@@ -311,7 +311,7 @@ never pushes the PC into paging.
 | One base model plus small swappable adapters (LoRA) | **Yes, the main lever** | Several specialists for the memory of one model. llama-server can choose adapters per request. Each adapter is 5–50 MB. |
 | Models built to keep part of their weights on disk (Gemma 3n and Gemma 4 "E" models, per-layer embeddings) | **Yes, test it** | About 5B parameters running with about 2B in memory. Check what llama.cpp actually keeps resident on a CPU. |
 | 1.58-bit models (BitNet b1.58 2B4T) | **Yes, test it** | About 0.4 GB non-embedding memory and fast CPU decoding, but it needs bitnet.cpp, not llama.cpp. |
-| Mixture-of-experts streamed from the SSD | **Not now** | Needs all experts in RAM or slow random SSD reads. Research, not a two-week task. |
+| Mixture-of-experts streamed from the SSD | **Not now** *(reversed 18 Nov 2026: now the centre of the runtime, see [C0](../00-core/C0%20-%20Vision.md) and [C1](../00-core/C1%20-%20Blockers.md))* | Needs all experts in RAM or slow random SSD reads. Research, not a two-week task. |
 | One encoder pass feeding several small heads | **Yes, already half built** | The router and the NER tagger are two separate MiniLM models today; one shared encoder with several heads halves that cost. |
 
 ### 10.3 The design: a cascade of specialists

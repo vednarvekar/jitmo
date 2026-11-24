@@ -4,6 +4,16 @@ Doc numbers (00.x, 1 to 12) are stable and are what the docs use when they say "
 
 ## Folders
 
+### 00-core: the core of the project (read first)
+
+Since 18 Nov 2026 the core is a new model runtime: many small models swapped fast, and big models streamed from the SSD with only the needed parts in RAM. The assistant is its first user.
+
+| Doc | What it is |
+|---|---|
+| [C0 Vision](00-core/C0%20-%20Vision.md) | What the runtime is, what "works the same" means, targets, principles, what it is not |
+| [C1 Blockers](00-core/C1%20-%20Blockers.md) | The physics limit (SSD vs RAM), the ranked blockers, what is not a blocker |
+| [C2 Path and First Experiments](00-core/C2%20-%20Path%20and%20First%20Experiments.md) | Runtime parts, phases, first experiments, decisions waiting on the owner |
+
 ### 00-vision: the end goal (everything the finished product should have)
 
 | Doc | What it is |
