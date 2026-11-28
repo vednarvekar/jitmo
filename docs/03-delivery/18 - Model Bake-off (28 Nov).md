@@ -12,7 +12,7 @@ Which small model should pick jitmo's tools and fill their values? Measured on t
 |---|---|---|---|---|
 | Gemma 3 270M, tuned (shipped) | **77.5%** | 89.0% / 91.9% | **134 ms** | 0.5 GB |
 | Gemma 3n E2B | 72.9% | 86.3% / 87.9% | 966 ms | 2.9 GB |
-| Granite 4.0-H Micro | 71.8% | **97.3% / 98.0%** | 1324 ms | 8.2 GB (default cache) |
+| Granite 4.0-H Micro, `--cache-ram 256`, 3 threads | 71.8% | **97.3% / 98.0%** | 1379 ms | 3.8 GB working set, 2.0 GB private (8.2 GB with the default cache) |
 | LFM2 2.6B | 45.0% | 65.8% / 72.7% | 872 ms | 2.8 GB |
 | Gemma 3 1B | 33.6% | 68.5% / 73.7% | 474 ms | 1.1 GB |
 | Qwen3.5-2B, `--cache-ram 256` | 26.7% | 87.7% / 89.9% | 631 ms | 2.2 GB |
@@ -45,6 +45,6 @@ Same accuracy. The iGPU shares system RAM, so GPU memory counts against the budg
 
 ## Open
 
-- Granite with `--cache-ram 256`: the run with `--ctx-checkpoints 4` died after ~150 cases; the rerun with only the cache cap was stopped by the owner. RAM with the fix is unknown.
+- Granite: `--cache-ram 256` alone works (same score, 2.0 GB private). Adding `--ctx-checkpoints 4` made the server die after ~150 cases; don't use it.
 - SmallThinker 4B-A0.6B: download incomplete (0.29 of 2.47 GB).
 - Next: fine-tune Granite (or Gemma 3n) for values; route values to it, picks to the encoder.
