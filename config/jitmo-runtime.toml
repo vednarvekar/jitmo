@@ -1,4 +1,4 @@
-# jitmo agent's config for jitmo-runtime (V:\Code\jitmo-runtime, docs/06-runtime-api.md).
+# jitmo agent's config for jitmo-runtime (C:\V\Code\jitmo-runtime, docs/06-runtime-api.md).
 # jitmo starts the runtime with: --config <this> --port 0 --parent-pid <jitmo> --port-file ...
 # and passes --model / --llama-server when it knows better paths (app data folder).
 #
@@ -15,8 +15,8 @@ max_concurrent = 1
 [model]
 name = "jitmo-router"
 kind = "chat"
-path = 'V:\jitmo-sandbox\models\gemma-3-270m-it-router-Q4_K_M.gguf'
-llama_server = 'V:\jitmo-sandbox\llama\llama-server.exe'
+path = 'C:\V\jitmo-sandbox\models\gemma-3-270m-it-router-Q4_K_M.gguf'
+llama_server = 'C:\V\jitmo-sandbox\llama\llama-server.exe'
 ctx_size = 2048
 threads = 0
 flash_attn = "auto"
