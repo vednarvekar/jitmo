@@ -1,6 +1,6 @@
 # 18. Model bake-off (28 Nov 2026)
 
-Which small model should pick jitmo's tools and fill their values? Measured on the owner's laptop (i5-1135G7, 16 GB, Iris Xe, Windows 11). Not finished: see "Open".
+Which small model should pick jitmo's tools and fill their values? Measured on the owner's laptop (i5-1135G7, 16 GB, Iris Xe, Windows 11).
 
 ## Setup
 
@@ -12,6 +12,7 @@ Which small model should pick jitmo's tools and fill their values? Measured on t
 |---|---|---|---|---|
 | Gemma 3 270M, tuned (shipped) | **77.5%** | 89.0% / 91.9% | **134 ms** | 0.5 GB |
 | Gemma 3n E2B | 72.9% | 86.3% / 87.9% | 966 ms | 2.9 GB |
+| SmallThinker 4B-A0.6B (Q4_0), `--cache-ram 256` | 72.5% | 89.0% / 90.9% | 303 ms | 4.6 GB working set, 2.4 GB private |
 | Granite 4.0-H Micro, `--cache-ram 256`, 3 threads | 71.8% | **97.3% / 98.0%** | 1379 ms | 3.8 GB working set, 2.0 GB private (8.2 GB with the default cache) |
 | LFM2 2.6B | 45.0% | 65.8% / 72.7% | 872 ms | 2.8 GB |
 | Gemma 3 1B | 33.6% | 68.5% / 73.7% | 474 ms | 1.1 GB |
@@ -46,5 +47,5 @@ Same accuracy. The iGPU shares system RAM, so GPU memory counts against the budg
 ## Open
 
 - Granite: `--cache-ram 256` alone works (same score, 2.0 GB private). Adding `--ctx-checkpoints 4` made the server die after ~150 cases; don't use it.
-- SmallThinker 4B-A0.6B: download incomplete (0.29 of 2.47 GB).
+- SmallThinker 4B-A0.6B: as good as the 270M on values (89%), not better; 2.4 GB. Not worth it.
 - Next: fine-tune Granite (or Gemma 3n) for values; route values to it, picks to the encoder.
